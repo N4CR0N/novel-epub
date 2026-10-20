@@ -45,11 +45,16 @@ python -m novel_epub https://freewebnovel.com/novel/stellar-transformations --ba
 
 - **Terimleri düzeltmek:** `kutuphane/<kitap>/sozluk.json`'u aç, beğenmediğin karşılığı değiştir.
   Yeniden çevirmek istediğin bölümlerin `kutuphane/<kitap>/ceviri/0xxxx.json` dosyalarını sil, tekrar başlat.
-- **Ücretsiz Gemini sınırı:** günlük istek sınırı dolarsa araç bekler/yeniden dener; dolmuşsa
-  durdur, ertesi gün aynı linkle başlat, kaldığı yerden sürer. Uzun kitapları aralık aralık
-  (ör. 1–200, 201–400) yapmak rahattır.
-- **Model:** Ayarlar → *Listele* anahtarının erişebildiği Gemini modellerini getirir. Varsayılan
-  `gemini-flash-latest` (her zaman güncel Flash). Daha edebi sonuç için bir Pro modeli seçebilirsin
+- **Ücretsiz Gemini sınırı:** ücretsiz katmanda kota **istek sayısıyla** ve **model başına** sayılır
+  (ör. `gemini-3.8-flash` için günde 20 istek). Araç bu yüzden tipik bir İngilizce bölümü tek istekte
+  gönderir ve Ayarlar'daki model listesini sırayla kullanır: biri dolunca sıradakine geçer
+  (varsayılan `gemini-flash-latest, gemini-flash-lite-latest`). Hepsi dolunca o ana kadar çevrilen
+  bölümlerle **kısmi EPUB** çıkarır; kota yenilenince aynı linkle başlat, kaldığı yerden sürer.
+  Uzun bir kitabı ücretsiz kotayla bitirmek haftalar sürer; hızlı bitirmek istersen AI Studio'da
+  faturalandırmayı aç (kullandıkça öde; 680 bölümlük bir kitap kabaca 3M girdi + 5M çıktı token eder,
+  güncel fiyat için AI Studio'daki fiyat sayfasına bak) ve bir bütçe sınırı koy.
+- **Model:** Ayarlar → *Listele* anahtarının erişebildiği Gemini modellerini getirir; kutuya virgülle
+  birden fazla model yazabilirsin (ör. `gemini-3.8-flash, gemini-3.7-flash, gemini-flash-lite-latest`). Daha edebi sonuç için bir Pro modeli seçebilirsin
   (daha yavaş, ücretsiz sınırı daha dar).
 - **Bot koruması sert olan siteler** (tam Cloudflare doğrulaması isteyenler) bu araçla açılmayabilir;
   o durumda tarayıcı eklentisi [WebToEpub](https://github.com/dteviot/WebToEpub) ile orijinal EPUB'u indirip

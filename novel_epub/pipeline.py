@@ -222,7 +222,7 @@ class Job:
             self.log("Denetim: tüm bölümler sağlam görünüyor ✓")
 
     def _translate(self, chapters: list[Chapter], store: BookStore) -> list[Chapter]:
-        from .translator import GeminiTranslator
+        from .translator import GeminiTranslator, TranslationError
 
         o = self.opts
         tr = GeminiTranslator(o.api_key, o.model, o.target, log=self.log)
@@ -235,7 +235,16 @@ class Job:
             self._check_cancel()
             done = store.load_tr(ch.index)
             if done is None and ch.paragraphs:
-                done, new_terms = tr.translate_chapter(ch, glossary, context)
+                try:
+                    done, new_terms = tr.translate_chapter(ch, glossary, context)
+                except TranslationError as e:
+                    if not out:
+                        raise
+                    # Kota/hata: o ana kadar çevrilenlerle kısmi EPUB çıkar; tekrar başlatınca kaldığı yerden sürer.
+                    self.log(f"Çeviri {ch.index}. bölümde durdu: {e}")
+                    self.log(f"{len(out)} bölümlük kısmi EPUB hazırlanıyor. Kota yenilenince aynı linkle başlat, kaldığı yerden sürer.")
+                    self.p.error = f"Kısmi: {len(out)} bölüm çevrildi ({e})"
+                    break
                 store.save_tr(done)
                 if new_terms:
                     glossary.update(new_terms)

@@ -85,3 +85,54 @@ def test_store_roundtrip(tmp_path: Path):
     assert st.load_raw(3).paragraphs == ["x"] and st.dir.name == "t-olu-sehir"
     st.save_glossary({"b": "2", "A": "1"})
     assert list(json.loads(st.glossary_path.read_text("utf-8"))) == ["A", "b"]
+
+
+def test_daily_quota_detection():
+    from novel_epub.translator import is_daily_quota, parse_models
+
+    daily = ("429 RESOURCE_EXHAUSTED. {'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', "
+             "'retryDelay': '27476s'}")
+    assert is_daily_quota(Exception(daily))
+    assert not is_daily_quota(Exception("429 RESOURCE_EXHAUSTED. {'retryDelay': '12s'}"))
+    assert is_daily_quota(Exception("429 {'retryDelay': '27476s'}"))
+    assert parse_models("a, b,,a") == ["a", "b"]
+
+
+def test_model_fallback_on_quota():
+    from novel_epub.translator import QuotaExhausted
+
+    tr = GeminiTranslator.__new__(GeminiTranslator)
+    tr.models, tr.model, tr.log = ["m1", "m2"], "m1", print
+    used = []
+
+    def fake_model_call(payload):
+        used.append(tr.model)
+        if tr.model == "m1":
+            raise QuotaExhausted("dolu")
+        return {"title": "t", "paragraphs": payload["paragraphs"], "new_terms": []}
+
+    tr._call_model = fake_model_call
+    assert tr._call({"paragraphs": ["x"]})["paragraphs"] == ["x"]
+    assert used == ["m1", "m2"] and tr.model == "m2"
+
+
+def test_partial_epub_when_quota_runs_out(tmp_path: Path, monkeypatch):
+    from novel_epub import pipeline, translator
+    from novel_epub.store import BookStore
+
+    class FakeTr:
+        def __init__(self, *a, **k):
+            self.model, self.n = "sahte", 0
+
+        def translate_chapter(self, ch, glossary, context):
+            self.n += 1
+            if self.n > 2:
+                raise translator.QuotaExhausted("kota doldu")
+            return Chapter(ch.index, "TR " + ch.title, ch.url, ["tr"]), {}
+
+    monkeypatch.setattr(translator, "GeminiTranslator", FakeTr)
+    job = pipeline.Job(pipeline.Options(url="u", translate=True))
+    store = BookStore(tmp_path, Novel(url="u", title="k", source="t"))
+    chs = [Chapter(i, f"c{i}", "u", ["en"]) for i in range(1, 6)]
+    out = job._translate(chs, store)
+    assert [c.title for c in out] == ["TR c1", "TR c2"] and job.p.error.startswith("Kısmi")

@@ -67,7 +67,7 @@
       <summary>Ayarlar</summary>
       <label for="key">Gemini API anahtarı <span class="mut" id="keyHint"></span></label>
       <input id="key" type="password" placeholder="aistudio.google.com/apikey adresinden ücretsiz al">
-      <label for="model">Model</label>
+      <label for="model">Model(ler) — virgülle sırala; biri kotayı doldurunca sonrakine geçer</label>
       <div class="row"><input id="model" type="text" list="models"><button class="ghost" id="loadModels" style="flex:0 0 auto">Listele</button></div>
       <datalist id="models"></datalist>
       <div class="row">
@@ -142,7 +142,7 @@ async function poll() {
   if (!s.running) {
     clearInterval(timer); $('go').disabled = false; $('stop').disabled = true;
     if (s.result) $('jResult').innerHTML = `<p class="ok">Hazır: <a href="/indir/${encodeURIComponent(s.result)}">${esc(s.result)}</a></p>`;
-    if (s.error) $('jResult').innerHTML = `<p class="err">${esc(s.error)}</p>`;
+    if (s.error) $('jResult').innerHTML += `<p class="err">${esc(s.error)}</p>`;
     loadBooks();
   }
 }

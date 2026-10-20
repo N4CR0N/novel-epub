@@ -17,7 +17,7 @@ def main() -> None:
     ap.add_argument("--bas", type=int, help="İlk bölüm sırası (1'den başlar)")
     ap.add_argument("--son", type=int, help="Son bölüm sırası (dahil)")
     ap.add_argument("--cevir", action="store_true", help="Gemini ile Türkçeye çevir")
-    ap.add_argument("--model", default=os.environ.get("GEMINI_MODEL", ""), help="Gemini modeli")
+    ap.add_argument("--model", default=os.environ.get("GEMINI_MODEL", ""), help="Gemini model(ler)i, virgülle (kota dolunca sıradakine geçer)")
     ap.add_argument("--bekleme", type=float, default=0.7, help="İstekler arası saniye")
     ap.add_argument("--isci", type=int, default=3, help="Paralel indirme sayısı")
     ap.add_argument("--host", default="0.0.0.0")

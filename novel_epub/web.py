@@ -11,7 +11,7 @@ from pathlib import Path
 from flask import Flask, abort, jsonify, render_template, request, send_from_directory
 
 from .pipeline import Job, Options
-from .translator import DEFAULT_MODEL
+from .translator import DEFAULT_MODEL, DEFAULT_MODELS
 
 BASE = Path(os.environ.get("NOVEL_EPUB_HOME", Path.cwd()))
 SETTINGS_PATH = BASE / "ayarlar.json"
@@ -23,10 +23,12 @@ JOBS: dict[str, Job] = {}
 
 
 def load_settings() -> dict:
-    s = {"api_key": os.environ.get("GEMINI_API_KEY", ""), "model": os.environ.get("GEMINI_MODEL", DEFAULT_MODEL),
+    s = {"api_key": os.environ.get("GEMINI_API_KEY", ""), "model": os.environ.get("GEMINI_MODEL", DEFAULT_MODELS),
          "delay": 0.7, "workers": 3}
     if SETTINGS_PATH.exists():
         s.update(json.loads(SETTINGS_PATH.read_text("utf-8")))
+    if s.get("model") == DEFAULT_MODEL:  # eski tek-model varsayılanı: yedek modeli ekle
+        s["model"] = DEFAULT_MODELS
     return s
 
 
@@ -88,7 +90,7 @@ def start_job():
         end=int(data["end"]) if data.get("end") else None,
         translate=bool(data.get("translate")),
         api_key=s.get("api_key", ""),
-        model=s.get("model") or DEFAULT_MODEL,
+        model=s.get("model") or DEFAULT_MODELS,
         delay=float(s.get("delay", 0.7)),
         workers=int(s.get("workers", 3)),
         library=LIBRARY,

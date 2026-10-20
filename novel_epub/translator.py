@@ -15,6 +15,8 @@ from typing import Callable
 from .models import Chapter
 
 DEFAULT_MODEL = "gemini-flash-latest"
+# Ücretsiz katmanda günlük kota model başına ayrı sayılır; biri dolunca sıradakine geçilir.
+DEFAULT_MODELS = "gemini-flash-latest, gemini-flash-lite-latest"
 
 SYSTEM_PROMPT = """Sen web novel (Çin xianxia/xuanhuan/wuxia, Japon light novel, Kore web romanı) ve fantastik edebiyat konusunda uzman, yayınevi kalitesinde çalışan bir edebi çevirmensin. Verilen paragrafları {target} diline çevir.
 
@@ -55,6 +57,23 @@ class TranslationError(RuntimeError):
     pass
 
 
+class QuotaExhausted(TranslationError):
+    """Günlük kota bitti; beklemek anlamsız (saatler sürer)."""
+
+
+def parse_models(spec: str) -> list[str]:
+    models = [m.strip() for m in (spec or "").replace(";", ",").split(",") if m.strip()]
+    return list(dict.fromkeys(models)) or [DEFAULT_MODEL]
+
+
+def is_daily_quota(err: Exception) -> bool:
+    text = str(err)
+    if "PerDay" in text or "per day" in text.lower():
+        return True
+    m = re.search(r"retryDelay'?\"?:\s*'?\"?(\d+)s", text)
+    return bool(m and int(m.group(1)) > 600)
+
+
 def chunk_paragraphs(paragraphs: list[str], budget: int) -> list[list[str]]:
     chunks, cur, size = [], [], 0
     for p in paragraphs:
@@ -82,12 +101,25 @@ class GeminiTranslator:
         if not api_key:
             raise TranslationError("Gemini API anahtarı yok. Ayarlar'dan gir (aistudio.google.com/apikey).")
         self.client = genai.Client(api_key=api_key)
-        self.model = model or DEFAULT_MODEL
+        self.models = parse_models(model or DEFAULT_MODELS)
+        self.model = self.models[0]
         self.target = target
         self.log = log
         self.max_retries = max_retries
 
     def _call(self, payload: dict) -> dict:
+        """Kota dolarsa sıradaki modele geçer; hepsi dolmuşsa QuotaExhausted fırlatır."""
+        while True:
+            try:
+                return self._call_model(payload)
+            except QuotaExhausted:
+                rest = self.models[self.models.index(self.model) + 1:]
+                if not rest:
+                    raise
+                self.log(f"  {self.model} günlük kotası doldu → {rest[0]} modeline geçiliyor")
+                self.model = rest[0]
+
+    def _call_model(self, payload: dict) -> dict:
         from google.genai import errors, types
 
         config = types.GenerateContentConfig(
@@ -111,6 +143,8 @@ class GeminiTranslator:
                     raise TranslationError(f"Model bulunamadı: {self.model}. Ayarlar'dan başka model seç.") from e
                 if code in (400, 401, 403) and "API key" in str(e):
                     raise TranslationError("API anahtarı geçersiz.") from e
+                if code == 429 and is_daily_quota(e):
+                    raise QuotaExhausted(f"{self.model} günlük ücretsiz kotası doldu") from e
                 if code in (429, 500, 503, 504) and attempt < self.max_retries - 1:
                     m = re.search(r"retry in ([\d.]+)s", str(e), re.I)
                     wait = float(m.group(1)) + 1 if m else delay
@@ -129,7 +163,8 @@ class GeminiTranslator:
 
     def translate_chapter(self, ch: Chapter, glossary: dict[str, str], context: list[str]) -> tuple[Chapter, dict[str, str]]:
         """Bölümü çevirir; (çevrilmiş bölüm, yeni terimler) döndürür. `context` önceki çeviri paragraflarıdır."""
-        budget = 2200 if CJK_RE.search(" ".join(ch.paragraphs[:5])) else 6000
+        # Büyük parça = az istek (ücretsiz kota istek sayısıyla ölçülür). Tipik İngilizce bölüm tek istekte gider.
+        budget = 8000 if CJK_RE.search(" ".join(ch.paragraphs[:5])) else 24000
         chunks = chunk_paragraphs(ch.paragraphs, budget)
         out_paras: list[str] = []
         new_terms: dict[str, str] = {}
