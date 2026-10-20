@@ -46,8 +46,9 @@ python -m novel_epub https://freewebnovel.com/novel/stellar-transformations --ba
 - **Terimleri düzeltmek:** `kutuphane/<kitap>/sozluk.json`'u aç, beğenmediğin karşılığı değiştir.
   Yeniden çevirmek istediğin bölümlerin `kutuphane/<kitap>/ceviri/0xxxx.json` dosyalarını sil, tekrar başlat.
 - **Ücretsiz Gemini sınırı:** ücretsiz katmanda kota **istek sayısıyla** ve **model başına** sayılır
-  (ör. `gemini-3.8-flash` için günde 20 istek). Araç bu yüzden tipik bir İngilizce bölümü tek istekte
-  gönderir ve Ayarlar'daki model listesini sırayla kullanır: biri dolunca sıradakine geçer
+  (ör. `gemini-3.8-flash` için günde 20 istek). Araç bu yüzden **tek istekte birden çok bölüm**
+  gönderir (Ayarlar → "Bir istekte kaç bölüm", varsayılan 3; yanıt kesilir ya da eksik gelirse o
+  bölümleri tek tek çevirir) ve Ayarlar'daki model listesini sırayla kullanır: biri dolunca sıradakine geçer
   (varsayılan `gemini-flash-latest, gemini-flash-lite-latest`). Hepsi dolunca o ana kadar çevrilen
   bölümlerle **kısmi EPUB** çıkarır; kota yenilenince aynı linkle başlat, kaldığı yerden sürer.
   Uzun bir kitabı ücretsiz kotayla bitirmek haftalar sürer; hızlı bitirmek istersen AI Studio'da

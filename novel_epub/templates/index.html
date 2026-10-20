@@ -74,6 +74,8 @@
         <div><label for="delay">İstek arası bekleme (sn)</label><input id="delay" type="number" step="0.1" min="0"></div>
         <div><label for="workers">Paralel indirme</label><input id="workers" type="number" min="1" max="8"></div>
       </div>
+      <label for="batch">Bir istekte kaç bölüm çevrilsin (1–8; çok yüksekse yanıt kesilebilir)</label>
+      <input id="batch" type="number" min="1" max="8">
       <div class="actions"><button id="saveSet">Kaydet</button><span class="mut" id="setMsg"></span></div>
     </details>
   </div>
@@ -92,14 +94,14 @@ async function api(path, body) {
 
 async function loadSettings() {
   const s = await api('/api/settings');
-  $('model').value = s.model || ''; $('delay').value = s.delay; $('workers').value = s.workers;
+  $('model').value = s.model || ''; $('delay').value = s.delay; $('workers').value = s.workers; $('batch').value = s.batch || 3;
   $('keyHint').textContent = s.has_key ? '(kayıtlı ' + s.key_hint + ')' : '(kayıtlı değil)';
   if (!s.has_key) $('settings').open = true;
 }
 
 $('saveSet').onclick = async () => {
   try {
-    await api('/api/settings', {api_key:$('key').value, model:$('model').value, delay:$('delay').value, workers:$('workers').value});
+    await api('/api/settings', {api_key:$('key').value, model:$('model').value, delay:$('delay').value, workers:$('workers').value, batch:$('batch').value});
     $('key').value = ''; $('setMsg').textContent = 'Kaydedildi ✓'; loadSettings();
   } catch (e) { $('setMsg').textContent = e.message; }
 };

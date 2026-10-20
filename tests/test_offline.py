@@ -105,7 +105,7 @@ def test_model_fallback_on_quota():
     tr.models, tr.model, tr.log = ["m1", "m2"], "m1", print
     used = []
 
-    def fake_model_call(payload):
+    def fake_model_call(payload, schema=None, bad_retries=None):
         used.append(tr.model)
         if tr.model == "m1":
             raise QuotaExhausted("dolu")
@@ -124,15 +124,53 @@ def test_partial_epub_when_quota_runs_out(tmp_path: Path, monkeypatch):
         def __init__(self, *a, **k):
             self.model, self.n = "sahte", 0
 
-        def translate_chapter(self, ch, glossary, context):
+        def batch_limit(self, ch):
+            return 10**6
+
+        def translate_batch(self, chs, glossary, context):
             self.n += 1
-            if self.n > 2:
+            if self.n > 1:
                 raise translator.QuotaExhausted("kota doldu")
-            return Chapter(ch.index, "TR " + ch.title, ch.url, ["tr"]), {}
+            return [Chapter(c.index, "TR " + c.title, c.url, ["tr"]) for c in chs], {}
 
     monkeypatch.setattr(translator, "GeminiTranslator", FakeTr)
-    job = pipeline.Job(pipeline.Options(url="u", translate=True))
+    job = pipeline.Job(pipeline.Options(url="u", translate=True, batch=2))
     store = BookStore(tmp_path, Novel(url="u", title="k", source="t"))
     chs = [Chapter(i, f"c{i}", "u", ["en"]) for i in range(1, 6)]
     out = job._translate(chs, store)
     assert [c.title for c in out] == ["TR c1", "TR c2"] and job.p.error.startswith("Kısmi")
+
+
+def _fake_translator():
+    tr = GeminiTranslator.__new__(GeminiTranslator)
+    tr.models, tr.model, tr.target, tr.log, tr.max_retries, tr.thinking = ["m"], "m", "Türkçe", print, 1, False
+    return tr
+
+
+def test_batch_translation_one_request():
+    tr = _fake_translator()
+    calls = []
+
+    def fake(payload, schema=None, bad_retries=None):
+        calls.append(payload)
+        return {"chapters": [{"title": "T" + c["chapter_title"], "paragraphs": [p.upper() for p in c["paragraphs"]]}
+                             for c in payload["chapters"]], "new_terms": [{"source": "Qi", "target": "Qi"}]}
+
+    tr._call_model = fake
+    chs = [Chapter(i, str(i), "u", ["abc"]) for i in (1, 2, 3)]
+    outs, terms = tr.translate_batch(chs, {}, [])
+    assert len(calls) == 1 and [o.title for o in outs] == ["T1", "T2", "T3"] and outs[0].paragraphs == ["ABC"]
+    assert terms == {"Qi": "Qi"}
+
+
+def test_batch_falls_back_to_single_on_short_answer():
+    tr = _fake_translator()
+
+    def fake(payload, schema=None, bad_retries=None):
+        if "chapters" in payload:  # model bir bölümü atladı
+            return {"chapters": [{"title": "x", "paragraphs": ["abc"]}], "new_terms": []}
+        return {"title": "tek", "paragraphs": payload["paragraphs"], "new_terms": []}
+
+    tr._call_model = fake
+    outs, _ = tr.translate_batch([Chapter(1, "1", "u", ["abc"]), Chapter(2, "2", "u", ["def"])], {}, [])
+    assert [o.title for o in outs] == ["tek", "tek"]

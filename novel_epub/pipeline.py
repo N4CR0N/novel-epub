@@ -30,6 +30,7 @@ class Options:
     target: str = "Türkçe"
     delay: float = 0.7
     workers: int = 3
+    batch: int = 3  # tek Gemini isteğinde en fazla kaç bölüm
     max_follow: int = 3000  # genel kaynakta "Sonraki" ile en fazla kaç bölüm gezilsin
     library: Path = Path("kutuphane")
     output: Path = Path("cikti")
@@ -227,34 +228,63 @@ class Job:
         o = self.opts
         tr = GeminiTranslator(o.api_key, o.model, o.target, log=self.log)
         self.p.phase = f"çevriliyor ({tr.model})"
-        self.p.total, self.p.done = len(chapters), 0
+        self.p.total = len(chapters)
         glossary = store.load_glossary()
-        out: list[Chapter] = []
-        context: list[str] = []
+        results: dict[int, Chapter] = {}
+        pending: list[Chapter] = []
         for ch in chapters:
-            self._check_cancel()
             done = store.load_tr(ch.index)
-            if done is None and ch.paragraphs:
-                try:
-                    done, new_terms = tr.translate_chapter(ch, glossary, context)
-                except TranslationError as e:
-                    if not out:
-                        raise
-                    # Kota/hata: o ana kadar çevrilenlerle kısmi EPUB çıkar; tekrar başlatınca kaldığı yerden sürer.
-                    self.log(f"Çeviri {ch.index}. bölümde durdu: {e}")
-                    self.log(f"{len(out)} bölümlük kısmi EPUB hazırlanıyor. Kota yenilenince aynı linkle başlat, kaldığı yerden sürer.")
-                    self.p.error = f"Kısmi: {len(out)} bölüm çevrildi ({e})"
+            if done is not None or not ch.paragraphs:
+                results[ch.index] = done or ch
+            else:
+                pending.append(ch)
+        self.p.done = len(results)
+        if results:
+            self.log(f"{len(results)} bölüm önceden çevrilmiş, {len(pending)} bölüm kaldı")
+
+        def context_before(index: int) -> list[str]:
+            prev = results.get(index - 1)
+            return prev.paragraphs[-4:] if prev else []
+
+        i = 0
+        while i < len(pending):
+            self._check_cancel()
+            # Ardışık bölümleri karakter sınırı içinde tek istekte topla.
+            group, size = [pending[i]], pending[i].char_count
+            limit = tr.batch_limit(pending[i])
+            for ch in pending[i + 1: i + max(1, o.batch)]:
+                if ch.index != group[-1].index + 1 or size + ch.char_count > limit:
                     break
+                group.append(ch)
+                size += ch.char_count
+            try:
+                outs, new_terms = tr.translate_batch(group, glossary, context_before(group[0].index))
+            except TranslationError as e:
+                if not results:
+                    raise
+                # Kota/hata: o ana kadar çevrilenlerle kısmi EPUB çıkar; tekrar başlatınca kaldığı yerden sürer.
+                self.log(f"Çeviri {group[0].index}. bölümde durdu: {e}")
+                self.p.error = f"Kısmi: {len(results)} bölüm çevrili ({e})"
+                break
+            for done in outs:
                 store.save_tr(done)
-                if new_terms:
-                    glossary.update(new_terms)
-                    store.save_glossary(glossary)
-                    self.log(f"  sözlüğe eklendi: {', '.join(f'{k}→{v}' for k, v in list(new_terms.items())[:6])}")
-            elif done is None:
-                done = ch
-            out.append(done)
-            context = done.paragraphs[-4:]
-            self.p.done += 1
-            self.log(f"  çevrildi {self.p.done}/{self.p.total}: {done.title}")
+                results[done.index] = done
+                self.p.done += 1
+                self.log(f"  çevrildi {self.p.done}/{self.p.total}: {done.title}")
+            if new_terms:
+                glossary.update(new_terms)
+                store.save_glossary(glossary)
+                self.log(f"  sözlüğe eklendi: {', '.join(f'{k}→{v}' for k, v in list(new_terms.items())[:6])}")
+            self.p.phase = f"çevriliyor ({tr.model})"
+            i += len(group)
+
+        # Kısmi durumda EPUB, baştan kesintisiz çevrilmiş bölümlerle sınırlı kalır.
+        out: list[Chapter] = []
+        for ch in chapters:
+            if ch.index not in results:
+                break
+            out.append(results[ch.index])
+        if self.p.error:
+            self.log(f"{len(out)} bölümlük kısmi EPUB hazırlanıyor. Kota yenilenince aynı linkle başlat, kaldığı yerden sürer.")
         self.log(f"Terim sözlüğü: {store.glossary_path} (elle düzeltip yeniden çevirebilirsin)")
         return out

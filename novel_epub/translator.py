@@ -31,6 +31,8 @@ Kurallar:
 8. Her girdi paragrafı için TAM OLARAK bir çıktı paragrafı üret, sıra aynı kalsın. "paragraphs" dizisinin uzunluğu girdidekiyle eşit olmalı.
 9. Metinde geçen ve sözlükte olmayan yeni özel terimleri (kişi adları hariç; unvan, kademe, teknik, eşya, mezhep, yer adı) "new_terms" listesinde kaynak hâli ve seçtiğin karşılıkla bildir. Yoksa boş liste ver.
 10. Metindeki site reklamı/filigran satırlarını boş dize olarak döndür.
+11. Bölüm başlıklarında "Book N Chapter M" / "Volume N" kalıbını hep "Cilt N Bölüm M" biçiminde çevir.
+12. Girdide "chapters" listesi varsa her bölümü aynı sırayla ayrı bir çıktı bölümü olarak ver; bölümleri birleştirme, bölme ya da atlama. Her bölümde kural 8 ayrıca geçerlidir.
 """
 
 RESPONSE_SCHEMA = {
@@ -49,6 +51,25 @@ RESPONSE_SCHEMA = {
     },
     "required": ["title", "paragraphs", "new_terms"],
 }
+
+_TERMS_SCHEMA = RESPONSE_SCHEMA["properties"]["new_terms"]
+BATCH_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "chapters": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"title": {"type": "string"}, "paragraphs": {"type": "array", "items": {"type": "string"}}},
+                "required": ["title", "paragraphs"],
+            },
+        },
+        "new_terms": _TERMS_SCHEMA,
+    },
+    "required": ["chapters", "new_terms"],
+}
+# Tek istekte gönderilecek en fazla kaynak karakter (çıktı token sınırı ~65k; Türkçe çıktı + düşünme payı).
+BATCH_CHAR_LIMIT = {"latin": 60000, "cjk": 20000}
 
 CJK_RE = re.compile(r"[぀-ヿ㐀-鿿가-힯]")
 
@@ -106,12 +127,13 @@ class GeminiTranslator:
         self.target = target
         self.log = log
         self.max_retries = max_retries
+        self.thinking = True
 
-    def _call(self, payload: dict) -> dict:
+    def _call(self, payload: dict, schema: dict = RESPONSE_SCHEMA, bad_retries: int | None = None) -> dict:
         """Kota dolarsa sıradaki modele geçer; hepsi dolmuşsa QuotaExhausted fırlatır."""
         while True:
             try:
-                return self._call_model(payload)
+                return self._call_model(payload, schema, bad_retries)
             except QuotaExhausted:
                 rest = self.models[self.models.index(self.model) + 1:]
                 if not rest:
@@ -119,26 +141,35 @@ class GeminiTranslator:
                 self.log(f"  {self.model} günlük kotası doldu → {rest[0]} modeline geçiliyor")
                 self.model = rest[0]
 
-    def _call_model(self, payload: dict) -> dict:
-        from google.genai import errors, types
+    def _config(self, schema: dict):
+        from google.genai import types
 
-        config = types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT.format(target=self.target),
-            response_mime_type="application/json",
-            response_schema=RESPONSE_SCHEMA,
-            temperature=0.6,
-        )
+        kw = dict(system_instruction=SYSTEM_PROMPT.format(target=self.target), response_mime_type="application/json",
+                  response_schema=schema, temperature=0.6, max_output_tokens=65536)
+        if self.thinking:
+            # Düşünme token'ları çıktı sınırından yer; çeviride az düşünme yeterli.
+            kw["thinking_config"] = types.ThinkingConfig(thinking_level="low")
+        return types.GenerateContentConfig(**kw)
+
+    def _call_model(self, payload: dict, schema: dict = RESPONSE_SCHEMA, bad_retries: int | None = None) -> dict:
+        from google.genai import errors
+
+        key = "chapters" if schema is BATCH_SCHEMA else "paragraphs"
+        bad_left = self.max_retries - 1 if bad_retries is None else bad_retries
         delay = 10.0
         for attempt in range(self.max_retries):
             try:
                 resp = self.client.models.generate_content(
-                    model=self.model, contents=json.dumps(payload, ensure_ascii=False), config=config)
+                    model=self.model, contents=json.dumps(payload, ensure_ascii=False), config=self._config(schema))
                 data = json.loads(resp.text or "{}")
-                if not isinstance(data.get("paragraphs"), list):
-                    raise ValueError("yanıtta paragraphs yok")
+                if not isinstance(data.get(key), list):
+                    raise ValueError(f"yanıtta {key} yok")
                 return data
             except errors.APIError as e:
                 code = getattr(e, "code", 0) or 0
+                if code == 400 and self.thinking and "think" in str(e).lower():
+                    self.thinking = False  # bu model düşünme ayarını desteklemiyor
+                    continue
                 if code == 404:
                     raise TranslationError(f"Model bulunamadı: {self.model}. Ayarlar'dan başka model seç.") from e
                 if code in (400, 401, 403) and "API key" in str(e):
@@ -154,7 +185,8 @@ class GeminiTranslator:
                     continue
                 raise TranslationError(f"Gemini hatası: {e}") from e
             except (ValueError, json.JSONDecodeError) as e:
-                if attempt < self.max_retries - 1:
+                if bad_left > 0:
+                    bad_left -= 1
                     self.log(f"  Bozuk yanıt, yeniden deneniyor ({e})")
                     time.sleep(3)
                     continue
@@ -198,6 +230,52 @@ class GeminiTranslator:
             out_paras.extend(paras)
             ctx = (ctx + paras)[-4:]
         return Chapter(ch.index, title, ch.url, out_paras), new_terms
+
+    def batch_limit(self, ch: Chapter) -> int:
+        return BATCH_CHAR_LIMIT["cjk" if CJK_RE.search(" ".join(ch.paragraphs[:5])) else "latin"]
+
+    def translate_batch(self, chs: list[Chapter], glossary: dict[str, str], context: list[str]) -> tuple[list[Chapter], dict[str, str]]:
+        """Birden çok bölümü tek istekte çevirir (ücretsiz kota istek sayısıyla ölçülür).
+
+        Yanıt kesik/eksik gelirse bölümler tek tek çevrilir; kota yine de boşa gitmez sayılır.
+        """
+        if len(chs) == 1:
+            out, terms = self.translate_chapter(chs[0], glossary, context)
+            return [out], terms
+        text = " ".join(" ".join(c.paragraphs) for c in chs)
+        payload = {
+            "glossary": relevant_glossary(glossary, text + " " + " ".join(c.title for c in chs)),
+            "context": list(context[-4:]),
+            "chapters": [{"chapter_title": c.title, "paragraphs": c.paragraphs} for c in chs],
+        }
+        try:
+            data = self._call(payload, BATCH_SCHEMA, bad_retries=0)
+            outs = data["chapters"]
+            if len(outs) != len(chs):
+                raise ValueError(f"{len(chs)} bölüm gitti, {len(outs)} döndü")
+            result = []
+            for c, o in zip(chs, outs):
+                paras = [p for p in (str(x).strip() for x in o.get("paragraphs") or []) if p]
+                if sum(map(len, paras)) < 0.5 * c.char_count:
+                    raise ValueError(f"{c.index}. bölüm eksik çevrilmiş")
+                result.append(Chapter(c.index, (o.get("title") or c.title).strip(), c.url, paras))
+        except QuotaExhausted:
+            raise
+        except (TranslationError, ValueError) as e:
+            self.log(f"  Toplu çeviri olmadı ({e}); bölümler tek tek çevriliyor")
+            result, terms, ctx = [], {}, context
+            for c in chs:
+                out, t = self.translate_chapter(c, {**glossary, **terms}, ctx)
+                result.append(out)
+                terms.update(t)
+                ctx = out.paragraphs[-4:]
+            return result, terms
+        terms = {}
+        for t in data.get("new_terms") or []:
+            src, tgt = (t.get("source") or "").strip(), (t.get("target") or "").strip()
+            if src and tgt and src not in glossary and len(src) <= 60:
+                terms[src] = tgt
+        return result, terms
 
 
 def list_models(api_key: str) -> list[str]:

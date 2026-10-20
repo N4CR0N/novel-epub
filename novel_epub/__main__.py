@@ -20,6 +20,7 @@ def main() -> None:
     ap.add_argument("--model", default=os.environ.get("GEMINI_MODEL", ""), help="Gemini model(ler)i, virgülle (kota dolunca sıradakine geçer)")
     ap.add_argument("--bekleme", type=float, default=0.7, help="İstekler arası saniye")
     ap.add_argument("--isci", type=int, default=3, help="Paralel indirme sayısı")
+    ap.add_argument("--toplu", type=int, default=3, help="Tek Gemini isteğinde en fazla kaç bölüm")
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=5000)
     a = ap.parse_args()
@@ -36,7 +37,7 @@ def main() -> None:
 
         key = load_settings().get("api_key", "")
     opts = Options(url=a.url, start=a.bas, end=a.son, translate=a.cevir, api_key=key, model=a.model,
-                   delay=a.bekleme, workers=a.isci, library=Path("kutuphane"), output=Path("cikti"))
+                   delay=a.bekleme, workers=a.isci, batch=a.toplu, library=Path("kutuphane"), output=Path("cikti"))
     job = Job(opts, on_log=print)
     out = job.run()
     raise SystemExit(0 if out else 1)

@@ -24,7 +24,7 @@ JOBS: dict[str, Job] = {}
 
 def load_settings() -> dict:
     s = {"api_key": os.environ.get("GEMINI_API_KEY", ""), "model": os.environ.get("GEMINI_MODEL", DEFAULT_MODELS),
-         "delay": 0.7, "workers": 3}
+         "delay": 0.7, "workers": 3, "batch": 3}
     if SETTINGS_PATH.exists():
         s.update(json.loads(SETTINGS_PATH.read_text("utf-8")))
     if s.get("model") == DEFAULT_MODEL:  # eski tek-model varsayılanı: yedek modeli ekle
@@ -57,7 +57,7 @@ def post_settings():
     for k in ("model",):
         if data.get(k):
             s[k] = data[k].strip()
-    for k, typ in (("delay", float), ("workers", int)):
+    for k, typ in (("delay", float), ("workers", int), ("batch", int)):
         if data.get(k) not in (None, ""):
             s[k] = typ(data[k])
     save_settings(s)
@@ -93,6 +93,7 @@ def start_job():
         model=s.get("model") or DEFAULT_MODELS,
         delay=float(s.get("delay", 0.7)),
         workers=int(s.get("workers", 3)),
+        batch=max(1, min(8, int(s.get("batch", 3)))),
         library=LIBRARY,
         output=OUTPUT,
     )
