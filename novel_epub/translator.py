@@ -68,8 +68,17 @@ BATCH_SCHEMA = {
     },
     "required": ["chapters", "new_terms"],
 }
-# Tek istekte gönderilecek en fazla kaynak karakter (çıktı token sınırı ~65k; Türkçe çıktı + düşünme payı).
-BATCH_CHAR_LIMIT = {"latin": 60000, "cjk": 20000}
+# Otomatik paketleme: bölümler, tahmini Türkçe çıktı token'ı bu bütçeye sığana kadar tek isteğe konur.
+# Modelin yanıt tavanı ~65k token; düşünme payı ve güvenlik için hedef daha düşük tutulur. Kesik yanıtta
+# bütçe küçülür, başarılı yanıtlarda yavaşça büyür.
+OUTPUT_CAP = 65536
+START_BUDGET = 24000
+MIN_BUDGET = 8000
+MAX_BUDGET = 40000
+MAX_AUTO_CHAPTERS = 12
+# Kaynak birimi başına Türkçe çıktı token'ı (başlangıç tahmini; gerçek kullanımdan öğrenilir).
+# latin: İngilizce kelime başına, cjk: Çince/Japonca/Korece karakter başına.
+START_RATIO = {"latin": 2.0, "cjk": 1.1}
 
 CJK_RE = re.compile(r"[぀-ヿ㐀-鿿가-힯]")
 
@@ -132,6 +141,10 @@ class GeminiTranslator:
         self.log = log
         self.max_retries = max_retries
         self.thinking = True
+        self.budget = START_BUDGET
+        self.ratio = dict(START_RATIO)
+        self.thought_tokens = 2000.0  # düşünme token'ı ortalaması (yanıt tavanından yer)
+        self.last_usage: tuple[int, int] | None = None
 
     def _call(self, payload: dict, schema: dict = RESPONSE_SCHEMA, bad_retries: int | None = None) -> dict:
         """Kota dolarsa sıradaki modele geçer; hepsi dolmuşsa QuotaExhausted fırlatır."""
@@ -166,6 +179,12 @@ class GeminiTranslator:
             try:
                 resp = self.client.models.generate_content(
                     model=self.model, contents=json.dumps(payload, ensure_ascii=False), config=self._config(schema))
+                um = getattr(resp, "usage_metadata", None)
+                self.last_usage = (getattr(um, "candidates_token_count", 0) or 0,
+                                   getattr(um, "thoughts_token_count", 0) or 0) if um else None
+                cands = getattr(resp, "candidates", None) or []
+                if cands and "MAX_TOKENS" in str(getattr(cands[0], "finish_reason", "")):
+                    raise ValueError("yanıt çıktı sınırında kesildi")
                 data = json.loads(resp.text or "{}")
                 if not isinstance(data.get(key), list):
                     raise ValueError(f"yanıtta {key} yok")
@@ -238,8 +257,53 @@ class GeminiTranslator:
             ctx = (ctx + paras)[-4:]
         return Chapter(ch.index, title, ch.url, out_paras), new_terms
 
-    def batch_limit(self, ch: Chapter) -> int:
-        return BATCH_CHAR_LIMIT["cjk" if CJK_RE.search(" ".join(ch.paragraphs[:5])) else "latin"]
+    # --- otomatik paketleme ---
+    @staticmethod
+    def source_units(ch: Chapter) -> tuple[str, int]:
+        """('latin', kelime sayısı) ya da ('cjk', CJK karakter sayısı)."""
+        text = " ".join(ch.paragraphs)
+        cjk = len(CJK_RE.findall(text))
+        if cjk > len(text) * 0.3:
+            return "cjk", cjk
+        return "latin", len(text.split())
+
+    def estimate_tokens(self, ch: Chapter) -> int:
+        kind, n = self.source_units(ch)
+        return int(n * self.ratio[kind]) + 60  # başlık + JSON payı
+
+    def effective_budget(self) -> int:
+        # Düşünme token'ları da yanıt tavanından yer; tavanı aşmayacak şekilde kırp.
+        return int(min(self.budget, OUTPUT_CAP * 0.85 - self.thought_tokens))
+
+    def plan_batch(self, pending: list[Chapter], max_chapters: int = 0) -> list[Chapter]:
+        """Sıradaki ardışık bölümlerden tahmini çıktısı bütçeye sığanları seçer (en az 1)."""
+        cap = max_chapters if max_chapters > 0 else MAX_AUTO_CHAPTERS
+        budget = self.effective_budget()
+        group, total = [pending[0]], self.estimate_tokens(pending[0])
+        for ch in pending[1:cap]:
+            est = self.estimate_tokens(ch)
+            if ch.index != group[-1].index + 1 or total + est > budget:
+                break
+            group.append(ch)
+            total += est
+        self.log(f"  {group[0].index}–{group[-1].index}. bölümler tek istekte ({len(group)} bölüm, "
+                 f"~{sum(self.source_units(c)[1] for c in group):,} kelime/karakter, tahmini ~{total:,} / {budget:,} token)")
+        return group
+
+    def learn(self, chs: list[Chapter], ok: bool) -> None:
+        """Gerçek token kullanımından oranı ve bütçeyi günceller."""
+        if not ok:
+            self.budget = max(MIN_BUDGET, int(self.budget * 0.6))
+            self.log(f"  istek bütçesi küçültüldü → {self.budget:,} token")
+            return
+        if self.last_usage:
+            out_tok, thought = self.last_usage
+            kind = self.source_units(chs[0])[0]
+            units = sum(self.source_units(c)[1] for c in chs if self.source_units(c)[0] == kind)
+            if units and out_tok:
+                self.ratio[kind] = 0.7 * self.ratio[kind] + 0.3 * (out_tok / units)
+            self.thought_tokens = 0.7 * self.thought_tokens + 0.3 * thought
+        self.budget = min(MAX_BUDGET, int(self.budget * 1.1))
 
     def translate_batch(self, chs: list[Chapter], glossary: dict[str, str], context: list[str]) -> tuple[list[Chapter], dict[str, str]]:
         """Birden çok bölümü tek istekte çevirir (ücretsiz kota istek sayısıyla ölçülür).
@@ -248,6 +312,7 @@ class GeminiTranslator:
         """
         if len(chs) == 1:
             out, terms = self.translate_chapter(chs[0], glossary, context)
+            self.learn(chs, ok=True)
             return [out], terms
         text = " ".join(" ".join(c.paragraphs) for c in chs)
         payload = {
@@ -263,13 +328,14 @@ class GeminiTranslator:
             result = []
             for c, o in zip(chs, outs):
                 paras = [p for p in (str(x).strip() for x in o.get("paragraphs") or []) if p]
-                if sum(map(len, paras)) < 0.5 * c.char_count:
+                if sum(map(len, paras)) < 0.7 * c.char_count:
                     raise ValueError(f"{c.index}. bölüm eksik çevrilmiş")
                 result.append(Chapter(c.index, (o.get("title") or c.title).strip(), c.url, paras))
         except QuotaExhausted:
             raise
         except (TranslationError, ValueError) as e:
             self.log(f"  Toplu çeviri olmadı ({e}); bölümler tek tek çevriliyor")
+            self.learn(chs, ok=False)
             result, terms, ctx = [], {}, context
             for c in chs:
                 out, t = self.translate_chapter(c, {**glossary, **terms}, ctx)
@@ -277,6 +343,7 @@ class GeminiTranslator:
                 terms.update(t)
                 ctx = out.paragraphs[-4:]
             return result, terms
+        self.learn(chs, ok=True)
         terms = {}
         for t in data.get("new_terms") or []:
             src, tgt = (t.get("source") or "").strip(), (t.get("target") or "").strip()

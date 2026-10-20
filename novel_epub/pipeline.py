@@ -30,7 +30,7 @@ class Options:
     target: str = "Türkçe"
     delay: float = 0.7
     workers: int = 3
-    batch: int = 3  # tek Gemini isteğinde en fazla kaç bölüm
+    batch: int = 0  # tek Gemini isteğinde en fazla kaç bölüm (0 = bölüm uzunluğuna göre otomatik)
     max_follow: int = 3000  # genel kaynakta "Sonraki" ile en fazla kaç bölüm gezilsin
     library: Path = Path("kutuphane")
     output: Path = Path("cikti")
@@ -249,14 +249,8 @@ class Job:
         i = 0
         while i < len(pending):
             self._check_cancel()
-            # Ardışık bölümleri karakter sınırı içinde tek istekte topla.
-            group, size = [pending[i]], pending[i].char_count
-            limit = tr.batch_limit(pending[i])
-            for ch in pending[i + 1: i + max(1, o.batch)]:
-                if ch.index != group[-1].index + 1 or size + ch.char_count > limit:
-                    break
-                group.append(ch)
-                size += ch.char_count
+            # Ardışık bölümleri, tahmini çıktı token'ı bütçeye sığana kadar tek istekte topla.
+            group = tr.plan_batch(pending[i:], o.batch)
             try:
                 outs, new_terms = tr.translate_batch(group, glossary, context_before(group[0].index))
             except TranslationError as e:

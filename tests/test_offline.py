@@ -124,8 +124,8 @@ def test_partial_epub_when_quota_runs_out(tmp_path: Path, monkeypatch):
         def __init__(self, *a, **k):
             self.model, self.n = "sahte", 0
 
-        def batch_limit(self, ch):
-            return 10**6
+        def plan_batch(self, pending, cap):
+            return pending[:cap]
 
         def translate_batch(self, chs, glossary, context):
             self.n += 1
@@ -144,6 +144,8 @@ def test_partial_epub_when_quota_runs_out(tmp_path: Path, monkeypatch):
 def _fake_translator():
     tr = GeminiTranslator.__new__(GeminiTranslator)
     tr.models, tr.model, tr.target, tr.log, tr.max_retries, tr.thinking = ["m"], "m", "Türkçe", print, 1, False
+    from novel_epub.translator import START_BUDGET, START_RATIO
+    tr.budget, tr.ratio, tr.thought_tokens, tr.last_usage = START_BUDGET, dict(START_RATIO), 2000.0, None
     return tr
 
 
@@ -189,3 +191,27 @@ def test_unknown_model_is_skipped():
 
     tr._call_model = fake
     assert tr._call({"paragraphs": ["x"]})["paragraphs"] == ["x"] and tr.model == "var"
+
+
+def test_auto_batch_by_word_count():
+    tr = _fake_translator()
+    long_ch = lambda i, words: Chapter(i, str(i), "u", [" ".join(["kelime"] * words)])
+    # ~2.000 kelimelik bölümler: 24k bütçe / (2.000 × 2.0) ≈ 5 bölüm
+    group = tr.plan_batch([long_ch(i, 2000) for i in range(1, 20)])
+    assert 5 <= len(group) <= 6
+    # Çok uzun bölümler (6.000 kelime) → daha az bölüm; tavan 2 verilirse 2'yi geçmez
+    assert len(tr.plan_batch([long_ch(i, 6000) for i in range(1, 9)])) <= 3
+    assert len(tr.plan_batch([long_ch(i, 100) for i in range(1, 30)], 2)) == 2
+    # Ardışık olmayan bölümler aynı pakete girmez
+    assert len(tr.plan_batch([long_ch(1, 100), long_ch(5, 100)])) == 1
+
+
+def test_learning_adjusts_budget_and_ratio():
+    tr = _fake_translator()
+    chs = [Chapter(1, "1", "u", [" ".join(["w"] * 1000)])]
+    tr.last_usage = (3000, 500)  # gerçek: kelime başına 3 token
+    tr.learn(chs, ok=True)
+    assert tr.ratio["latin"] > 2.0 and tr.budget > 24000
+    b = tr.budget
+    tr.learn(chs, ok=False)
+    assert tr.budget < b

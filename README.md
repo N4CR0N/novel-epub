@@ -46,9 +46,12 @@ python -m novel_epub https://freewebnovel.com/novel/stellar-transformations --ba
 - **Terimleri düzeltmek:** `kutuphane/<kitap>/sozluk.json`'u aç, beğenmediğin karşılığı değiştir.
   Yeniden çevirmek istediğin bölümlerin `kutuphane/<kitap>/ceviri/0xxxx.json` dosyalarını sil, tekrar başlat.
 - **Ücretsiz Gemini sınırı:** ücretsiz katmanda kota **istek sayısıyla** ve **model başına** sayılır
-  (ör. `gemini-3.8-flash` için günde 20 istek). Araç bu yüzden **tek istekte birden çok bölüm**
-  gönderir (Ayarlar → "Bir istekte kaç bölüm", varsayılan 3; yanıt kesilir ya da eksik gelirse o
-  bölümleri tek tek çevirir) ve Ayarlar'daki model listesini sırayla kullanır: biri dolunca sıradakine geçer
+  (ör. `gemini-3.8-flash` için günde 20 istek). Araç bu yüzden **bölümleri uzunluğuna göre otomatik paketler**:
+  her bölümün kelime (Çince/Japoncada karakter) sayısından Türkçe çıktının kaç token tutacağını tahmin eder,
+  tek isteğe bütçeye sığdığı kadar bölüm koyar (ör. ~2.800 kelimelik bölümlerde 4, kısa bölümlerde daha çok).
+  Her yanıttan sonra gerçek token kullanımını ölçüp tahminini düzeltir; yanıt kesilir ya da eksik gelirse
+  bütçeyi küçültüp o bölümleri tek tek çevirir, sorunsuz yanıtlarda bütçeyi yavaşça büyütür.
+  Ayarlar → "Bir istekte en fazla kaç bölüm": 0 = otomatik (önerilen), sayı verirsen üst sınır olur. Ayrıca Ayarlar'daki model listesini sırayla kullanır: biri dolunca sıradakine geçer
   (varsayılan `gemini-flash-latest, gemini-flash-lite-latest`). Hepsi dolunca o ana kadar çevrilen
   bölümlerle **kısmi EPUB** çıkarır; kota yenilenince aynı linkle başlat, kaldığı yerden sürer.
   Uzun bir kitabı ücretsiz kotayla bitirmek haftalar sürer; hızlı bitirmek istersen AI Studio'da

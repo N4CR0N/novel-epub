@@ -11,7 +11,7 @@ from pathlib import Path
 from flask import Flask, abort, jsonify, render_template, request, send_from_directory
 
 from .pipeline import Job, Options
-from .translator import DEFAULT_MODEL, DEFAULT_MODELS
+from .translator import DEFAULT_MODEL, DEFAULT_MODELS, MAX_AUTO_CHAPTERS
 
 BASE = Path(os.environ.get("NOVEL_EPUB_HOME", Path.cwd()))
 SETTINGS_PATH = BASE / "ayarlar.json"
@@ -24,9 +24,11 @@ JOBS: dict[str, Job] = {}
 
 def load_settings() -> dict:
     s = {"api_key": os.environ.get("GEMINI_API_KEY", ""), "model": os.environ.get("GEMINI_MODEL", DEFAULT_MODELS),
-         "delay": 0.7, "workers": 3, "batch": 3}
+         "delay": 0.7, "workers": 3, "batch": 0}
     if SETTINGS_PATH.exists():
         s.update(json.loads(SETTINGS_PATH.read_text("utf-8")))
+    if s.get("batch") == 3 and not s.get("batch_set"):  # eski sabit varsayılan → otomatik
+        s["batch"] = 0
     if s.get("model") == DEFAULT_MODEL:  # eski tek-model varsayılanı: yedek modeli ekle
         s["model"] = DEFAULT_MODELS
     return s
@@ -60,6 +62,7 @@ def post_settings():
     for k, typ in (("delay", float), ("workers", int), ("batch", int)):
         if data.get(k) not in (None, ""):
             s[k] = typ(data[k])
+    s["batch_set"] = True
     save_settings(s)
     return get_settings()
 
@@ -93,7 +96,7 @@ def start_job():
         model=s.get("model") or DEFAULT_MODELS,
         delay=float(s.get("delay", 0.7)),
         workers=int(s.get("workers", 3)),
-        batch=max(1, min(8, int(s.get("batch", 3)))),
+        batch=max(0, min(MAX_AUTO_CHAPTERS, int(s.get("batch", 0)))),
         library=LIBRARY,
         output=OUTPUT,
     )
