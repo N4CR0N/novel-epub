@@ -82,6 +82,10 @@ class QuotaExhausted(TranslationError):
     """Günlük kota bitti; beklemek anlamsız (saatler sürer)."""
 
 
+class ModelUnusable(QuotaExhausted):
+    """Model yok ya da bu iş için gereken özelliği (JSON şeması, sistem talimatı) desteklemiyor."""
+
+
 def parse_models(spec: str) -> list[str]:
     models = [m.strip() for m in (spec or "").replace(";", ",").split(",") if m.strip()]
     return list(dict.fromkeys(models)) or [DEFAULT_MODEL]
@@ -134,11 +138,12 @@ class GeminiTranslator:
         while True:
             try:
                 return self._call_model(payload, schema, bad_retries)
-            except QuotaExhausted:
+            except QuotaExhausted as e:
                 rest = self.models[self.models.index(self.model) + 1:]
                 if not rest:
                     raise
-                self.log(f"  {self.model} günlük kotası doldu → {rest[0]} modeline geçiliyor")
+                why = "kullanılamıyor" if isinstance(e, ModelUnusable) else "günlük kotası doldu"
+                self.log(f"  {self.model} {why} → {rest[0]} modeline geçiliyor")
                 self.model = rest[0]
 
     def _config(self, schema: dict):
@@ -171,7 +176,9 @@ class GeminiTranslator:
                     self.thinking = False  # bu model düşünme ayarını desteklemiyor
                     continue
                 if code == 404:
-                    raise TranslationError(f"Model bulunamadı: {self.model}. Ayarlar'dan başka model seç.") from e
+                    raise ModelUnusable(f"Model bulunamadı: {self.model}") from e
+                if code == 400 and re.search(r"not (supported|enabled|available)|unsupported", str(e), re.I):
+                    raise ModelUnusable(f"{self.model} bu işi desteklemiyor: {str(e)[:160]}") from e
                 if code in (400, 401, 403) and "API key" in str(e):
                     raise TranslationError("API anahtarı geçersiz.") from e
                 if code == 429 and is_daily_quota(e):

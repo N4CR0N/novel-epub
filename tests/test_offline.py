@@ -174,3 +174,18 @@ def test_batch_falls_back_to_single_on_short_answer():
     tr._call_model = fake
     outs, _ = tr.translate_batch([Chapter(1, "1", "u", ["abc"]), Chapter(2, "2", "u", ["def"])], {}, [])
     assert [o.title for o in outs] == ["tek", "tek"]
+
+
+def test_unknown_model_is_skipped():
+    from novel_epub.translator import ModelUnusable
+
+    tr = _fake_translator()
+    tr.models, tr.model = ["yok", "var"], "yok"
+
+    def fake(payload, schema=None, bad_retries=None):
+        if tr.model == "yok":
+            raise ModelUnusable("404")
+        return {"title": "t", "paragraphs": payload["paragraphs"], "new_terms": []}
+
+    tr._call_model = fake
+    assert tr._call({"paragraphs": ["x"]})["paragraphs"] == ["x"] and tr.model == "var"
