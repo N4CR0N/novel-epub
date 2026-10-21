@@ -76,6 +76,17 @@ python -m novel_epub https://freewebnovel.com/novel/stellar-transformations --ba
     "Eskiye dön" en son yedeği geri getirir.
   - *Süslü Unicode filigranlar* (ör. 𝐟𝗿𝐞𝚎𝚠𝐞𝚋𝕟𝐨𝚟𝐞𝕝.𝕔𝕠𝚖) ve "End of b1c…" notları kodla silinir; önbellekteki
     eski indirmeler de çeviriden önce yeniden temizlenir.
+- **Tutarlılık denetimleri:**
+  - *Sen/siz hitap tablosu* (`hafiza.json` → `address`): model bir konuşan–dinleyen çiftinin hitabını ilk
+    belirlediğinde kaydedilir ve kalıcıdır; o iki karakter aynı metinde geçtikçe kural modele (çeviri ve redaksiyon) gider.
+    Yanlış kaydedilmiş bir hitabı `hafiza.json`'dan elle düzeltebilirsin.
+  - *Karakter adları takma adlarıyla eşleşir* ("Hou Fei (Fei Fei)" → metinde "Fei Fei" geçince de notu gider;
+    "Hou" gibi parçalar "house" içinde eşleşmez).
+  - *İngilizce kalmış kelimeler:* kaynakta küçük harfle geçip taslakta aynen kalan kelimeler (ör. "berserk",
+    "ethereal") kayıtta gösterilir ve redaksiyona "düzelt" diye iletilir.
+  - Redaksiyona önceki bölümün son paragrafları da bağlam olarak gider.
+  - "End of c1b13", "C6B2'nin sonu.", tek "." satırları hem kaynakta hem çeviride silinir; "***", "..." gibi
+    sahne geçişi/sessizlik satırları korunur.
 - **API anahtarı** Windows'ta Kimlik Bilgisi Yöneticisi'nde (şifre kasası) saklanır; eski sürümde `ayarlar.json`'a
   yazılmış anahtar ilk açılışta oraya taşınıp dosyadan silinir. Kasa yoksa (ör. bazı Linux kurulumları) dosyada kalır.
 - **Hata olunca durmaz:** ağ kopması, Google yoğunluğu (503), dakikalık sınır (429) ya da bozuk yanıtta

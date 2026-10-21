@@ -360,7 +360,7 @@ def test_pipeline_edits_and_pauses_for_review(tmp_path: Path, monkeypatch):
             self.memory["summary"] = f"{chs[-1].index}. bölüme kadar"
             return [Chapter(c.index, "TR", c.url, ["tr"]) for c in chs], {}
 
-        def edit_batch(self, sources, drafts, glossary):
+        def edit_batch(self, sources, drafts, glossary, context=None):
             return [Chapter(d.index, "RED", d.url, d.paragraphs, edited=True) for d in drafts]
 
     monkeypatch.setattr(translator, "GeminiTranslator", FakeTr)
@@ -466,3 +466,54 @@ def test_api_key_moves_from_file_to_keyring(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(web, "_keyring", lambda: None)
     web.save_settings({"model": "m", "key_store": "dosya", "api_key": "AIzaDOSYA"})
     assert web.load_settings()["api_key"] == "AIzaDOSYA"
+
+
+def test_name_matching_aliases_without_false_positives():
+    from novel_epub.translator import mentions
+
+    assert mentions("Hou Fei (Fei Fei)", "then fei fei laughed")
+    assert mentions("Üçüncü Prens Qin Yu", "qin yu walked in")
+    assert not mentions("Hou Fei", "the house was quiet for an hour")
+    assert mentions("秦羽", "秦羽说")
+
+
+def test_address_forms_are_sticky_and_sent_when_both_present():
+    tr = _fake_translator()
+    tr.absorb_memory({"address_forms": [{"speaker": "Qin Yu", "listener": "Hou Fei", "form": "sen"},
+                                        {"speaker": "Guard", "listener": "Qin Yu", "form": "siz"}]})
+    tr.absorb_memory({"address_forms": [{"speaker": "Qin Yu", "listener": "Hou Fei", "form": "siz"}]})
+    assert tr.memory["address"]["Qin Yu → Hou Fei"] == "sen"  # ilk kayıt kalıcı
+    ctx = tr.memory_context("Qin Yu told Hou Fei to wait.")
+    assert ctx["address_forms"] == {"Qin Yu → Hou Fei": "sen"}
+
+
+def test_untranslated_suspects():
+    from novel_epub.translator import untranslated_suspects
+
+    src = ["Qin Yu enters an ethereal state and goes berserk at the Azure Dragon Palace."]
+    draft = ["Qin Yu ethereal bir duruma girdi ve Azure Ejderha Sarayı'nda berserk oldu, dantian titredi."]
+    assert untranslated_suspects(src, draft, {"dantian": "dantian"}) == ["berserk", "ethereal"]
+
+
+def test_end_notes_and_lone_dot_removed_but_scene_breaks_kept():
+    from novel_epub.cleaner import clean_output_paragraphs
+
+    src = ["He left.", ".", "End of c1b13", "C6B2", "***", "...", "Next chapter"]
+    assert clean_paragraphs(src) == ["He left.", "***", "..."]
+    out = ["Gitti.", "C6B2'nin sonu.", "C1B13 Sonu", ".", "* * *", "...", "Bölüm sonu."]
+    assert clean_output_paragraphs(out) == ["Gitti.", "* * *", "..."]
+
+
+def test_edit_batch_gets_context_and_suspects():
+    tr = _fake_translator()
+    seen = []
+
+    def fake(payload, schema=None, bad_retries=None, system=None):
+        seen.append(payload)
+        return {"chapters": [{"title": "t", "paragraphs": c["draft"]} for c in payload["chapters"]]}
+
+    tr._call_model = fake
+    tr.edit_batch([Chapter(1, "a", "u", ["he went berserk"])], [Chapter(1, "A", "u", ["berserk oldu"])], {},
+                  ["önceki paragraf"])
+    assert seen[0]["context"] == ["önceki paragraf"]
+    assert seen[0]["chapters"][0]["possibly_untranslated"] == ["berserk"]

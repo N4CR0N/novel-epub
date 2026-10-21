@@ -15,7 +15,10 @@ NOISE_RE = re.compile(
     r"read\s+(the\s+)?(latest|more|next)\s+chapters?|visit\s+\S+\s+for|for\s+the\s+best\s+novel|"
     r"^(translated|translator|edited|editor|proofread(er)?|tl|ed|tlc)\s*(by)?\s*[:：]|"
     r"^\s*(advertisement|sponsored content)\s*$|https?://|www\.\S+|"
-    r"^\s*(end of|-+\s*end)\s+(b\d+\s*c\d+|chapter|book|volume)\b)",
+    r"^\s*(end of|-+\s*end)\s+(b\d+\s*c\d+|c\d+\s*b\d+|chapter|book|volume)\b|"
+    r"^\s*(b\d+\s*c\d+|c\d+\s*b\d+)\s*(end)?\s*[.!]?\s*$|"
+    r"^\s*(previous|next)\s+chapter\s*$|"
+    r"^\s*\.\s*$)",  # yalnız tek nokta; "***", "---", "..." sahne geçişi/sessizlik olarak kalır
     re.I,
 )
 # Paragrafın ortasına gömülü site adları (süslü Unicode harfler NFKC ile düz harfe çevrildikten sonra).
@@ -33,6 +36,23 @@ def defancy(p: str) -> str:
     if FANCY_RE.search(p):
         p = unicodedata.normalize("NFKC", p)
     return INLINE_WATERMARK_RE.sub(" ", p)
+
+
+# Çeviri çıktısında kalmış bölüm sonu notları: "C6B2'nin sonu.", "C1B13 Sonu", "Bölüm sonu", "."
+OUTPUT_NOISE_RE = re.compile(
+    r"^\s*((cilt\s*\d+\s*)?(b\d+\s*c\d+|c\d+\s*b\d+)('?(n[iı]n|in|ın))?\s+sonu|bölüm(ün)?\s+sonu|\.)\s*[.!]?\s*$",
+    re.I,
+)
+
+
+def clean_output_paragraphs(paragraphs: list[str]) -> list[str]:
+    """EPUB'a girmeden önce çeviride kalmış bölüm sonu notlarını ve filigranları atar."""
+    out = []
+    for p in paragraphs:
+        p = re.sub(r"\s+", " ", defancy(p)).strip()
+        if p and not OUTPUT_NOISE_RE.match(p) and not (len(p) < 120 and NOISE_RE.search(p)):
+            out.append(p)
+    return out
 
 
 BLOCK_RE = re.compile(r"(just a moment|enable javascript|checking your browser|access denied|captcha)", re.I)

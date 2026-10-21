@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from .cleaner import check_book, check_chapter, clean_paragraphs
+from .cleaner import check_book, check_chapter, clean_output_paragraphs, clean_paragraphs
 from .epub_builder import build_epub
 from .fetcher import Fetcher
 from .models import Chapter, ChapterRef, Novel
@@ -122,6 +122,8 @@ class Job:
 
         self._check_cancel()
         self.p.phase = "EPUB yazılıyor"
+        for ch in chapters:  # çeviride kalmış "… sonu" notları, tek nokta satırları, filigranlar
+            ch.paragraphs = clean_output_paragraphs(ch.paragraphs)
         cover = None
         if novel.cover_url:
             try:
@@ -230,7 +232,8 @@ class Job:
             self.log("Denetim: tüm bölümler sağlam görünüyor ✓")
 
     def _translate(self, chapters: list[Chapter], store: BookStore) -> list[Chapter]:
-        from .translator import LOOKAHEAD_PARAGRAPHS, FatalError, GeminiTranslator, QuotaExhausted, TranslationError
+        from .translator import (LOOKAHEAD_PARAGRAPHS, FatalError, GeminiTranslator, QuotaExhausted, TranslationError,
+                                 untranslated_suspects)
 
         o = self.opts
         tr = GeminiTranslator(o.api_key, o.model, o.target, log=self.log, thinking_level=o.thinking)
@@ -284,7 +287,7 @@ class Job:
         def edit(drafts: list[Chapter]) -> None:
             """Taslakları redakte eder; kota hatası yukarı çıkar, diğer hatada taslak kalır."""
             self.p.phase = f"redaksiyon ({tr.model})"
-            edited = tr.edit_batch([source[d.index] for d in drafts], drafts, glossary)
+            edited = tr.edit_batch([source[d.index] for d in drafts], drafts, glossary, context_before(drafts[0].index))
             for e in edited:
                 if e.edited:
                     store.save_tr(e)
@@ -340,7 +343,9 @@ class Job:
                 results[done.index] = done
                 self.p.done += 1
                 translated_now += 1
-                self.log(f"  çevrildi {self.p.done}/{self.p.total}: {done.title}")
+                sus = untranslated_suspects(source[done.index].paragraphs, done.paragraphs, glossary)
+                self.log(f"  çevrildi {self.p.done}/{self.p.total}: {done.title}"
+                         + (f"  (İngilizce kalmış olabilir: {', '.join(sus[:8])}{' → redaksiyonda düzeltilecek' if o.edit else ''})" if sus else ""))
             save_state(new_terms)
             missed = [c.index for c in group if c.index not in got]
             failed.extend(missed)

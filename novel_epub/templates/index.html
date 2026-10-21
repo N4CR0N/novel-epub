@@ -84,7 +84,7 @@
       <label for="notes">Bu kitaba özel çeviri talimatı (üslup, hitaplar, zaman kipi…; her isteğe eklenir)</label>
       <textarea id="notes" rows="6" placeholder="Ör: Big brother → Ağabey, Second brother → İkinci Ağabey, Your Highness → Ekselansları. Qin Yu'nun babasına konuşurken 'siz' kullan."></textarea>
       <div class="actions"><button id="saveNotes">Talimatı kaydet</button></div>
-      <details style="margin-top:12px"><summary class="mut">Hikâye hafızası (modelin tuttuğu özet ve karakter notları)</summary><pre id="mem"></pre></details>
+      <details style="margin-top:12px"><summary class="mut">Hikâye hafızası (özet, karakter notları, sen/siz hitapları; elle düzeltmek için hafiza.json)</summary><pre id="mem"></pre></details>
     </details>
   </div>
 
@@ -197,7 +197,9 @@ async function showBook() {
   $('gloss').value = JSON.stringify(d.glossary, null, 1);
   $('notes').value = d.notes || '';
   const chars = Object.entries(d.memory.characters || {}).map(([n, v]) => `• ${n}: ${v}`).join('\n');
-  $('mem').textContent = (d.memory.summary || '(henüz özet yok)') + (chars ? '\n\nKarakterler:\n' + chars : '');
+  const addr = Object.entries(d.memory.address || {}).map(([k, v]) => `• ${k}: ${v}`).join('\n');
+  $('mem').textContent = (d.memory.summary || '(henüz özet yok)') + (chars ? '\n\nKarakterler:\n' + chars : '')
+                         + (addr ? '\n\nHitaplar (sen/siz):\n' + addr : '');
 }
 $('libSel').onchange = showBook;
 $('saveGloss').onclick = async () => {

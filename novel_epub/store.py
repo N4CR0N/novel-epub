@@ -72,7 +72,8 @@ class BookStore:
     def load_memory(self) -> dict:
         p = self.memory_path
         m = json.loads(p.read_text("utf-8")) if p.exists() else {}
-        return {"summary": m.get("summary", ""), "characters": dict(m.get("characters", {}))}
+        return {"summary": m.get("summary", ""), "characters": dict(m.get("characters", {})),
+                "address": dict(m.get("address", {}))}
 
     def save_memory(self, m: dict) -> None:
         _write_json(self.memory_path, m)
