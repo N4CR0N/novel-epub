@@ -22,10 +22,14 @@ def _write_json(path: Path, data) -> None:
 
 
 class BookStore:
-    def __init__(self, root: Path, novel: Novel | None = None, dirname: str | None = None):
+    def __init__(self, root: Path, novel: Novel | None = None, dirname: str | None = None, lang: str = "tr"):
         self.dir = Path(root) / (dirname or f"{novel.source}-{slugify(novel.title)}")
+        # Hedef dil başına ayrı çeviri/sözlük/hafıza; Türkçe eski dosya adlarını korur (geriye uyumlu).
+        self.lang = lang
+        self.sfx = "" if lang == "tr" else f"-{lang}"
+        self.tr_kind = f"ceviri{self.sfx}"
         (self.dir / "ham").mkdir(parents=True, exist_ok=True)
-        (self.dir / "ceviri").mkdir(parents=True, exist_ok=True)
+        (self.dir / self.tr_kind).mkdir(parents=True, exist_ok=True)
         if novel is not None:
             _write_json(self.dir / "kitap.json", novel.to_dict())
 
@@ -46,16 +50,16 @@ class BookStore:
         self._p("ham", index).unlink(missing_ok=True)
 
     def load_tr(self, index: int) -> Chapter | None:
-        p = self._p("ceviri", index)
+        p = self._p(self.tr_kind, index)
         return Chapter.from_dict(json.loads(p.read_text("utf-8"))) if p.exists() else None
 
     def save_tr(self, ch: Chapter) -> None:
-        _write_json(self._p("ceviri", ch.index), ch.to_dict())
+        _write_json(self._p(self.tr_kind, ch.index), ch.to_dict())
 
     # Terim sözlüğü: kaynak terim -> Türkçe karşılık. Elle düzenlenebilir (sozluk.json).
     @property
     def glossary_path(self) -> Path:
-        return self.dir / "sozluk.json"
+        return self.dir / f"sozluk{self.sfx}.json"
 
     def load_glossary(self) -> dict[str, str]:
         p = self.glossary_path
@@ -67,7 +71,7 @@ class BookStore:
     # Hikâye hafızası: kısa özet + karakter notları; her istekte modele gider, her yanıtla güncellenir.
     @property
     def memory_path(self) -> Path:
-        return self.dir / "hafiza.json"
+        return self.dir / f"hafiza{self.sfx}.json"
 
     def load_memory(self) -> dict:
         p = self.memory_path
@@ -80,14 +84,14 @@ class BookStore:
 
     # Yeniden çevirmede eski çeviri silinmez, ceviri_eski/ altına zaman damgasıyla taşınır.
     def _backups(self, index: int) -> list[Path]:
-        return sorted((self.dir / "ceviri_eski").glob(f"{index:05d}_*.json"))
+        return sorted((self.dir / f"ceviri_eski{self.sfx}").glob(f"{index:05d}_*.json"))
 
     def drop_tr(self, index: int) -> bool:
         """Çeviriyi yedeğe taşır; sonraki çalıştırmada bölüm yeniden çevrilir."""
-        p = self._p("ceviri", index)
+        p = self._p(self.tr_kind, index)
         if not p.exists():
             return False
-        bak = self.dir / "ceviri_eski"
+        bak = self.dir / f"ceviri_eski{self.sfx}"
         bak.mkdir(exist_ok=True)
         stamp = time.strftime("%Y%m%d-%H%M%S")
         n = 0
@@ -105,17 +109,17 @@ class BookStore:
         tmp = latest.with_suffix(".geri")
         latest.replace(tmp)
         self.drop_tr(index)
-        tmp.replace(self._p("ceviri", index))
+        tmp.replace(self._p(self.tr_kind, index))
         return True
 
     def backup_count(self) -> int:
-        d = self.dir / "ceviri_eski"
+        d = self.dir / f"ceviri_eski{self.sfx}"
         return len({p.name[:5] for p in d.glob("*.json")}) if d.exists() else 0
 
     # Kitaba özel çeviri talimatı (üslup, hitaplar, zaman kipi…): sistem talimatına eklenir.
     @property
     def notes_path(self) -> Path:
-        return self.dir / "talimat.txt"
+        return self.dir / f"talimat{self.sfx}.txt"
 
     def load_notes(self) -> str:
         return self.notes_path.read_text("utf-8").strip() if self.notes_path.exists() else ""
@@ -124,7 +128,7 @@ class BookStore:
         self.notes_path.write_text(text.strip() + "\n", encoding="utf-8")
 
     def counts(self) -> dict:
-        tr = list((self.dir / "ceviri").glob("*.json"))
+        tr = list((self.dir / self.tr_kind).glob("*.json"))
         edited = sum(1 for p in tr if '"edited": true' in p.read_text("utf-8"))
         return {"ham": len(list((self.dir / "ham").glob("*.json"))), "ceviri": len(tr), "redakte": edited,
                 "yedek": self.backup_count()}

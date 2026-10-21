@@ -28,6 +28,16 @@
   a { color:var(--acc); }
   ul.books { list-style:none; padding:0; margin:0; } ul.books li { display:flex; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); word-break:break-all; }
   details summary { cursor:pointer; font-weight:600; }
+  .tabs { display:flex; gap:6px; margin-bottom:6px; flex-wrap:wrap; }
+  .tab { background:transparent; color:var(--fg); border:1px solid var(--line); }
+  .tab.on { background:var(--acc); color:#fff; border-color:var(--acc); }
+  .drop { border:2px dashed var(--line); border-radius:10px; padding:22px; text-align:center; color:var(--mut); }
+  .drop.over { border-color:var(--acc); color:var(--fg); }
+  .link { color:var(--acc); cursor:pointer; text-decoration:underline; display:inline; margin:0; font-size:inherit; }
+  table.sites { width:100%; border-collapse:collapse; font-size:.88rem; margin-top:8px; }
+  table.sites td, table.sites th { border-bottom:1px solid var(--line); padding:6px 4px; text-align:left; vertical-align:top; }
+  .tag { font-size:.75rem; padding:1px 6px; border-radius:6px; border:1px solid var(--line); white-space:nowrap; }
+  .tag.ok { border-color:var(--ok); color:var(--ok); }
 </style>
 </head>
 <body>
@@ -35,13 +45,29 @@
   <h1>Novel → EPUB</h1>
 
   <div class="card">
-    <label for="url">Novel linki (ana sayfa ya da herhangi bir bölüm)</label>
-    <input id="url" type="text" placeholder="https://freewebnovel.com/novel/..." autocomplete="off">
+    <div class="tabs" role="tablist">
+      <button class="tab on" id="tabSite" type="button">🌐 Web sitesi</button>
+      <button class="tab" id="tabFile" type="button">📄 Dosya (EPUB · PDF · Word · TXT)</button>
+    </div>
+    <div id="paneSite">
+      <label for="url">Novel linki (ana sayfa ya da herhangi bir bölüm)</label>
+      <div class="row"><input id="url" type="text" placeholder="https://freewebnovel.com/novel/..." autocomplete="off">
+        <button class="ghost" id="testSite" type="button" style="flex:0 0 auto">Siteyi test et</button></div>
+      <div class="mut" id="siteMsg"></div>
+    </div>
+    <div id="paneFile" hidden>
+      <label for="file">Kitap ya da belge dosyası</label>
+      <div class="drop" id="drop">Dosyayı buraya sürükle ya da <label for="file" class="link">seç</label>
+        <input id="file" type="file" accept=".epub,.pdf,.docx,.txt,.md,.html,.htm" hidden></div>
+      <div class="mut" id="fileMsg"></div>
+    </div>
     <div class="row">
       <div><label for="start">İlk bölüm</label><input id="start" type="number" min="1" placeholder="1"></div>
       <div><label for="end">Son bölüm</label><input id="end" type="number" min="1" placeholder="sonuna kadar"></div>
     </div>
-    <label class="check"><input id="translate" type="checkbox" checked> Türkçeye çevir (Gemini)</label>
+    <label for="lang">Hedef dil</label>
+    <select id="lang"></select>
+    <label class="check"><input id="translate" type="checkbox" checked> Çevir (Gemini) — kapalıysa yalnızca EPUB'a dönüştürür</label>
     <label class="check"><input id="edit" type="checkbox" checked> Redaksiyon turu (çeviriyi editör gözüyle ikinci kez düzeltir; 2× istek)</label>
     <label class="check"><input id="review" type="checkbox"> Yeni kitapta ilk 20 bölümden sonra dur (sözlüğü kontrol etmek için)</label>
     <div class="actions">
@@ -66,6 +92,19 @@
     </div>
     <ul class="books" id="books"></ul>
     <div class="mut" id="phoneInfo"></div>
+  </div>
+
+  <div class="card" id="histCard" hidden>
+    <details>
+      <summary>Okuduğum siteleri bul (Brave / Chrome / Edge geçmişi + yer işaretleri)</summary>
+      <p class="mut">Bu bilgisayardaki tarayıcı geçmişinden ve yer işaretlerinden novel/bölüm adresi gibi görünenleri site
+        site sayar. Yalnızca burada okunur, hiçbir yere gönderilmez. Telefondaki geçmiş için iki cihazda da Brave Sync'te
+        "Geçmiş" (ve "Yer işaretleri") açık olmalı. Okunamazsa tarayıcıyı kapatıp tekrar dene.</p>
+      <div class="actions"><button id="histGo" type="button">Tara</button><span class="mut" id="histMsg"></span></div>
+      <table class="sites" id="histTable" hidden><thead><tr><th>Site</th><th>Adres / roman</th><th>Destek</th><th></th></tr></thead><tbody></tbody></table>
+      <label for="histText" id="histTextLbl" hidden>Desteklenmeyenler (eklemem için bana bu listeyi gönderebilirsin)</label>
+      <textarea id="histText" rows="5" readonly hidden></textarea>
+    </details>
   </div>
 
   <div class="card">
@@ -128,7 +167,7 @@ async function api(path, body) {
 
 async function loadSettings() {
   const s = await api('/api/settings');
-  $('model').value = s.model || ''; $('delay').value = s.delay; $('workers').value = s.workers; $('batch').value = s.batch ?? 0; $('thinking').value = s.thinking || 'medium'; $('temp').value = s.temperature ?? 0.7;
+  $('model').value = s.model || ''; $('delay').value = s.delay; $('workers').value = s.workers; $('batch').value = s.batch ?? 0; $('thinking').value = s.thinking || 'medium'; $('temp').value = s.temperature ?? 0.7; await loadLangs(s.lang);
   const where = {kasa:'Windows kimlik bilgisi kasasında', dosya:'ayarlar.json dosyasında', ortam:'GEMINI_API_KEY ortam değişkeninden'}[s.key_store] || '';
   $('keyHint').textContent = s.has_key ? `(kayıtlı ${s.key_hint} · ${where})` : '(kayıtlı değil)';
   if (!s.has_key) $('settings').open = true;
@@ -155,9 +194,78 @@ async function loadBooks() {
                                   : '<li class="mut">Henüz yok</li>';
 }
 
+let mode = 'site', fileId = '';
+function setMode(m) {
+  mode = m;
+  $('tabSite').classList.toggle('on', m === 'site'); $('tabFile').classList.toggle('on', m === 'file');
+  $('paneSite').hidden = m !== 'site'; $('paneFile').hidden = m !== 'file';
+}
+$('tabSite').onclick = () => setMode('site');
+$('tabFile').onclick = () => setMode('file');
+
+async function uploadFile(f) {
+  if (!f) return;
+  fileId = ''; $('fileMsg').textContent = `Yükleniyor ve okunuyor: ${f.name}…`;
+  const fd = new FormData(); fd.append('file', f);
+  try {
+    const r = await fetch('/api/upload', {method:'POST', body:fd});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'yükleme hatası');
+    fileId = d.id;
+    $('fileMsg').textContent = `✓ ${d.title} — ${d.chapters} bölüm, ~${d.words.toLocaleString('tr')} kelime`;
+  } catch (e) { $('fileMsg').textContent = '✗ ' + e.message; }
+}
+$('file').onchange = () => uploadFile($('file').files[0]);
+const drop = $('drop');
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); uploadFile(e.dataTransfer.files[0]); };
+
+$('testSite').onclick = async () => {
+  $('siteMsg').textContent = 'Deneniyor (bölüm listesi + ilk bölüm)…';
+  try {
+    const d = await api('/api/test-site', {url:$('url').value});
+    if (d.error && !d.title) { $('siteMsg').textContent = `✗ ${d.source}: ${d.error}`; return; }
+    $('siteMsg').textContent = (d.ok ? '✓ ' : '⚠ ') + `${d.source === 'genel' ? 'Genel okuyucu' : 'Özel destek (' + d.source + ')'} · ${d.title} · ${d.chapters} bölüm`
+      + (d.follow_next ? ' (liste yok; "Sonraki" ile gezilecek)' : '')
+      + (d.sample_chars ? ` · ilk bölüm ${d.sample_paragraphs} paragraf, ${d.sample_chars.toLocaleString('tr')} karakter` : '')
+      + (d.issues && d.issues.length ? ' · sorun: ' + d.issues.join(', ') : '') + (d.error ? ' · ' + d.error : '');
+  } catch (e) { $('siteMsg').textContent = '✗ ' + e.message; }
+};
+
+async function loadLangs(def) {
+  const ls = await api('/api/languages');
+  $('lang').innerHTML = ls.map(l => `<option value="${esc(l.code)}">${esc(l.name)}</option>`).join('');
+  $('lang').value = def || 'tr';
+}
+$('lang').onchange = () => { api('/api/settings', {lang:$('lang').value}).catch(() => {}); loadLibrary(); };
+
+$('histGo').onclick = async () => {
+  $('histMsg').textContent = 'Taranıyor…';
+  try {
+    const d = await api('/api/history-scan');
+    $('histMsg').textContent = (d.browsers.length ? 'Okunan: ' + d.browsers.join(', ') : '') + (d.error ? ' · ' + d.error : '')
+      + ` · ${d.sites.length} site`;
+    const body = $('histTable').querySelector('tbody');
+    body.innerHTML = d.sites.map((x, i) => `<tr><td>${esc(x.domain)}<div class="mut">${esc(x.sample_title)}</div></td>`
+      + `<td>${x.urls}${x.bookmarks ? ` (${x.bookmarks} yer işareti)` : ''} / ${x.novels}</td>`
+      + `<td>${x.supported ? `<span class="tag ok">özel: ${esc(x.supported)}</span>` : '<span class="tag">genel</span>'}</td>`
+      + `<td><button class="ghost" data-i="${i}" type="button">Dene</button></td></tr>`).join('');
+    $('histTable').hidden = !d.sites.length;
+    body.querySelectorAll('button[data-i]').forEach(btn => btn.onclick = () => {
+      setMode('site'); $('url').value = d.sites[+btn.dataset.i].sample_url; $('testSite').click(); window.scrollTo(0, 0);
+    });
+    const un = d.sites.filter(x => !x.supported);
+    $('histText').value = un.map(x => `${x.domain} — ${x.sample_url}`).join('\n');
+    $('histText').hidden = $('histTextLbl').hidden = !un.length;
+  } catch (e) { $('histMsg').textContent = '✗ ' + e.message; }
+};
+
 $('go').onclick = async () => {
   try {
-    const d = await api('/api/jobs', {url:$('url').value, start:$('start').value, end:$('end').value, translate:$('translate').checked, edit:$('edit').checked, review:$('review').checked});
+    if (mode === 'file' && !fileId) throw new Error('Önce bir dosya seç (yüklenip okunması bitsin)');
+    const d = await api('/api/jobs', {url: mode === 'site' ? $('url').value : '', file_id: mode === 'file' ? fileId : '',
+      lang:$('lang').value, start:$('start').value, end:$('end').value, translate:$('translate').checked, edit:$('edit').checked, review:$('review').checked});
     jobId = d.id; $('jobCard').hidden = false; $('jResult').innerHTML = '';
     $('go').disabled = true; $('stop').disabled = false;
     clearInterval(timer); timer = setInterval(poll, 1500); poll();
@@ -187,7 +295,7 @@ async function poll() {
 
 let lib = [];
 async function loadLibrary() {
-  lib = await api('/api/library');
+  lib = await api('/api/library?lang=' + encodeURIComponent($('lang').value || 'tr'));
   const cur = $('libSel').value;
   $('libSel').innerHTML = lib.map(b => `<option value="${esc(b.id)}">${esc(b.title)}</option>`).join('') || '<option value="">Henüz kitap yok</option>';
   if (cur && lib.some(b => b.id === cur)) $('libSel').value = cur;
@@ -197,7 +305,7 @@ async function showBook() {
   const b = lib.find(x => x.id === $('libSel').value);
   if (!b) { $('libInfo').textContent = ''; $('gloss').value = ''; $('notes').value = ''; $('mem').textContent = ''; return; }
   $('libInfo').textContent = `${b.ham} bölüm indi · ${b.ceviri} çevrildi · ${b.redakte} redakte · ${b.terms} terim · ${b.yedek} bölümde yedek`;
-  const d = await api(`/api/library/${encodeURIComponent(b.id)}/glossary`);
+  const d = await api(`/api/library/${encodeURIComponent(b.id)}/glossary?lang=${$('lang').value}`);
   $('gloss').value = JSON.stringify(d.glossary, null, 1);
   $('notes').value = d.notes || '';
   const chars = Object.entries(d.memory.characters || {}).map(([n, v]) => `• ${n}: ${v}`).join('\n');
@@ -209,21 +317,21 @@ $('libSel').onchange = showBook;
 $('saveGloss').onclick = async () => {
   let g;
   try { g = JSON.parse($('gloss').value || '{}'); } catch (e) { $('glossMsg').textContent = 'JSON bozuk: ' + e.message; return; }
-  try { const d = await api(`/api/library/${encodeURIComponent($('libSel').value)}/glossary`, {glossary:g}); $('glossMsg').textContent = `Kaydedildi ✓ (${d.terms} terim)`; loadLibrary(); }
+  try { const d = await api(`/api/library/${encodeURIComponent($('libSel').value)}/glossary?lang=${$('lang').value}`, {glossary:g}); $('glossMsg').textContent = `Kaydedildi ✓ (${d.terms} terim)`; loadLibrary(); }
   catch (e) { $('glossMsg').textContent = e.message; }
 };
 $('saveNotes').onclick = async () => {
-  try { await api(`/api/library/${encodeURIComponent($('libSel').value)}/notes`, {notes:$('notes').value}); $('glossMsg').textContent = 'Talimat kaydedildi ✓'; }
+  try { await api(`/api/library/${encodeURIComponent($('libSel').value)}/notes?lang=${$('lang').value}`, {notes:$('notes').value}); $('glossMsg').textContent = 'Talimat kaydedildi ✓'; }
   catch (e) { $('glossMsg').textContent = e.message; }
 };
 $('reBack').onclick = async () => {
-  try { const d = await api(`/api/library/${encodeURIComponent($('libSel').value)}/restore`, {start:$('reA').value, end:$('reB').value});
+  try { const d = await api(`/api/library/${encodeURIComponent($('libSel').value)}/restore?lang=${$('lang').value}`, {start:$('reA').value, end:$('reB').value});
         $('glossMsg').textContent = `${d.restored} bölüm en son yedeğine döndü. EPUB için aynı linkle Başlat.`; loadLibrary(); }
   catch (e) { $('glossMsg').textContent = e.message; }
 };
 $('reGo').onclick = async () => {
   if (!confirm(`${$('reA').value}–${$('reB').value}. bölümlerin çevirisi yedeğe alınacak; sonra Başlat ile yeniden çevrilir. Devam?`)) return;
-  try { const d = await api(`/api/library/${encodeURIComponent($('libSel').value)}/retranslate`, {start:$('reA').value, end:$('reB').value});
+  try { const d = await api(`/api/library/${encodeURIComponent($('libSel').value)}/retranslate?lang=${$('lang').value}`, {start:$('reA').value, end:$('reB').value});
         $('glossMsg').textContent = `${d.removed} bölümün çevirisi yedeğe alındı. Şimdi aynı linkle Başlat.`; loadLibrary(); }
   catch (e) { $('glossMsg').textContent = e.message; }
 };
@@ -231,14 +339,14 @@ $('reGo').onclick = async () => {
 async function loadInfo() {
   try {
     const i = await api('/api/info');
-    $('localBtns').hidden = !i.local;
+    $('localBtns').hidden = !i.local; $('histCard').hidden = !i.local;
     if (i.local) $('phoneInfo').textContent = `Telefondan indirmek için (aynı Wi‑Fi): ${i.phone_url} · Veriler: ${i.home}`;
   } catch (e) {}
 }
 $('openOut').onclick = () => api('/api/open-folder', {which:'cikti'}).catch(e => alert(e.message));
 $('openHome').onclick = () => api('/api/open-folder', {which:'home'}).catch(e => alert(e.message));
 
-loadSettings(); loadBooks(); loadLibrary(); loadInfo();
+loadSettings().then(loadLibrary); loadBooks(); loadInfo();
 </script>
 </body>
 </html>

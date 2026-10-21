@@ -13,6 +13,7 @@ from .fetcher import Fetcher
 from .models import Chapter, ChapterRef, Novel
 from .sources import source_for
 from .store import BookStore, slugify
+from .translator import LANGUAGES
 
 
 class Cancelled(Exception):
@@ -27,7 +28,8 @@ class Options:
     translate: bool = False
     api_key: str = ""
     model: str = ""
-    target: str = "Türkçe"
+    lang: str = "tr"  # hedef dil kodu (translator.LANGUAGES)
+    file: str = ""  # doluysa site yerine bu dosyadan (EPUB/PDF/DOCX/TXT/HTML) okunur
     delay: float = 0.7
     workers: int = 3
     batch: int = 0  # tek Gemini isteğinde en fazla kaç bölüm (0 = bölüm uzunluğuna göre otomatik)
@@ -92,22 +94,38 @@ class Job:
     def _run(self) -> Path:
         o = self.opts
         fetcher = Fetcher(delay=o.delay)
-        source = source_for(o.url, fetcher)
-        self.p.phase = "bölüm listesi alınıyor"
-        self.log(f"Kaynak: {source.name} · {o.url}")
-        novel = source.novel(o.url)
-        self.p.title = novel.title
-        store = BookStore(o.library, novel)
+        cover = None
+        if o.file:
+            from .files import load_file
 
-        if novel.follow_next:
-            self.log("Bölüm listesi bulunamadı; bu sayfadan 'Sonraki' bağlantılarıyla ilerlenecek.")
-            chapters = self._crawl_next(source, novel, store)
-        else:
-            self.log(f"{novel.title} — {len(novel.chapters)} bölüm bulundu ({novel.author})")
-            refs = novel.chapters[(o.start or 1) - 1: o.end or None]
-            if not refs:
+            self.p.phase = "dosya okunuyor"
+            self.log(f"Kaynak: dosya · {Path(o.file).name}")
+            novel, all_chapters, cover = load_file(o.file)
+            self.p.title = novel.title
+            store = BookStore(o.library, novel, lang=o.lang)
+            self.log(f"{novel.title} — {len(all_chapters)} bölüm ayrıldı")
+            chapters = all_chapters[(o.start or 1) - 1: o.end or None]
+            if not chapters:
                 raise ValueError("Seçilen aralıkta bölüm yok")
-            chapters = self._download(source, refs, store)
+            for ch in chapters:
+                store.save_raw(ch)
+        else:
+            source = source_for(o.url, fetcher)
+            self.p.phase = "bölüm listesi alınıyor"
+            self.log(f"Kaynak: {source.name} · {o.url}")
+            novel = source.novel(o.url)
+            self.p.title = novel.title
+            store = BookStore(o.library, novel, lang=o.lang)
+
+            if novel.follow_next:
+                self.log("Bölüm listesi bulunamadı; bu sayfadan 'Sonraki' bağlantılarıyla ilerlenecek.")
+                chapters = self._crawl_next(source, novel, store)
+            else:
+                self.log(f"{novel.title} — {len(novel.chapters)} bölüm bulundu ({novel.author})")
+                refs = novel.chapters[(o.start or 1) - 1: o.end or None]
+                if not refs:
+                    raise ValueError("Seçilen aralıkta bölüm yok")
+                chapters = self._download(source, refs, store)
 
         report = check_book(chapters)
         self.p.report = {
@@ -124,18 +142,18 @@ class Job:
         self.p.phase = "EPUB yazılıyor"
         for ch in chapters:  # çeviride kalmış "… sonu" notları, tek nokta satırları, filigranlar
             ch.paragraphs = clean_output_paragraphs(ch.paragraphs)
-        cover = None
-        if novel.cover_url:
+        if cover is None and novel.cover_url:
             try:
                 cover = fetcher.content(novel.cover_url, referer=novel.url)
             except Exception as e:
                 self.log(f"Kapak alınamadı: {e}")
         first, last = chapters[0].index, chapters[-1].index
         rng = f"{first}-{last}"
-        suffix = "tr" if o.translate else "orijinal"
+        suffix = o.lang if o.translate else "orijinal"
         out = Path(o.output) / f"{slugify(novel.title)}_{rng}_{suffix}.epub"
-        build_epub(novel, chapters, out, language="tr" if o.translate else "en", cover=cover,
-                   subtitle=f"Bölüm {rng}" + (" · Türkçe" if o.translate else ""))
+        lang_label = LANGUAGES.get(o.lang, LANGUAGES["tr"])[1]
+        build_epub(novel, chapters, out, language=o.lang if o.translate else "en", cover=cover,
+                   subtitle=f"Bölüm {rng}" + (f" · {lang_label}" if o.translate else ""))
         self.p.result = str(out)
         self.log(f"Hazır: {out}")
         return out
@@ -236,7 +254,7 @@ class Job:
                                  untranslated_suspects)
 
         o = self.opts
-        tr = GeminiTranslator(o.api_key, o.model, o.target, log=self.log, thinking_level=o.thinking)
+        tr = GeminiTranslator(o.api_key, o.model, o.lang, log=self.log, thinking_level=o.thinking)
 
         def wait(seconds: float) -> None:  # "Durdur" bekleme sırasında da çalışsın
             if self.cancel_event.wait(seconds):
@@ -343,7 +361,7 @@ class Job:
                 results[done.index] = done
                 self.p.done += 1
                 translated_now += 1
-                sus = untranslated_suspects(source[done.index].paragraphs, done.paragraphs, glossary)
+                sus = untranslated_suspects(source[done.index].paragraphs, done.paragraphs, glossary) if o.lang != "en" else []
                 self.log(f"  çevrildi {self.p.done}/{self.p.total}: {done.title}"
                          + (f"  (İngilizce kalmış olabilir: {', '.join(sus[:8])}{' → redaksiyonda düzeltilecek' if o.edit else ''})" if sus else ""))
             save_state(new_terms)

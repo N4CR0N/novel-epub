@@ -541,3 +541,115 @@ def test_open_folder_only_from_this_pc(monkeypatch):
     assert c.post("/api/open-folder", json={}).status_code == 200 and opened
     info = c.get("/api/info", environ_base={"REMOTE_ADDR": "192.168.1.50"}).get_json()
     assert info["local"] is False and info["home"] == ""
+
+
+def _lorem(n: int, seed: str) -> list[str]:
+    return [f"{seed} paragraph {i}: the lantern swayed while Arin counted the steps to the mill." for i in range(n)]
+
+
+def test_files_txt_docx_epub_split_into_chapters(tmp_path: Path):
+    import docx
+
+    from novel_epub.files import load_file
+
+    (tmp_path / "a.txt").write_text("\n\n".join(["Chapter 1: Start", *_lorem(3, "a"), "Chapter 2: Mill", *_lorem(2, "b")]), "utf-8")
+    n, chs, _ = load_file(tmp_path / "a.txt")
+    assert [(c.title, len(c.paragraphs)) for c in chs] == [("Chapter 1: Start", 3), ("Chapter 2: Mill", 2)]
+
+    d = docx.Document()
+    d.core_properties.title = "Belge"
+    for h, seed in (("Ön Söz", "x"), ("Asıl Kısım", "y")):
+        d.add_heading(h, level=1)
+        for p in _lorem(2, seed):
+            d.add_paragraph(p)
+    d.save(tmp_path / "b.docx")
+    n, chs, _ = load_file(tmp_path / "b.docx")
+    assert n.title == "Belge" and [c.title for c in chs] == ["Ön Söz", "Asıl Kısım"]
+
+    build_epub(Novel(url="x", title="Kitap E", source="t", author="Yazar"),
+               [Chapter(1, "One", "u", _lorem(3, "c")), Chapter(2, "Two", "u", _lorem(2, "d"))], tmp_path / "c.epub")
+    n, chs, _ = load_file(tmp_path / "c.epub")
+    assert n.title == "Kitap E" and n.author == "Yazar" and [(c.title, len(c.paragraphs)) for c in chs] == [("One", 3), ("Two", 2)]
+
+
+def test_pdf_reflow_and_header_removal():
+    from novel_epub.files import reflow, split_by_headings
+
+    lines = ["Chapter 1", "The lantern swayed while Arin", "counted the steps to the old", "mill.", "",
+             "He waited.", "Chapter 2", "A new day be-", "gan quietly."]
+    paras = reflow(lines)
+    assert paras == ["Chapter 1", "The lantern swayed while Arin counted the steps to the old mill.", "He waited.",
+                     "Chapter 2", "A new day began quietly."]
+    assert [t for t, _ in split_by_headings(paras)] == ["Chapter 1", "Chapter 2"]
+    assert len(split_by_headings(["kelime " * 1000] * 7)) == 3  # başlık yoksa ~3000 kelimelik parçalar
+
+
+def test_unsupported_file_type(tmp_path: Path):
+    import pytest
+
+    from novel_epub.files import FileError, load_file
+
+    (tmp_path / "x.exe").write_bytes(b"MZ")
+    with pytest.raises(FileError):
+        load_file(tmp_path / "x.exe")
+
+
+def test_store_is_separate_per_target_language(tmp_path: Path):
+    from novel_epub.store import BookStore
+
+    nv = Novel(url="u", title="k", source="t")
+    tr_st, en_st = BookStore(tmp_path, nv), BookStore(tmp_path, nv, lang="en")
+    tr_st.save_tr(Chapter(1, "tr", "u", ["a"]))
+    tr_st.save_glossary({"Gate": "Kapı"})
+    assert en_st.load_tr(1) is None and en_st.load_glossary() == {}
+    assert tr_st.glossary_path.name == "sozluk.json" and en_st.glossary_path.name == "sozluk-en.json"
+
+
+def test_turkish_rules_only_for_turkish_target():
+    from novel_epub.translator import SYSTEM_PROMPT, TURKISH_RULES
+
+    tr = _fake_translator()
+    assert "Cilt N Bölüm M" in tr._config(RESPONSE_SCHEMA_FOR_TEST(), SYSTEM_PROMPT).system_instruction
+    en = GeminiTranslator.__new__(GeminiTranslator)
+    en._init_state("m", lang="en")
+    en.thinking = False
+    instr = en._config(RESPONSE_SCHEMA_FOR_TEST(), SYSTEM_PROMPT).system_instruction
+    assert "İngilizce (English)" in instr and TURKISH_RULES.strip() not in instr
+
+
+def test_history_scan_reads_history_and_bookmarks(tmp_path: Path, monkeypatch):
+    import sqlite3
+
+    from novel_epub import history
+
+    prof = tmp_path / "Default"
+    prof.mkdir()
+    con = sqlite3.connect(prof / "History")
+    con.execute("create table urls(url text, title text, visit_count int)")
+    con.executemany("insert into urls values(?,?,?)", [
+        ("https://freewebnovel.com/novel/a/chapter-1", "A1", 3), ("https://freewebnovel.com/novel/a/chapter-2", "A2", 1),
+        ("https://www.google.com/search?q=chapter", "g", 9), ("https://news.example/article", "n", 4)])
+    con.commit()
+    con.close()
+    (prof / "Bookmarks").write_text(json.dumps({"roots": {"synced": {"children": [
+        {"type": "url", "url": "https://other-novels.net/series/xyz/", "name": "XYZ"}]}}}), "utf-8")
+    monkeypatch.setattr(history, "_user_data_dirs", lambda: {"Brave": tmp_path})
+    r = history.scan(lambda u: "freewebnovel" if "freewebnovel" in u else None)
+    sites = {s["domain"]: s for s in r["sites"]}
+    assert r["browsers"] == ["Brave/Default"] and set(sites) == {"freewebnovel.com", "other-novels.net"}
+    assert sites["freewebnovel.com"]["urls"] == 2 and sites["freewebnovel.com"]["novels"] == 1
+    assert sites["other-novels.net"]["bookmarks"] == 1 and sites["other-novels.net"]["supported"] is None
+
+
+def test_upload_endpoint_rejects_and_accepts(tmp_path: Path, monkeypatch):
+    import io
+
+    from novel_epub import web
+
+    monkeypatch.setattr(web, "UPLOADS", tmp_path / "up")
+    c = web.app.test_client()
+    bad = c.post("/api/upload", data={"file": (io.BytesIO(b"MZ"), "x.exe")}, content_type="multipart/form-data")
+    assert bad.status_code == 400
+    txt = "\n\n".join(["Chapter 1", *_lorem(2, "a"), "Chapter 2", *_lorem(2, "b")]).encode()
+    ok = c.post("/api/upload", data={"file": (io.BytesIO(txt), "kitap.txt")}, content_type="multipart/form-data").get_json()
+    assert ok["chapters"] == 2 and (tmp_path / "up" / ok["id"]).exists()

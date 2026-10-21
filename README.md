@@ -41,6 +41,23 @@ Komut satırı da var:
 python -m novel_epub https://freewebnovel.com/novel/stellar-transformations --bas 1 --son 100 --cevir
 ```
 
+## Kaynaklar ve hedef dil
+
+- **Web sitesi:** freewebnovel, novelbin, NovelFull ailesi (novelfull.com, readnovelfull.com, allnovelfull.net /
+  novgo.net, novelfull.net), Royal Road için özel destek; diğer siteler genel okuyucuyla denenir.
+  **Siteyi test et** düğmesi bölüm listesini ve ilk bölümü deneyip sonucu gösterir.
+- **Dosya:** EPUB, PDF (metinli; taranmış PDF için OCR gerekir), Word (.docx), TXT/MD, HTML. Bölümler dosyanın
+  kendi yapısından (EPUB içindekiler, PDF yer imleri, Word başlıkları) ya da "Chapter/Bölüm/第…章" başlıklarından
+  ayrılır; yoksa ~3000 kelimelik parçalara bölünür. PDF'te satır sonu kırılmaları birleştirilir, sayfa numaraları
+  ve tekrarlanan üst/alt bilgiler atılır. Çıktı her zaman EPUB'dır.
+- **Hedef dil:** Türkçe, English, Deutsch, Français, Español, Italiano, Português, Nederlands, Polski, Русский,
+  Українська, Azərbaycan dili, العربية, فارسی, Bahasa Indonesia, 日本語, 简体中文, 한국어. Türkçeye özel kurallar
+  (-dı'lı anlatım, sen/siz, "Cilt N Bölüm M") yalnız Türkçede uygulanır. Her dilin çevirisi, sözlüğü ve hafızası
+  ayrı tutulur (Türkçe: `ceviri/`, `sozluk.json`; diğerleri: `ceviri-en/`, `sozluk-en.json`…).
+- **Okuduğum siteleri bul:** bu PC'deki Brave/Chrome/Edge geçmişi ve yer işaretlerinden novel/bölüm adreslerini
+  site site sayar, hangisinin özel desteği olduğunu gösterir (yalnız yerelde okunur). Telefondaki geçmiş için iki
+  cihazda da Brave Sync'te "Geçmiş" ve "Yer işaretleri" açık olmalı.
+
 ## Neler yapıyor
 
 | Aşama | Ayrıntı |

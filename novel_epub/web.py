@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -14,12 +15,15 @@ from flask import Flask, abort, jsonify, render_template, request, send_from_dir
 
 from .pipeline import Job, Options
 from .store import BookStore
-from .translator import DEFAULT_MODEL, DEFAULT_MODELS, DEFAULT_TEMPERATURE, MAX_AUTO_CHAPTERS, THINKING_LEVELS
+from .translator import (DEFAULT_MODEL, DEFAULT_MODELS, DEFAULT_TEMPERATURE, LANGUAGES, MAX_AUTO_CHAPTERS,
+                         THINKING_LEVELS)
 
 BASE = Path(os.environ.get("NOVEL_EPUB_HOME", Path.cwd()))
 SETTINGS_PATH = BASE / "ayarlar.json"
 LIBRARY = BASE / "kutuphane"
 OUTPUT = BASE / "cikti"
+UPLOADS = BASE / "yuklenen"
+MAX_UPLOAD_MB = 300
 
 app = Flask(__name__)
 JOBS: dict[str, Job] = {}
@@ -56,7 +60,7 @@ def _read_file() -> dict:
 
 def load_settings() -> dict:
     s = {"model": os.environ.get("GEMINI_MODEL", DEFAULT_MODELS), "delay": 0.7, "workers": 3, "batch": 0,
-         "thinking": "medium", "temperature": DEFAULT_TEMPERATURE}
+         "thinking": "medium", "temperature": DEFAULT_TEMPERATURE, "lang": "tr"}
     file = _read_file()
     s.update(file)
     kr = _keyring()
@@ -119,6 +123,8 @@ def post_settings():
     for k in ("model",):
         if data.get(k):
             s[k] = data[k].strip()
+    if data.get("lang") in LANGUAGES:
+        s["lang"] = data["lang"]
     if data.get("thinking") in THINKING_LEVELS:
         s["thinking"] = data["thinking"]
     if data.get("temperature") not in (None, ""):
@@ -129,6 +135,83 @@ def post_settings():
     s["batch_set"] = True
     save_settings(s, new_key)
     return get_settings()
+
+
+@app.get("/api/languages")
+def languages():
+    return jsonify([{"code": c, "name": ui} for c, (_, ui) in LANGUAGES.items()])
+
+
+@app.post("/api/upload")
+def upload():
+    from .files import SUPPORTED
+
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"error": "Dosya seçilmedi"}), 400
+    name = Path(f.filename).name
+    ext = Path(name).suffix.lower()
+    if ext not in SUPPORTED:
+        return jsonify({"error": f"Desteklenmeyen tür: {ext or '?'} (desteklenen: {', '.join(SUPPORTED)})"}), 400
+    UPLOADS.mkdir(parents=True, exist_ok=True)
+    safe = re.sub(r"[^\w.\- ]+", "_", name)[:120]
+    file_id = f"{uuid.uuid4().hex[:8]}_{safe}"
+    dest = UPLOADS / file_id
+    f.save(dest)
+    if dest.stat().st_size > MAX_UPLOAD_MB * 1024 * 1024:
+        dest.unlink()
+        return jsonify({"error": f"Dosya {MAX_UPLOAD_MB} MB'tan büyük"}), 400
+    try:  # hemen okunabiliyor mu: kitap adı ve bölüm sayısı
+        from .files import load_file
+
+        novel, chapters, _ = load_file(dest)
+    except Exception as e:
+        dest.unlink(missing_ok=True)
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"id": file_id, "name": name, "title": novel.title, "chapters": len(chapters),
+                    "words": sum(len(" ".join(c.paragraphs).split()) for c in chapters)})
+
+
+def _upload_path(file_id: str) -> Path | None:
+    p = UPLOADS / Path(file_id).name
+    return p if file_id and p.is_file() else None
+
+
+@app.post("/api/test-site")
+def test_site():
+    """Bir linkin desteklenip desteklenmediğini dener: bölüm listesi + ilk bölüm."""
+    from .cleaner import check_chapter
+    from .fetcher import Fetcher
+    from .sources import source_for
+
+    url = (request.get_json(force=True).get("url") or "").strip()
+    if not url.startswith("http"):
+        return jsonify({"error": "Geçerli bir link gir"}), 400
+    src = source_for(url, Fetcher(delay=0.3, retries=2))
+    out = {"source": src.name}
+    try:
+        novel = src.novel(url)
+        out.update(title=novel.title, chapters=len(novel.chapters), follow_next=novel.follow_next,
+                   first=novel.chapters[0].title if novel.chapters else "",
+                   last=novel.chapters[-1].title if novel.chapters else "")
+        if novel.chapters:
+            ch = src.chapter(novel.chapters[0])
+            out.update(sample_paragraphs=len(ch.paragraphs), sample_chars=ch.char_count, issues=check_chapter(ch))
+        out["ok"] = bool(novel.chapters) and not out.get("issues")
+    except Exception as e:
+        out.update(ok=False, error=str(e)[:300])
+    return jsonify(out)
+
+
+@app.get("/api/history-scan")
+def history_scan():
+    """Bu PC'deki Brave/Chrome/Edge geçmişi + yer işaretlerinden novel siteleri (yalnız yerel)."""
+    if not _is_local():
+        abort(403)
+    from .history import scan
+    from .sources import SOURCES
+
+    return jsonify(scan(lambda u: next((c.name for c in SOURCES if c.matches(u)), None)))
 
 
 @app.get("/api/models")
@@ -148,11 +231,17 @@ def models():
 def start_job():
     data = request.get_json(force=True)
     url = (data.get("url") or "").strip()
-    if not url.startswith("http"):
-        return jsonify({"error": "Geçerli bir link gir"}), 400
+    file_path = _upload_path(data.get("file_id") or "") if data.get("file_id") else None
+    if data.get("file_id") and not file_path:
+        return jsonify({"error": "Yüklenen dosya bulunamadı; yeniden seç"}), 400
+    if not file_path and not url.startswith("http"):
+        return jsonify({"error": "Geçerli bir link gir ya da dosya seç"}), 400
     s = load_settings()
+    lang = data.get("lang") if data.get("lang") in LANGUAGES else s.get("lang", "tr")
     opts = Options(
         url=url,
+        file=str(file_path) if file_path else "",
+        lang=lang,
         start=int(data["start"]) if data.get("start") else None,
         end=int(data["end"]) if data.get("end") else None,
         translate=bool(data.get("translate")),
@@ -194,12 +283,17 @@ def job_cancel(job_id: str):
     return jsonify({"ok": True})
 
 
+def _lang() -> str:
+    lang = request.args.get("lang", "tr")
+    return lang if lang in LANGUAGES else "tr"
+
+
 def _book(name: str) -> BookStore:
     """Kitaplıktaki bir kitap klasörü (yalnızca var olan klasör adları kabul edilir)."""
     names = {d.name for d in LIBRARY.iterdir() if d.is_dir()} if LIBRARY.exists() else set()
     if name not in names:
         abort(404)
-    return BookStore(LIBRARY, dirname=name)
+    return BookStore(LIBRARY, dirname=name, lang=_lang())
 
 
 @app.get("/api/library")
@@ -207,7 +301,7 @@ def library():
     out = []
     for d in sorted(LIBRARY.glob("*/kitap.json"), key=lambda p: p.stat().st_mtime, reverse=True):
         meta = json.loads(d.read_text("utf-8"))
-        st = BookStore(LIBRARY, dirname=d.parent.name)
+        st = BookStore(LIBRARY, dirname=d.parent.name, lang=_lang())
         out.append({"id": d.parent.name, "title": meta.get("title", d.parent.name), "url": meta.get("url", ""),
                     **st.counts(), "terms": len(st.load_glossary())})
     return jsonify(out)

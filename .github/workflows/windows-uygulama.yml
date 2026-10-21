@@ -39,7 +39,7 @@ jobs:
           --icon assets/icon.ico
           --add-data "novel_epub/templates;novel_epub/templates"
           --collect-all curl_cffi --collect-all webview --collect-data certifi
-          --collect-submodules keyring --copy-metadata keyring
+          --collect-submodules keyring --copy-metadata keyring --collect-data docx
           uygulama.py
 
       - name: Öz-test (pencere açmadan)
