@@ -223,10 +223,16 @@ class Job:
             self.log("Denetim: tüm bölümler sağlam görünüyor ✓")
 
     def _translate(self, chapters: list[Chapter], store: BookStore) -> list[Chapter]:
-        from .translator import GeminiTranslator, TranslationError
+        from .translator import FatalError, GeminiTranslator, QuotaExhausted, TranslationError
 
         o = self.opts
         tr = GeminiTranslator(o.api_key, o.model, o.target, log=self.log)
+
+        def wait(seconds: float) -> None:  # "Durdur" bekleme sırasında da çalışsın
+            if self.cancel_event.wait(seconds):
+                raise Cancelled()
+
+        tr.sleep = wait
         self.p.phase = f"çevriliyor ({tr.model})"
         self.p.total = len(chapters)
         glossary = store.load_glossary()
@@ -246,38 +252,57 @@ class Job:
             prev = results.get(index - 1)
             return prev.paragraphs[-4:] if prev else []
 
+        failed: list[int] = []
+        streak = 0
         i = 0
         while i < len(pending):
             self._check_cancel()
             # Ardışık bölümleri, tahmini çıktı token'ı bütçeye sığana kadar tek istekte topla.
             group = tr.plan_batch(pending[i:], o.batch)
+            i += len(group)
             try:
                 outs, new_terms = tr.translate_batch(group, glossary, context_before(group[0].index))
-            except TranslationError as e:
+            except QuotaExhausted as e:
                 if not results:
                     raise
-                # Kota/hata: o ana kadar çevrilenlerle kısmi EPUB çıkar; tekrar başlatınca kaldığı yerden sürer.
+                # Tüm modellerin kotası bitti: çevrilenlerle kısmi EPUB çıkar; tekrar başlatınca kaldığı yerden sürer.
                 self.log(f"Çeviri {group[0].index}. bölümde durdu: {e}")
                 self.p.error = f"Kısmi: {len(results)} bölüm çevrili ({e})"
                 break
+            except FatalError:
+                raise
+            except TranslationError as e:
+                # Bu grup olmadı: atla, sonrakilerle devam et (tekrar başlatınca yeniden denenir).
+                outs, new_terms = [], {}
+                self.log(f"  {group[0].index}–{group[-1].index}. bölümler çevrilemedi ({e}); sonrakilere geçiliyor")
+            got = {d.index for d in outs}
             for done in outs:
                 store.save_tr(done)
                 results[done.index] = done
                 self.p.done += 1
                 self.log(f"  çevrildi {self.p.done}/{self.p.total}: {done.title}")
+            missed = [c.index for c in group if c.index not in got]
+            failed.extend(missed)
+            streak = streak + 1 if missed and not outs else 0
+            if streak >= 3:
+                self.log("  Art arda 3 istek başarısız; 5 dk bekleyip devam ediliyor")
+                wait(300)
+                streak = 0
             if new_terms:
                 glossary.update(new_terms)
                 store.save_glossary(glossary)
                 self.log(f"  sözlüğe eklendi: {', '.join(f'{k}→{v}' for k, v in list(new_terms.items())[:6])}")
             self.p.phase = f"çevriliyor ({tr.model})"
-            i += len(group)
 
-        # Kısmi durumda EPUB, baştan kesintisiz çevrilmiş bölümlerle sınırlı kalır.
-        out: list[Chapter] = []
-        for ch in chapters:
-            if ch.index not in results:
-                break
-            out.append(results[ch.index])
+        # EPUB, çevrilmiş son bölüme kadar gider; arada çevrilemeyenler orijinal metniyle kalır.
+        last = max(results, default=0)
+        out = [results.get(ch.index) or Chapter(ch.index, f"[Çevrilemedi] {ch.title}", ch.url, ch.paragraphs)
+               for ch in chapters if ch.index <= last]
+        failed = [n for n in failed if n <= last and n not in results]
+        if failed:
+            self.p.report["cevrilemeyen"] = failed
+            self.log(f"{len(failed)} bölüm çevrilemedi, EPUB'da orijinal metniyle duruyor: {failed[:30]}. "
+                     "Aynı linkle tekrar başlatınca yalnız bunlar ve kalanlar denenir.")
         if self.p.error:
             self.log(f"{len(out)} bölümlük kısmi EPUB hazırlanıyor. Kota yenilenince aynı linkle başlat, kaldığı yerden sürer.")
         self.log(f"Terim sözlüğü: {store.glossary_path} (elle düzeltip yeniden çevirebilirsin)")

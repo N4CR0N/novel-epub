@@ -91,6 +91,14 @@ class QuotaExhausted(TranslationError):
     """Günlük kota bitti; beklemek anlamsız (saatler sürer)."""
 
 
+class FatalError(TranslationError):
+    """Devam etmenin anlamı yok (ör. geçersiz API anahtarı)."""
+
+
+class TransientFailure(TranslationError):
+    """Geçici hata (ağ, yoğunluk, bozuk yanıt) bekleyip denemelere rağmen sürdü."""
+
+
 class ModelUnusable(QuotaExhausted):
     """Model yok ya da bu iş için gereken özelliği (JSON şeması, sistem talimatı) desteklemiyor."""
 
@@ -129,17 +137,18 @@ def relevant_glossary(glossary: dict[str, str], text: str, limit: int = 300) -> 
 
 class GeminiTranslator:
     def __init__(self, api_key: str, model: str = DEFAULT_MODEL, target: str = "Türkçe",
-                 log: Callable[[str], None] = print, max_retries: int = 6):
+                 log: Callable[[str], None] = print, max_retries: int = 10):
         from google import genai  # geç içe aktarma: çeviri kapalıyken gerekmez
 
         if not api_key:
-            raise TranslationError("Gemini API anahtarı yok. Ayarlar'dan gir (aistudio.google.com/apikey).")
+            raise FatalError("Gemini API anahtarı yok. Ayarlar'dan gir (aistudio.google.com/apikey).")
         self.client = genai.Client(api_key=api_key)
         self.models = parse_models(model or DEFAULT_MODELS)
         self.model = self.models[0]
         self.target = target
         self.log = log
         self.max_retries = max_retries
+        self.sleep: Callable[[float], None] = time.sleep  # iş tarafı iptal edilebilir bekleme koyar
         self.thinking = True
         self.budget = START_BUDGET
         self.ratio = dict(START_RATIO)
@@ -147,17 +156,30 @@ class GeminiTranslator:
         self.last_usage: tuple[int, int] | None = None
 
     def _call(self, payload: dict, schema: dict = RESPONSE_SCHEMA, bad_retries: int | None = None) -> dict:
-        """Kota dolarsa sıradaki modele geçer; hepsi dolmuşsa QuotaExhausted fırlatır."""
+        """Her istek, kotası bitmemiş en iyi modelle başlar.
+
+        Günlük kota dolan ya da kullanılamayan model listeden çıkar; hepsi biterse QuotaExhausted.
+        Geçici hata bekleyip denemelere rağmen sürerse aynı istek sıradaki modelle denenir.
+        """
+        self.model = self.models[0]
+        tried: set[str] = set()
         while True:
             try:
                 return self._call_model(payload, schema, bad_retries)
             except QuotaExhausted as e:
-                rest = self.models[self.models.index(self.model) + 1:]
-                if not rest:
-                    raise
                 why = "kullanılamıyor" if isinstance(e, ModelUnusable) else "günlük kotası doldu"
-                self.log(f"  {self.model} {why} → {rest[0]} modeline geçiliyor")
-                self.model = rest[0]
+                self.models.remove(self.model)
+                if not self.models:
+                    raise QuotaExhausted(f"Seçili modellerin hepsinin günlük kotası doldu (son: {e})") from e
+                self.log(f"  {self.model} {why} → {self.models[0]} modeline geçiliyor")
+                self.model = self.models[0]
+            except TransientFailure:
+                tried.add(self.model)
+                others = [m for m in self.models if m not in tried]
+                if not others:
+                    raise
+                self.log(f"  {self.model} ısrarla hata veriyor → bu istek {others[0]} ile deneniyor")
+                self.model = others[0]
 
     def _config(self, schema: dict):
         from google.genai import types
@@ -170,12 +192,14 @@ class GeminiTranslator:
         return types.GenerateContentConfig(**kw)
 
     def _call_model(self, payload: dict, schema: dict = RESPONSE_SCHEMA, bad_retries: int | None = None) -> dict:
+        """Tek modelle istek. Geçici hatada bekler (en çok 60 sn) ve `max_retries` kez yeniden dener."""
         from google.genai import errors
 
         key = "chapters" if schema is BATCH_SCHEMA else "paragraphs"
-        bad_left = self.max_retries - 1 if bad_retries is None else bad_retries
-        delay = 10.0
-        for attempt in range(self.max_retries):
+        bad_left = 2 if bad_retries is None else bad_retries
+        attempt = 0
+        while True:
+            reason, wait = "", None
             try:
                 resp = self.client.models.generate_content(
                     model=self.model, contents=json.dumps(payload, ensure_ascii=False), config=self._config(schema))
@@ -198,26 +222,33 @@ class GeminiTranslator:
                     raise ModelUnusable(f"Model bulunamadı: {self.model}") from e
                 if code == 400 and re.search(r"not (supported|enabled|available)|unsupported", str(e), re.I):
                     raise ModelUnusable(f"{self.model} bu işi desteklemiyor: {str(e)[:160]}") from e
-                if code in (400, 401, 403) and "API key" in str(e):
-                    raise TranslationError("API anahtarı geçersiz.") from e
+                if code in (400, 401, 403) and re.search(r"API.?key|permission|unauthenticated", str(e), re.I):
+                    raise FatalError(f"API anahtarı geçersiz ya da yetkisiz: {str(e)[:160]}") from e
                 if code == 429 and is_daily_quota(e):
                     raise QuotaExhausted(f"{self.model} günlük ücretsiz kotası doldu") from e
-                if code in (429, 500, 503, 504) and attempt < self.max_retries - 1:
-                    m = re.search(r"retry in ([\d.]+)s", str(e), re.I)
-                    wait = float(m.group(1)) + 1 if m else delay
-                    self.log(f"  API sınırı/yoğunluk ({code}), {wait:.0f} sn bekleniyor…")
-                    time.sleep(wait)
-                    delay = min(delay * 2, 120)
-                    continue
-                raise TranslationError(f"Gemini hatası: {e}") from e
-            except (ValueError, json.JSONDecodeError) as e:
-                if bad_left > 0:
+                if code == 400:
+                    # Kalıcı olabilecek istek hatası: bozuk yanıt gibi say, birkaç kez dene.
+                    if bad_left <= 0:
+                        raise TransientFailure(f"Gemini 400: {str(e)[:200]}") from e
                     bad_left -= 1
-                    self.log(f"  Bozuk yanıt, yeniden deneniyor ({e})")
-                    time.sleep(3)
-                    continue
-                raise TranslationError(f"Yanıt çözülemedi: {e}") from e
-        raise TranslationError("Çeviri denemeleri tükendi")
+                    reason, wait = f"istek hatası (400)", 10
+                else:
+                    m = re.search(r"retry in ([\d.]+)s", str(e), re.I)
+                    wait = float(m.group(1)) + 1 if m else None
+                    reason = f"API sınırı/yoğunluk ({code})"
+            except (ValueError, json.JSONDecodeError) as e:
+                if bad_left <= 0:
+                    raise TransientFailure(f"Yanıt çözülemedi: {e}") from e
+                bad_left -= 1
+                reason, wait = f"bozuk yanıt ({e})", 5
+            except Exception as e:  # ağ kopması, zaman aşımı vb.
+                reason = f"bağlantı hatası ({type(e).__name__})"
+            attempt += 1
+            if attempt > self.max_retries:
+                raise TransientFailure(f"{self.model}: {self.max_retries} denemede olmadı, son hata: {reason}")
+            wait = min(60.0, wait if wait is not None else 10.0 * 2 ** (attempt - 1))
+            self.log(f"  {reason} — {wait:.0f} sn bekleyip yeniden deneniyor ({attempt}/{self.max_retries})")
+            self.sleep(wait)
 
     def translate_chapter(self, ch: Chapter, glossary: dict[str, str], context: list[str]) -> tuple[Chapter, dict[str, str]]:
         """Bölümü çevirir; (çevrilmiş bölüm, yeni terimler) döndürür. `context` önceki çeviri paragraflarıdır."""
@@ -331,14 +362,24 @@ class GeminiTranslator:
                 if sum(map(len, paras)) < 0.7 * c.char_count:
                     raise ValueError(f"{c.index}. bölüm eksik çevrilmiş")
                 result.append(Chapter(c.index, (o.get("title") or c.title).strip(), c.url, paras))
-        except QuotaExhausted:
+        except (QuotaExhausted, FatalError):
             raise
         except (TranslationError, ValueError) as e:
             self.log(f"  Toplu çeviri olmadı ({e}); bölümler tek tek çevriliyor")
             self.learn(chs, ok=False)
             result, terms, ctx = [], {}, context
             for c in chs:
-                out, t = self.translate_chapter(c, {**glossary, **terms}, ctx)
+                try:
+                    out, t = self.translate_chapter(c, {**glossary, **terms}, ctx)
+                except QuotaExhausted:
+                    if result:
+                        return result, terms  # bitenler kaybolmasın; kota durumu sonraki istekte yine çıkar
+                    raise
+                except FatalError:
+                    raise
+                except TranslationError as e2:
+                    self.log(f"  {c.index}. bölüm çevrilemedi, atlanıyor ({e2})")
+                    continue
                 result.append(out)
                 terms.update(t)
                 ctx = out.paragraphs[-4:]

@@ -215,3 +215,94 @@ def test_learning_adjusts_budget_and_ratio():
     b = tr.budget
     tr.learn(chs, ok=False)
     assert tr.budget < b
+
+
+class _Resp:
+    def __init__(self, text):
+        self.text, self.usage_metadata, self.candidates = text, None, []
+
+
+def _client(behaviour):
+    """behaviour(model, n) → yanıt metni ya da fırlatılacak istisna."""
+    calls = []
+
+    class Models:
+        def generate_content(self, model, contents, config):
+            calls.append(model)
+            r = behaviour(model, len(calls))
+            if isinstance(r, Exception):
+                raise r
+            return _Resp(r)
+
+    class C:
+        models = Models()
+
+    return C(), calls
+
+
+def test_network_error_waits_max_60s_and_retries():
+    tr = _fake_translator()
+    waits = []
+    tr.sleep, tr.max_retries = waits.append, 10
+    ok = json.dumps({"title": "t", "paragraphs": ["x"], "new_terms": []})
+    tr.client, calls = _client(lambda m, n: ConnectionError("koptu") if n <= 6 else ok)
+    assert tr._call({"paragraphs": ["x"]})["paragraphs"] == ["x"]
+    assert len(calls) == 7 and max(waits) == 60 and waits[:3] == [10, 20, 40]
+
+
+def test_persistent_error_moves_request_to_next_model():
+    tr = _fake_translator()
+    tr.models, tr.sleep, tr.max_retries = ["a", "b"], lambda s: None, 2
+    ok = json.dumps({"title": "t", "paragraphs": ["x"], "new_terms": []})
+    tr.client, calls = _client(lambda m, n: TimeoutError() if m == "a" else ok)
+    assert tr._call({"paragraphs": ["x"]})["paragraphs"] == ["x"]
+    assert calls == ["a", "a", "a", "b"]
+    assert tr.models == ["a", "b"]  # geçici hata modeli listeden atmaz; sonraki istek yine "a" ile başlar
+
+
+def test_pipeline_skips_failed_group_and_continues(tmp_path: Path, monkeypatch):
+    from novel_epub import pipeline, translator
+    from novel_epub.store import BookStore
+
+    class FakeTr:
+        def __init__(self, *a, **k):
+            self.model = "sahte"
+
+        def plan_batch(self, pending, cap):
+            return pending[:1]
+
+        def translate_batch(self, chs, glossary, context):
+            if chs[0].index == 2:
+                raise translator.TransientFailure("hep hata")
+            return [Chapter(c.index, "TR", c.url, ["tr"]) for c in chs], {}
+
+    monkeypatch.setattr(translator, "GeminiTranslator", FakeTr)
+    job = pipeline.Job(pipeline.Options(url="u", translate=True))
+    store = BookStore(tmp_path, Novel(url="u", title="k", source="t"))
+    out = job._translate([Chapter(i, f"c{i}", "u", ["en"]) for i in range(1, 5)], store)
+    assert [c.title for c in out] == ["TR", "[Çevrilemedi] c2", "TR", "TR"]
+    assert job.p.report["cevrilemeyen"] == [2] and not job.p.error
+
+
+def test_cancel_interrupts_wait(tmp_path: Path, monkeypatch):
+    import pytest
+    from novel_epub import pipeline, translator
+    from novel_epub.store import BookStore
+
+    job = pipeline.Job(pipeline.Options(url="u", translate=True))
+
+    class FakeTr:
+        def __init__(self, *a, **k):
+            self.model = "sahte"
+
+        def plan_batch(self, pending, cap):
+            return pending[:1]
+
+        def translate_batch(self, chs, glossary, context):
+            job.cancel()
+            self.sleep(60)  # iptal edildiği için hemen dönmeli
+
+    monkeypatch.setattr(translator, "GeminiTranslator", FakeTr)
+    store = BookStore(tmp_path, Novel(url="u", title="k", source="t"))
+    with pytest.raises(pipeline.Cancelled):
+        job._translate([Chapter(1, "c", "u", ["en"])], store)

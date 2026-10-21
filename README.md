@@ -57,6 +57,12 @@ python -m novel_epub https://freewebnovel.com/novel/stellar-transformations --ba
   Uzun bir kitabı ücretsiz kotayla bitirmek haftalar sürer; hızlı bitirmek istersen AI Studio'da
   faturalandırmayı aç (kullandıkça öde; 680 bölümlük bir kitap kabaca 3M girdi + 5M çıktı token eder,
   güncel fiyat için AI Studio'daki fiyat sayfasına bak) ve bir bütçe sınırı koy.
+- **Hata olunca durmaz:** ağ kopması, Google yoğunluğu (503), dakikalık sınır (429) ya da bozuk yanıtta
+  en çok 60 sn bekleyip yeniden dener (10 deneme). Sürerse aynı isteği listedeki diğer modelle dener;
+  o da olmazsa o bölümleri atlar, EPUB'da "[Çevrilemedi]" başlığıyla orijinal metin olarak bırakır ve
+  devam eder (tekrar başlatınca yeniden denenir). Art arda 3 istek başarısızsa 5 dk bekler. Yalnızca
+  **seçili modellerin hepsinin günlük kotası bitince** ya da API anahtarı geçersizse durur. "Durdur"
+  bekleme sırasında da çalışır.
 - **Model:** Ayarlar → *Listele* anahtarının erişebildiği Gemini modellerini getirir; kutuya virgülle
   birden fazla model yazabilirsin (ör. `gemini-3.8-flash, gemini-3.7-flash, gemini-flash-lite-latest`). Daha edebi sonuç için bir Pro modeli seçebilirsin
   (daha yavaş, ücretsiz sınırı daha dar).
