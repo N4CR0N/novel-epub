@@ -1,0 +1,73 @@
+name: Windows uygulaması
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "novel_epub/**"
+      - "uygulama.py"
+      - "requirements.txt"
+      - "assets/**"
+      - "tests/**"
+      - ".github/workflows/windows-uygulama.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Paketleri kur
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pywebview pyinstaller pytest
+
+      - name: Testler
+        run: python -m pytest -q
+
+      - name: Exe derle
+        run: >
+          pyinstaller --noconfirm --onefile --windowed --name NovelEPUB
+          --icon assets/icon.ico
+          --add-data "novel_epub/templates;novel_epub/templates"
+          --collect-all curl_cffi --collect-all webview --collect-data certifi
+          --collect-submodules keyring --copy-metadata keyring
+          uygulama.py
+
+      - name: Öz-test (pencere açmadan)
+        shell: pwsh
+        run: |
+          $env:NOVEL_EPUB_HOME = "$env:RUNNER_TEMP\oztest"
+          New-Item -ItemType Directory -Force $env:NOVEL_EPUB_HOME | Out-Null
+          $p = Start-Process dist\NovelEPUB.exe -ArgumentList "--oz-test" -Wait -PassThru
+          Get-Content "$env:NOVEL_EPUB_HOME\oz-test.json"
+          if ($p.ExitCode -ne 0) { exit 1 }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NovelEPUB
+          path: dist/NovelEPUB.exe
+
+      - name: "Sürüm sayfasına koy (etiket: son)"
+        shell: bash
+        run: |
+          git tag -f son
+          git push -f origin son
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: son
+          name: Novel EPUB — son sürüm
+          body: |
+            Windows uygulaması. NovelEPUB.exe'yi indir ve çift tıkla (kurulum gerekmez).
+            Derleme: ${{ github.sha }}
+          files: dist/NovelEPUB.exe
+          make_latest: true

@@ -4,15 +4,27 @@ Bir web novel linki verirsin: araç bölüm listesinin tamamını alır, bölüm
 istersen Gemini ile edebi bir Türkçeye çevirir ve hepsini **tek bir EPUB** yapar. EPUB'u
 telefondaki kitap uygulamasıyla (Moon+ Reader, ReadEra, Apple Books, Google Play Kitaplar…) okursun.
 
-## Kurulum (Windows)
+## Kurulum (Windows uygulaması — önerilen)
 
-1. [Python 3.10+](https://www.python.org/downloads/) kur ("Add python.exe to PATH" kutusunu işaretle).
-2. Bu klasörde **`baslat.bat`**'a çift tıkla. İlk açılışta gerekli paketleri kurar, sonra tarayıcıda
-   arayüz açılır (`http://127.0.0.1:5000`).
-3. **Ayarlar**'ı aç, [Google AI Studio](https://aistudio.google.com/apikey)'dan aldığın ücretsiz
-   Gemini API anahtarını yapıştır, **Kaydet**. (Anahtar yalnızca bu PC'de `ayarlar.json`'da durur.)
+1. GitHub'da bu deponun **Releases** sayfasından (sağ tarafta "Novel EPUB — son sürüm") **NovelEPUB.exe**'yi indir.
+2. Çift tıkla. Kurulum yok; kendi penceresinde açılır (tarayıcı ya da siyah konsol penceresi açılmaz).
+   - İmzasız olduğu için Windows ilk seferde "Windows bilgisayarınızı korudu" diyebilir:
+     **Ek bilgi → Yine de çalıştır**.
+   - Güvenlik duvarı izin sorarsa **Özel ağlar**'a izin ver (telefondan indirme için).
+3. **Ayarlar**'a Gemini API anahtarını gir (Windows Kimlik Bilgisi Yöneticisi'nde saklanır).
 
-Linux/macOS: `./baslat.sh`
+Veriler (kitaplık, EPUB'lar, ayarlar) **Belgeler\Novel EPUB** klasöründe durur. Eski kurulumun
+`kutuphane` klasörünü oraya kopyalarsan kaldığın yerden devam eder; ya da `NovelEPUB.exe`'yi eski klasörün
+içine koy (yanında `kutuphane` varsa orayı kullanır). "Klasörü aç" düğmesi EPUB'ların olduğu klasörü açar.
+Uygulama kayıtları: `Belgeler\Novel EPUB\uygulama.log`.
+
+Exe, her `main` push'unda GitHub Actions'ta (Windows) derlenir, testlerden ve pencere açmadan bir öz-testten
+geçer, sonra Releases'e konur (`.github/workflows/windows-uygulama.yml`).
+
+### Geliştirici kurulumu (kaynak koddan)
+
+1. [Python 3.10+](https://www.python.org/downloads/) kur ("Add python.exe to PATH").
+2. `baslat.bat` (tarayıcıda açar) ya da `pip install pywebview` sonrası `python uygulama.py` (pencerede açar).
 
 ## Kullanım
 

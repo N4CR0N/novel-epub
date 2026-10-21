@@ -517,3 +517,27 @@ def test_edit_batch_gets_context_and_suspects():
                   ["önceki paragraf"])
     assert seen[0]["context"] == ["önceki paragraf"]
     assert seen[0]["chapters"][0]["possibly_untranslated"] == ["berserk"]
+
+
+def test_data_home_portable_or_documents(tmp_path: Path, monkeypatch):
+    from novel_epub import app
+
+    monkeypatch.delenv("NOVEL_EPUB_HOME", raising=False)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(app, "_documents_dir", lambda: tmp_path / "Belgeler")
+    assert app.data_home() == tmp_path / "Belgeler" / "Novel EPUB"
+    (tmp_path / "kutuphane").mkdir()  # eski kurulum klasöründen açıldıysa orası kullanılır
+    assert app.data_home() == tmp_path
+
+
+def test_open_folder_only_from_this_pc(monkeypatch):
+    from novel_epub import web
+
+    opened = []
+    monkeypatch.setattr(web.subprocess, "Popen", lambda args: opened.append(args))
+    monkeypatch.setattr(web.os, "startfile", lambda p: opened.append(p), raising=False)
+    c = web.app.test_client()
+    assert c.post("/api/open-folder", json={}, environ_base={"REMOTE_ADDR": "192.168.1.50"}).status_code == 403
+    assert c.post("/api/open-folder", json={}).status_code == 200 and opened
+    info = c.get("/api/info", environ_base={"REMOTE_ADDR": "192.168.1.50"}).get_json()
+    assert info["local"] is False and info["home"] == ""

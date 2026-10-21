@@ -60,8 +60,12 @@
   </div>
 
   <div class="card">
-    <strong>Hazır kitaplar</strong>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <strong>Hazır kitaplar</strong>
+      <span id="localBtns" hidden><button class="ghost" id="openOut">Klasörü aç</button> <button class="ghost" id="openHome">Veri klasörü</button></span>
+    </div>
     <ul class="books" id="books"></ul>
+    <div class="mut" id="phoneInfo"></div>
   </div>
 
   <div class="card">
@@ -224,7 +228,17 @@ $('reGo').onclick = async () => {
   catch (e) { $('glossMsg').textContent = e.message; }
 };
 
-loadSettings(); loadBooks(); loadLibrary();
+async function loadInfo() {
+  try {
+    const i = await api('/api/info');
+    $('localBtns').hidden = !i.local;
+    if (i.local) $('phoneInfo').textContent = `Telefondan indirmek için (aynı Wi‑Fi): ${i.phone_url} · Veriler: ${i.home}`;
+  } catch (e) {}
+}
+$('openOut').onclick = () => api('/api/open-folder', {which:'cikti'}).catch(e => alert(e.message));
+$('openHome').onclick = () => api('/api/open-folder', {which:'home'}).catch(e => alert(e.message));
+
+loadSettings(); loadBooks(); loadLibrary(); loadInfo();
 </script>
 </body>
 </html>

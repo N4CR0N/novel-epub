@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 import os
 import socket
+import subprocess
+import sys
 import threading
 import uuid
 from pathlib import Path
@@ -21,6 +23,12 @@ OUTPUT = BASE / "cikti"
 
 app = Flask(__name__)
 JOBS: dict[str, Job] = {}
+APP_MODE: dict = {}  # masaüstü uygulaması doldurur: {"port": ...}
+DONE_PHASES = ("bitti", "hata", "iptal edildi")
+
+
+def running_jobs() -> list[Job]:
+    return [j for j in JOBS.values() if j.p.phase not in DONE_PHASES]
 
 
 KEYRING_SERVICE, KEYRING_USER = "novel-epub", "gemini_api_key"
@@ -32,6 +40,11 @@ def _keyring():
         import keyring
         from keyring.backends.fail import Keyring as FailKeyring
 
+        if isinstance(keyring.get_keyring(), FailKeyring) and sys.platform == "win32":
+            # Paketlenmiş uygulamada eklenti kaydı bulunamayabilir: Windows kasasını doğrudan seç.
+            from keyring.backends.Windows import WinVaultKeyring
+
+            keyring.set_keyring(WinVaultKeyring())
         return None if isinstance(keyring.get_keyring(), FailKeyring) else keyring
     except Exception:
         return None
@@ -171,7 +184,7 @@ def job_status(job_id: str):
     return jsonify({
         "phase": p.phase, "done": p.done, "total": p.total, "title": p.title, "error": p.error, "notice": p.notice,
         "result": Path(p.result).name if p.result else "", "report": p.report, "logs": p.logs[-80:],
-        "running": p.phase not in ("bitti", "hata", "iptal edildi"),
+        "running": p.phase not in DONE_PHASES,
     })
 
 
@@ -257,6 +270,31 @@ def books():
 @app.get("/indir/<path:name>")
 def download(name: str):
     return send_from_directory(OUTPUT.resolve(), name, as_attachment=True, mimetype="application/epub+zip")
+
+
+def _is_local() -> bool:
+    return request.remote_addr in ("127.0.0.1", "::1")
+
+
+@app.get("/api/info")
+def info():
+    port = APP_MODE.get("port") or request.host.rsplit(":", 1)[-1]
+    return jsonify({"app": bool(APP_MODE), "local": _is_local(), "phone_url": f"http://{lan_ip()}:{port}",
+                    "home": str(BASE) if _is_local() else ""})
+
+
+@app.post("/api/open-folder")
+def open_folder():
+    """Çıktı (ya da veri) klasörünü Dosya Gezgini'nde açar; yalnızca bu PC'den çağrılabilir."""
+    if not _is_local():
+        abort(403)
+    target = OUTPUT if (request.get_json(silent=True) or {}).get("which") != "home" else BASE
+    target.mkdir(parents=True, exist_ok=True)
+    if sys.platform == "win32":
+        os.startfile(target)  # noqa: S606 — yerel klasör
+    else:
+        subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(target)])
+    return jsonify({"ok": True})
 
 
 def lan_ip() -> str:
