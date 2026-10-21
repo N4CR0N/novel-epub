@@ -21,11 +21,12 @@ def _write_json(path: Path, data) -> None:
 
 
 class BookStore:
-    def __init__(self, root: Path, novel: Novel):
-        self.dir = Path(root) / f"{novel.source}-{slugify(novel.title)}"
+    def __init__(self, root: Path, novel: Novel | None = None, dirname: str | None = None):
+        self.dir = Path(root) / (dirname or f"{novel.source}-{slugify(novel.title)}")
         (self.dir / "ham").mkdir(parents=True, exist_ok=True)
         (self.dir / "ceviri").mkdir(parents=True, exist_ok=True)
-        _write_json(self.dir / "kitap.json", novel.to_dict())
+        if novel is not None:
+            _write_json(self.dir / "kitap.json", novel.to_dict())
 
     def _p(self, kind: str, index: int) -> Path:
         return self.dir / kind / f"{index:05d}.json"
@@ -61,3 +62,28 @@ class BookStore:
 
     def save_glossary(self, g: dict[str, str]) -> None:
         _write_json(self.glossary_path, dict(sorted(g.items(), key=lambda kv: kv[0].lower())))
+
+    # Hikâye hafızası: kısa özet + karakter notları; her istekte modele gider, her yanıtla güncellenir.
+    @property
+    def memory_path(self) -> Path:
+        return self.dir / "hafiza.json"
+
+    def load_memory(self) -> dict:
+        p = self.memory_path
+        m = json.loads(p.read_text("utf-8")) if p.exists() else {}
+        return {"summary": m.get("summary", ""), "characters": dict(m.get("characters", {}))}
+
+    def save_memory(self, m: dict) -> None:
+        _write_json(self.memory_path, m)
+
+    def drop_tr(self, index: int) -> bool:
+        p = self._p("ceviri", index)
+        if p.exists():
+            p.unlink()
+            return True
+        return False
+
+    def counts(self) -> dict:
+        tr = list((self.dir / "ceviri").glob("*.json"))
+        edited = sum(1 for p in tr if '"edited": true' in p.read_text("utf-8"))
+        return {"ham": len(list((self.dir / "ham").glob("*.json"))), "ceviri": len(tr), "redakte": edited}

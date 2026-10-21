@@ -17,13 +17,15 @@ class Chapter:
     url: str
     paragraphs: list[str]
     next_url: str | None = None
+    edited: bool = False  # redaksiyon turundan geçti mi (yalnız çeviriler için)
 
     def to_dict(self) -> dict:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, d: dict) -> "Chapter":
-        return cls(**{k: d.get(k) for k in ("index", "title", "url", "paragraphs", "next_url")})
+        return cls(**{k: d.get(k) for k in ("index", "title", "url", "paragraphs", "next_url")},
+                   edited=bool(d.get("edited")))
 
     @property
     def char_count(self) -> int:

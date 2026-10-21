@@ -57,6 +57,15 @@ python -m novel_epub https://freewebnovel.com/novel/stellar-transformations --ba
   Uzun bir kitabı ücretsiz kotayla bitirmek haftalar sürer; hızlı bitirmek istersen AI Studio'da
   faturalandırmayı aç (kullandıkça öde; 680 bölümlük bir kitap kabaca 3M girdi + 5M çıktı token eder,
   güncel fiyat için AI Studio'daki fiyat sayfasına bak) ve bir bütçe sınırı koy.
+- **Kalite özellikleri:**
+  - *Redaksiyon turu* (ana ekranda kutucuk, varsayılan açık): her paket çevrildikten sonra model kaynakla
+    taslağı yan yana okuyup editör gibi düzeltir (anlam, atlanmış cümle, akıcılık, hitap tutarlılığı, imla).
+    İstek sayısını ikiye katlar. Redakte edilmemiş eski çeviriler sonraki çalıştırmada redakte edilir.
+  - *Hikâye hafızası* (`kutuphane/<kitap>/hafiza.json`): kısa olay özeti + karakter notları (kim kimdir,
+    kime nasıl hitap eder). Her istekte metinde adı geçen karakterlerin notları modele gider, her yanıtla güncellenir.
+  - *Düşünme seviyesi* (Ayarlar): düşük / orta (varsayılan) / yüksek.
+  - *Sözlük kontrolü*: "ilk 20 bölümden sonra dur" kutucuğu; sonra **Kitaplığım · Sözlük · Hafıza**
+    bölümünden sözlüğü düzelt, ilgili bölümleri "Yeniden çevrilecek" ile işaretle ve aynı linkle Başlat.
 - **Hata olunca durmaz:** ağ kopması, Google yoğunluğu (503), dakikalık sınır (429) ya da bozuk yanıtta
   en çok 60 sn bekleyip yeniden dener (10 deneme). Sürerse aynı isteği listedeki diğer modelle dener;
   o da olmazsa o bölümleri atlar, EPUB'da "[Çevrilemedi]" başlığıyla orijinal metin olarak bırakır ve

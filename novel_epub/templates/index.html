@@ -13,7 +13,7 @@
   h1 { font-size:1.5rem; margin:4px 0 16px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:14px; }
   label { display:block; font-size:.88rem; color:var(--mut); margin:10px 0 4px; }
-  input[type=text], input[type=number], input[type=password], select { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); font-size:1rem; }
+  input[type=text], input[type=number], input[type=password], select, textarea { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); font-size:1rem; }
   .row { display:flex; gap:10px; } .row > * { flex:1; }
   .check { display:flex; align-items:center; gap:8px; margin-top:12px; color:var(--fg); font-size:1rem; }
   button { padding:11px 16px; border:0; border-radius:8px; background:var(--acc); color:#fff; font-size:1rem; cursor:pointer; }
@@ -42,6 +42,8 @@
       <div><label for="end">Son bölüm</label><input id="end" type="number" min="1" placeholder="sonuna kadar"></div>
     </div>
     <label class="check"><input id="translate" type="checkbox" checked> Türkçeye çevir (Gemini)</label>
+    <label class="check"><input id="edit" type="checkbox" checked> Redaksiyon turu (çeviriyi editör gözüyle ikinci kez düzeltir; 2× istek)</label>
+    <label class="check"><input id="review" type="checkbox"> Yeni kitapta ilk 20 bölümden sonra dur (sözlüğü kontrol etmek için)</label>
     <div class="actions">
       <button id="go">Başlat</button>
       <button id="stop" class="ghost" disabled>Durdur</button>
@@ -63,6 +65,25 @@
   </div>
 
   <div class="card">
+    <details id="libCard">
+      <summary>Kitaplığım · Sözlük · Hafıza</summary>
+      <label for="libSel">Kitap</label>
+      <select id="libSel"></select>
+      <div class="mut" id="libInfo"></div>
+      <label for="gloss">Terim sözlüğü (kaynak → Türkçe karşılık). Beğenmediğin karşılığı düzelt, Kaydet.</label>
+      <textarea id="gloss" rows="12" spellcheck="false"></textarea>
+      <div class="actions"><button id="saveGloss">Sözlüğü kaydet</button><span class="mut" id="glossMsg"></span></div>
+      <label>Seçili bölümleri yeniden çevir (çevirileri silinir; sonra aynı linkle Başlat)</label>
+      <div class="row">
+        <div><input id="reA" type="number" min="1" placeholder="ilk"></div>
+        <div><input id="reB" type="number" min="1" placeholder="son"></div>
+        <button class="ghost" id="reGo" style="flex:0 0 auto">Yeniden çevrilecek</button>
+      </div>
+      <details style="margin-top:12px"><summary class="mut">Hikâye hafızası (modelin tuttuğu özet ve karakter notları)</summary><pre id="mem"></pre></details>
+    </details>
+  </div>
+
+  <div class="card">
     <details id="settings">
       <summary>Ayarlar</summary>
       <label for="key">Gemini API anahtarı <span class="mut" id="keyHint"></span></label>
@@ -76,6 +97,8 @@
       </div>
       <label for="batch">Bir istekte en fazla kaç bölüm (0 = otomatik: bölüm uzunluğuna göre)</label>
       <input id="batch" type="number" min="0" max="12">
+      <label for="thinking">Düşünme seviyesi (yüksek = daha özenli, daha yavaş, yanıt sınırından daha çok yer)</label>
+      <select id="thinking"><option value="low">Düşük</option><option value="medium">Orta</option><option value="high">Yüksek</option></select>
       <div class="actions"><button id="saveSet">Kaydet</button><span class="mut" id="setMsg"></span></div>
     </details>
   </div>
@@ -94,14 +117,14 @@ async function api(path, body) {
 
 async function loadSettings() {
   const s = await api('/api/settings');
-  $('model').value = s.model || ''; $('delay').value = s.delay; $('workers').value = s.workers; $('batch').value = s.batch ?? 0;
+  $('model').value = s.model || ''; $('delay').value = s.delay; $('workers').value = s.workers; $('batch').value = s.batch ?? 0; $('thinking').value = s.thinking || 'medium';
   $('keyHint').textContent = s.has_key ? '(kayıtlı ' + s.key_hint + ')' : '(kayıtlı değil)';
   if (!s.has_key) $('settings').open = true;
 }
 
 $('saveSet').onclick = async () => {
   try {
-    await api('/api/settings', {api_key:$('key').value, model:$('model').value, delay:$('delay').value, workers:$('workers').value, batch:$('batch').value});
+    await api('/api/settings', {api_key:$('key').value, model:$('model').value, delay:$('delay').value, workers:$('workers').value, batch:$('batch').value, thinking:$('thinking').value});
     $('key').value = ''; $('setMsg').textContent = 'Kaydedildi ✓'; loadSettings();
   } catch (e) { $('setMsg').textContent = e.message; }
 };
@@ -122,7 +145,7 @@ async function loadBooks() {
 
 $('go').onclick = async () => {
   try {
-    const d = await api('/api/jobs', {url:$('url').value, start:$('start').value, end:$('end').value, translate:$('translate').checked});
+    const d = await api('/api/jobs', {url:$('url').value, start:$('start').value, end:$('end').value, translate:$('translate').checked, edit:$('edit').checked, review:$('review').checked});
     jobId = d.id; $('jobCard').hidden = false; $('jResult').innerHTML = '';
     $('go').disabled = true; $('stop').disabled = false;
     clearInterval(timer); timer = setInterval(poll, 1500); poll();
@@ -144,12 +167,44 @@ async function poll() {
   if (!s.running) {
     clearInterval(timer); $('go').disabled = false; $('stop').disabled = true;
     if (s.result) $('jResult').innerHTML = `<p class="ok">Hazır: <a href="/indir/${encodeURIComponent(s.result)}">${esc(s.result)}</a></p>`;
+    if (s.notice) $('jResult').innerHTML += `<p>${esc(s.notice)}</p>`;
     if (s.error) $('jResult').innerHTML += `<p class="err">${esc(s.error)}</p>`;
-    loadBooks();
+    loadBooks(); loadLibrary();
   }
 }
 
-loadSettings(); loadBooks();
+let lib = [];
+async function loadLibrary() {
+  lib = await api('/api/library');
+  const cur = $('libSel').value;
+  $('libSel').innerHTML = lib.map(b => `<option value="${esc(b.id)}">${esc(b.title)}</option>`).join('') || '<option value="">Henüz kitap yok</option>';
+  if (cur && lib.some(b => b.id === cur)) $('libSel').value = cur;
+  showBook();
+}
+async function showBook() {
+  const b = lib.find(x => x.id === $('libSel').value);
+  if (!b) { $('libInfo').textContent = ''; $('gloss').value = ''; $('mem').textContent = ''; return; }
+  $('libInfo').textContent = `${b.ham} bölüm indi · ${b.ceviri} çevrildi · ${b.redakte} redakte · ${b.terms} terim`;
+  const d = await api(`/api/library/${encodeURIComponent(b.id)}/glossary`);
+  $('gloss').value = JSON.stringify(d.glossary, null, 1);
+  const chars = Object.entries(d.memory.characters || {}).map(([n, v]) => `• ${n}: ${v}`).join('\n');
+  $('mem').textContent = (d.memory.summary || '(henüz özet yok)') + (chars ? '\n\nKarakterler:\n' + chars : '');
+}
+$('libSel').onchange = showBook;
+$('saveGloss').onclick = async () => {
+  let g;
+  try { g = JSON.parse($('gloss').value || '{}'); } catch (e) { $('glossMsg').textContent = 'JSON bozuk: ' + e.message; return; }
+  try { const d = await api(`/api/library/${encodeURIComponent($('libSel').value)}/glossary`, {glossary:g}); $('glossMsg').textContent = `Kaydedildi ✓ (${d.terms} terim)`; loadLibrary(); }
+  catch (e) { $('glossMsg').textContent = e.message; }
+};
+$('reGo').onclick = async () => {
+  if (!confirm(`${$('reA').value}–${$('reB').value}. bölümlerin çevirisi silinecek; sonra Başlat ile yeniden çevrilir. Devam?`)) return;
+  try { const d = await api(`/api/library/${encodeURIComponent($('libSel').value)}/retranslate`, {start:$('reA').value, end:$('reB').value});
+        $('glossMsg').textContent = `${d.removed} bölümün çevirisi silindi. Şimdi aynı linkle Başlat.`; loadLibrary(); }
+  catch (e) { $('glossMsg').textContent = e.message; }
+};
+
+loadSettings(); loadBooks(); loadLibrary();
 </script>
 </body>
 </html>

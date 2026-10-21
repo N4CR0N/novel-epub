@@ -53,10 +53,10 @@ def test_chunk_and_glossary():
 
 def test_translate_with_fake_model():
     tr = GeminiTranslator.__new__(GeminiTranslator)
-    tr.model, tr.target, tr.log, tr.max_retries = "sahte", "Türkçe", print, 1
+    tr._init_state("sahte", max_retries=1)
     seen = []
 
-    def fake_call(payload):
+    def fake_call(payload, *a, **k):
         seen.append(payload)
         return {"title": "Bölüm 7 - Kapı", "paragraphs": [f"TR:{p}" for p in payload["paragraphs"]],
                 "new_terms": [{"source": "Gate", "target": "Kapı"}]}
@@ -102,10 +102,10 @@ def test_model_fallback_on_quota():
     from novel_epub.translator import QuotaExhausted
 
     tr = GeminiTranslator.__new__(GeminiTranslator)
-    tr.models, tr.model, tr.log = ["m1", "m2"], "m1", print
+    tr._init_state("m1, m2")
     used = []
 
-    def fake_model_call(payload, schema=None, bad_retries=None):
+    def fake_model_call(payload, schema=None, bad_retries=None, system=None):
         used.append(tr.model)
         if tr.model == "m1":
             raise QuotaExhausted("dolu")
@@ -134,7 +134,7 @@ def test_partial_epub_when_quota_runs_out(tmp_path: Path, monkeypatch):
             return [Chapter(c.index, "TR " + c.title, c.url, ["tr"]) for c in chs], {}
 
     monkeypatch.setattr(translator, "GeminiTranslator", FakeTr)
-    job = pipeline.Job(pipeline.Options(url="u", translate=True, batch=2))
+    job = pipeline.Job(pipeline.Options(url="u", translate=True, batch=2, edit=False))
     store = BookStore(tmp_path, Novel(url="u", title="k", source="t"))
     chs = [Chapter(i, f"c{i}", "u", ["en"]) for i in range(1, 6)]
     out = job._translate(chs, store)
@@ -143,9 +143,8 @@ def test_partial_epub_when_quota_runs_out(tmp_path: Path, monkeypatch):
 
 def _fake_translator():
     tr = GeminiTranslator.__new__(GeminiTranslator)
-    tr.models, tr.model, tr.target, tr.log, tr.max_retries, tr.thinking = ["m"], "m", "Türkçe", print, 1, False
-    from novel_epub.translator import START_BUDGET, START_RATIO
-    tr.budget, tr.ratio, tr.thought_tokens, tr.last_usage = START_BUDGET, dict(START_RATIO), 2000.0, None
+    tr._init_state("m", max_retries=1)
+    tr.thinking = False
     return tr
 
 
@@ -153,7 +152,7 @@ def test_batch_translation_one_request():
     tr = _fake_translator()
     calls = []
 
-    def fake(payload, schema=None, bad_retries=None):
+    def fake(payload, schema=None, bad_retries=None, system=None):
         calls.append(payload)
         return {"chapters": [{"title": "T" + c["chapter_title"], "paragraphs": [p.upper() for p in c["paragraphs"]]}
                              for c in payload["chapters"]], "new_terms": [{"source": "Qi", "target": "Qi"}]}
@@ -168,7 +167,7 @@ def test_batch_translation_one_request():
 def test_batch_falls_back_to_single_on_short_answer():
     tr = _fake_translator()
 
-    def fake(payload, schema=None, bad_retries=None):
+    def fake(payload, schema=None, bad_retries=None, system=None):
         if "chapters" in payload:  # model bir bölümü atladı
             return {"chapters": [{"title": "x", "paragraphs": ["abc"]}], "new_terms": []}
         return {"title": "tek", "paragraphs": payload["paragraphs"], "new_terms": []}
@@ -184,7 +183,7 @@ def test_unknown_model_is_skipped():
     tr = _fake_translator()
     tr.models, tr.model = ["yok", "var"], "yok"
 
-    def fake(payload, schema=None, bad_retries=None):
+    def fake(payload, schema=None, bad_retries=None, system=None):
         if tr.model == "yok":
             raise ModelUnusable("404")
         return {"title": "t", "paragraphs": payload["paragraphs"], "new_terms": []}
@@ -277,7 +276,7 @@ def test_pipeline_skips_failed_group_and_continues(tmp_path: Path, monkeypatch):
             return [Chapter(c.index, "TR", c.url, ["tr"]) for c in chs], {}
 
     monkeypatch.setattr(translator, "GeminiTranslator", FakeTr)
-    job = pipeline.Job(pipeline.Options(url="u", translate=True))
+    job = pipeline.Job(pipeline.Options(url="u", translate=True, edit=False))
     store = BookStore(tmp_path, Novel(url="u", title="k", source="t"))
     out = job._translate([Chapter(i, f"c{i}", "u", ["en"]) for i in range(1, 5)], store)
     assert [c.title for c in out] == ["TR", "[Çevrilemedi] c2", "TR", "TR"]
@@ -306,3 +305,68 @@ def test_cancel_interrupts_wait(tmp_path: Path, monkeypatch):
     store = BookStore(tmp_path, Novel(url="u", title="k", source="t"))
     with pytest.raises(pipeline.Cancelled):
         job._translate([Chapter(1, "c", "u", ["en"])], store)
+
+
+
+def test_memory_goes_into_payload_and_updates():
+    tr = _fake_translator()
+    tr.memory = {"summary": "Qin Yu yola çıktı.", "characters": {"Qin Yu": "ana karakter", "Lin Mengmeng": "x"}}
+    seen = []
+
+    def fake(payload, schema=None, bad_retries=None, system=None):
+        seen.append(payload)
+        return {"title": "t", "paragraphs": payload["paragraphs"], "new_terms": [],
+                "story_summary": "Qin Yu şehre vardı.", "character_notes": [{"name": "Hou Fei", "note": "maymun"}]}
+
+    tr._call_model = fake
+    tr.translate_chapter(Chapter(1, "c", "u", ["Qin Yu walked."]), {}, [])
+    assert seen[0]["story_so_far"] == "Qin Yu yola çıktı." and list(seen[0]["characters"]) == ["Qin Yu"]
+    assert tr.memory["summary"] == "Qin Yu şehre vardı." and tr.memory["characters"]["Hou Fei"] == "maymun"
+
+
+def test_edit_batch_keeps_draft_when_editor_shortens():
+    from novel_epub.translator import EDIT_PROMPT
+
+    tr = _fake_translator()
+    systems = []
+
+    def fake(payload, schema=None, bad_retries=None, system=None):
+        systems.append(system)
+        a, b = payload["chapters"]
+        return {"chapters": [{"title": "Düzeltilmiş", "paragraphs": [p + "!" for p in a["draft"]]},
+                             {"title": "kısa", "paragraphs": ["x"]}]}
+
+    tr._call_model = fake
+    src = [Chapter(1, "a", "u", ["en1", "en2"]), Chapter(2, "b", "u", ["en3", "en4"])]
+    drafts = [Chapter(1, "A", "u", ["taslak bir", "taslak iki"]), Chapter(2, "B", "u", ["taslak üç", "taslak dört"])]
+    out = tr.edit_batch(src, drafts, {})
+    assert systems == [EDIT_PROMPT]
+    assert out[0].edited and out[0].paragraphs == ["taslak bir!", "taslak iki!"]
+    assert not out[1].edited and out[1].paragraphs == drafts[1].paragraphs
+
+
+def test_pipeline_edits_and_pauses_for_review(tmp_path: Path, monkeypatch):
+    from novel_epub import pipeline, translator
+    from novel_epub.store import BookStore
+
+    class FakeTr:
+        def __init__(self, *a, **k):
+            self.model, self.memory = "sahte", {"summary": "", "characters": {}}
+
+        def plan_batch(self, pending, cap):
+            return pending[:2]
+
+        def translate_batch(self, chs, glossary, context):
+            self.memory["summary"] = f"{chs[-1].index}. bölüme kadar"
+            return [Chapter(c.index, "TR", c.url, ["tr"]) for c in chs], {}
+
+        def edit_batch(self, sources, drafts, glossary):
+            return [Chapter(d.index, "RED", d.url, d.paragraphs, edited=True) for d in drafts]
+
+    monkeypatch.setattr(translator, "GeminiTranslator", FakeTr)
+    job = pipeline.Job(pipeline.Options(url="u", translate=True, review_after=4))
+    store = BookStore(tmp_path, Novel(url="u", title="k", source="t"))
+    out = job._translate([Chapter(i, f"c{i}", "u", ["en"]) for i in range(1, 9)], store)
+    assert [c.title for c in out] == ["RED"] * 4 and all(c.edited for c in out)
+    assert "İlk 4 bölüm" in job.p.notice and store.load_memory()["summary"] == "4. bölüme kadar"
+    assert store.counts() == {"ham": 0, "ceviri": 4, "redakte": 4}

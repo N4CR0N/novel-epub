@@ -11,7 +11,8 @@ from pathlib import Path
 from flask import Flask, abort, jsonify, render_template, request, send_from_directory
 
 from .pipeline import Job, Options
-from .translator import DEFAULT_MODEL, DEFAULT_MODELS, MAX_AUTO_CHAPTERS
+from .store import BookStore
+from .translator import DEFAULT_MODEL, DEFAULT_MODELS, MAX_AUTO_CHAPTERS, THINKING_LEVELS
 
 BASE = Path(os.environ.get("NOVEL_EPUB_HOME", Path.cwd()))
 SETTINGS_PATH = BASE / "ayarlar.json"
@@ -24,7 +25,7 @@ JOBS: dict[str, Job] = {}
 
 def load_settings() -> dict:
     s = {"api_key": os.environ.get("GEMINI_API_KEY", ""), "model": os.environ.get("GEMINI_MODEL", DEFAULT_MODELS),
-         "delay": 0.7, "workers": 3, "batch": 0}
+         "delay": 0.7, "workers": 3, "batch": 0, "thinking": "medium"}
     if SETTINGS_PATH.exists():
         s.update(json.loads(SETTINGS_PATH.read_text("utf-8")))
     if s.get("batch") == 3 and not s.get("batch_set"):  # eski sabit varsayılan → otomatik
@@ -59,6 +60,8 @@ def post_settings():
     for k in ("model",):
         if data.get(k):
             s[k] = data[k].strip()
+    if data.get("thinking") in THINKING_LEVELS:
+        s["thinking"] = data["thinking"]
     for k, typ in (("delay", float), ("workers", int), ("batch", int)):
         if data.get(k) not in (None, ""):
             s[k] = typ(data[k])
@@ -97,6 +100,9 @@ def start_job():
         delay=float(s.get("delay", 0.7)),
         workers=int(s.get("workers", 3)),
         batch=max(0, min(MAX_AUTO_CHAPTERS, int(s.get("batch", 0)))),
+        edit=bool(data.get("edit", True)),
+        thinking=s.get("thinking", "medium"),
+        review_after=20 if data.get("review") else 0,
         library=LIBRARY,
         output=OUTPUT,
     )
@@ -114,7 +120,7 @@ def job_status(job_id: str):
     job = JOBS.get(job_id) or abort(404)
     p = job.p
     return jsonify({
-        "phase": p.phase, "done": p.done, "total": p.total, "title": p.title, "error": p.error,
+        "phase": p.phase, "done": p.done, "total": p.total, "title": p.title, "error": p.error, "notice": p.notice,
         "result": Path(p.result).name if p.result else "", "report": p.report, "logs": p.logs[-80:],
         "running": p.phase not in ("bitti", "hata", "iptal edildi"),
     })
@@ -124,6 +130,53 @@ def job_status(job_id: str):
 def job_cancel(job_id: str):
     (JOBS.get(job_id) or abort(404)).cancel()
     return jsonify({"ok": True})
+
+
+def _book(name: str) -> BookStore:
+    """Kitaplıktaki bir kitap klasörü (yalnızca var olan klasör adları kabul edilir)."""
+    names = {d.name for d in LIBRARY.iterdir() if d.is_dir()} if LIBRARY.exists() else set()
+    if name not in names:
+        abort(404)
+    return BookStore(LIBRARY, dirname=name)
+
+
+@app.get("/api/library")
+def library():
+    out = []
+    for d in sorted(LIBRARY.glob("*/kitap.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        meta = json.loads(d.read_text("utf-8"))
+        st = BookStore(LIBRARY, dirname=d.parent.name)
+        out.append({"id": d.parent.name, "title": meta.get("title", d.parent.name), "url": meta.get("url", ""),
+                    **st.counts(), "terms": len(st.load_glossary())})
+    return jsonify(out)
+
+
+@app.get("/api/library/<name>/glossary")
+def get_glossary(name: str):
+    st = _book(name)
+    return jsonify({"glossary": st.load_glossary(), "memory": st.load_memory()})
+
+
+@app.post("/api/library/<name>/glossary")
+def put_glossary(name: str):
+    st = _book(name)
+    g = request.get_json(force=True).get("glossary")
+    if not isinstance(g, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in g.items()):
+        return jsonify({"error": 'Sözlük {"kaynak": "karşılık", ...} biçiminde olmalı'}), 400
+    st.save_glossary({k.strip(): v.strip() for k, v in g.items() if k.strip() and v.strip()})
+    return jsonify({"ok": True, "terms": len(st.load_glossary())})
+
+
+@app.post("/api/library/<name>/retranslate")
+def retranslate(name: str):
+    st = _book(name)
+    data = request.get_json(force=True)
+    try:
+        a, b = int(data["start"]), int(data["end"])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"error": "Bölüm aralığı gir"}), 400
+    n = sum(st.drop_tr(i) for i in range(a, b + 1))
+    return jsonify({"ok": True, "removed": n})
 
 
 @app.get("/api/books")
