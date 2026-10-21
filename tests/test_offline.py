@@ -653,3 +653,45 @@ def test_upload_endpoint_rejects_and_accepts(tmp_path: Path, monkeypatch):
     txt = "\n\n".join(["Chapter 1", *_lorem(2, "a"), "Chapter 2", *_lorem(2, "b")]).encode()
     ok = c.post("/api/upload", data={"file": (io.BytesIO(txt), "kitap.txt")}, content_type="multipart/form-data").get_json()
     assert ok["chapters"] == 2 and (tmp_path / "up" / ok["id"]).exists()
+
+
+def test_pull_android_with_fake_adb(tmp_path: Path):
+    import sqlite3
+
+    import pytest
+
+    from novel_epub import history
+
+    class R:
+        def __init__(self, out=b"", code=0):
+            self.stdout, self.returncode = out, code
+
+    db = tmp_path / "src.sqlite"
+    con = sqlite3.connect(db)
+    con.execute("create table urls(url text, title text, visit_count int)")
+    con.execute("insert into urls values('https://freewebnovel.com/novel/a/chapter-3','A3',2)")
+    con.commit()
+    con.close()
+    history_bytes = db.read_bytes()
+
+    def run(args, timeout=120):
+        cmd = " ".join(args)
+        if args[-1] == "devices":
+            return R(b"List of devices attached\nABC123\tdevice\n")
+        if "su -c id" in cmd:
+            return R(b"uid=0(root)")
+        if "com.brave.browser/app_chrome/Default/History'" in cmd:
+            return R(history_bytes)
+        return R(b"cat: No such file or directory", 1)
+
+    dirs = history.pull_android("adb", tmp_path / "tel", run)
+    assert list(dirs) == ["Brave (telefon)"]
+    r = history.scan(lambda u: "freewebnovel", dirs)
+    assert r["sites"][0]["domain"] == "freewebnovel.com" and r["browsers"] == ["Brave (telefon)/Default"]
+
+    with pytest.raises(history.PhoneError, match="izin"):
+        history.pull_android("adb", tmp_path / "x", lambda a, timeout=0: R(b"List\nABC\tunauthorized\n"))
+    with pytest.raises(history.PhoneError, match="Root"):
+        history.pull_android("adb", tmp_path / "x", lambda a, timeout=0: R(b"List\nABC\tdevice\n") if a[-1] == "devices" else R(b"", 1))
+    with pytest.raises(history.PhoneError, match="görünmüyor"):
+        history.pull_android("adb", tmp_path / "x", lambda a, timeout=0: R(b"List of devices attached\n"))

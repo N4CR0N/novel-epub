@@ -57,6 +57,9 @@ python -m novel_epub https://freewebnovel.com/novel/stellar-transformations --ba
 - **Okuduğum siteleri bul:** bu PC'deki Brave/Chrome/Edge geçmişi ve yer işaretlerinden novel/bölüm adreslerini
   site site sayar, hangisinin özel desteği olduğunu gösterir (yalnız yerelde okunur). Telefondaki geçmiş için iki
   cihazda da Brave Sync'te "Geçmiş" ve "Yer işaretleri" açık olmalı.
+  **Root'lu Android telefon:** "📱 Telefondan oku" düğmesi telefonu USB ile okur: Google'ın resmî `adb` aracını
+  (yoksa onayınla indirir), telefonda USB hata ayıklama ve root (`su`) iznini kullanarak Brave/Chrome/Edge'in
+  `History`, `History-wal` ve `Bookmarks` dosyalarını `Veri klasörü\telefon-gecmis\` altına kopyalar ve tarar.
 
 ## Neler yapıyor
 

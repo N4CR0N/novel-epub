@@ -100,7 +100,11 @@
       <p class="mut">Bu bilgisayardaki tarayıcı geçmişinden ve yer işaretlerinden novel/bölüm adresi gibi görünenleri site
         site sayar. Yalnızca burada okunur, hiçbir yere gönderilmez. Telefondaki geçmiş için iki cihazda da Brave Sync'te
         "Geçmiş" (ve "Yer işaretleri") açık olmalı. Okunamazsa tarayıcıyı kapatıp tekrar dene.</p>
-      <div class="actions"><button id="histGo" type="button">Tara</button><span class="mut" id="histMsg"></span></div>
+      <div class="actions"><button id="histGo" type="button">Bu PC'yi tara</button>
+        <button id="phoneGo" class="ghost" type="button">📱 Telefondan oku (root, USB)</button><span class="mut" id="histMsg"></span></div>
+      <p class="mut" id="phoneHelp" hidden>Telefonda: Ayarlar → Telefon hakkında → Yapım numarasına 7 kez dokun → Geliştirici seçenekleri →
+        <b>USB hata ayıklama</b>'yı aç. Kabloyu tak; telefonda "USB hata ayıklamaya izin verilsin mi?" çıkarsa <b>İzin ver</b>.
+        Magisk/süper kullanıcı penceresi çıkarsa <b>Shell</b>'e izin ver. Sonra bu düğmeye tekrar bas.</p>
       <table class="sites" id="histTable" hidden><thead><tr><th>Site</th><th>Adres / roman</th><th>Destek</th><th></th></tr></thead><tbody></tbody></table>
       <label for="histText" id="histTextLbl" hidden>Desteklenmeyenler (eklemem için bana bu listeyi gönderebilirsin)</label>
       <textarea id="histText" rows="5" readonly hidden></textarea>
@@ -240,26 +244,49 @@ async function loadLangs(def) {
 }
 $('lang').onchange = () => { api('/api/settings', {lang:$('lang').value}).catch(() => {}); loadLibrary(); };
 
+$('phoneGo').onclick = async () => {
+  $('histMsg').textContent = 'Telefon aranıyor…';
+  try {
+    let st = await api('/api/phone/status');
+    if (!st.adb) {
+      if (!confirm("Telefona bağlanmak için Google'ın resmî aracı adb (platform-tools, ~7 MB) gerekiyor. İndirilsin mi?")) { $('histMsg').textContent = ''; return; }
+      $('histMsg').textContent = 'adb indiriliyor…';
+      await api('/api/phone/adb-download', {});
+      st = await api('/api/phone/status');
+    }
+    const ok = (st.devices || []).filter(d => d.state === 'device');
+    if (!ok.length) {
+      $('phoneHelp').hidden = false;
+      $('histMsg').textContent = (st.devices || []).some(d => d.state === 'unauthorized')
+        ? 'Telefon izin bekliyor: telefon ekranında "İzin ver"e dokun, sonra tekrar bas.' : 'Telefon görünmüyor; aşağıdaki adımlara bak.';
+      return;
+    }
+    $('histMsg').textContent = 'Telefondan kopyalanıyor (root izni istenebilir; büyük geçmişte biraz sürer)…';
+    showSites(await api('/api/phone/scan', {}));
+  } catch (e) { $('phoneHelp').hidden = false; $('histMsg').textContent = '✗ ' + e.message; }
+};
+
 $('histGo').onclick = async () => {
   $('histMsg').textContent = 'Taranıyor…';
-  try {
-    const d = await api('/api/history-scan');
-    $('histMsg').textContent = (d.browsers.length ? 'Okunan: ' + d.browsers.join(', ') : '') + (d.error ? ' · ' + d.error : '')
-      + ` · ${d.sites.length} site`;
-    const body = $('histTable').querySelector('tbody');
-    body.innerHTML = d.sites.map((x, i) => `<tr><td>${esc(x.domain)}<div class="mut">${esc(x.sample_title)}</div></td>`
-      + `<td>${x.urls}${x.bookmarks ? ` (${x.bookmarks} yer işareti)` : ''} / ${x.novels}</td>`
-      + `<td>${x.supported ? `<span class="tag ok">özel: ${esc(x.supported)}</span>` : '<span class="tag">genel</span>'}</td>`
-      + `<td><button class="ghost" data-i="${i}" type="button">Dene</button></td></tr>`).join('');
-    $('histTable').hidden = !d.sites.length;
-    body.querySelectorAll('button[data-i]').forEach(btn => btn.onclick = () => {
-      setMode('site'); $('url').value = d.sites[+btn.dataset.i].sample_url; $('testSite').click(); window.scrollTo(0, 0);
-    });
-    const un = d.sites.filter(x => !x.supported);
-    $('histText').value = un.map(x => `${x.domain} — ${x.sample_url}`).join('\n');
-    $('histText').hidden = $('histTextLbl').hidden = !un.length;
-  } catch (e) { $('histMsg').textContent = '✗ ' + e.message; }
+  try { showSites(await api('/api/history-scan')); } catch (e) { $('histMsg').textContent = '✗ ' + e.message; }
 };
+
+function showSites(d) {
+  $('histMsg').textContent = (d.browsers.length ? 'Okunan: ' + d.browsers.join(', ') : '') + (d.error ? ' · ' + d.error : '')
+    + ` · ${d.sites.length} site`;
+  const body = $('histTable').querySelector('tbody');
+  body.innerHTML = d.sites.map((x, i) => `<tr><td>${esc(x.domain)}<div class="mut">${esc(x.sample_title)}</div></td>`
+    + `<td>${x.urls}${x.bookmarks ? ` (${x.bookmarks} yer işareti)` : ''} / ${x.novels}</td>`
+    + `<td>${x.supported ? `<span class="tag ok">özel: ${esc(x.supported)}</span>` : '<span class="tag">genel</span>'}</td>`
+    + `<td><button class="ghost" data-i="${i}" type="button">Dene</button></td></tr>`).join('');
+  $('histTable').hidden = !d.sites.length;
+  body.querySelectorAll('button[data-i]').forEach(btn => btn.onclick = () => {
+    setMode('site'); $('url').value = d.sites[+btn.dataset.i].sample_url; $('testSite').click(); window.scrollTo(0, 0);
+  });
+  const un = d.sites.filter(x => !x.supported);
+  $('histText').value = un.map(x => `${x.domain} — ${x.sample_url}`).join('\n');
+  $('histText').hidden = $('histTextLbl').hidden = !un.length;
+}
 
 $('go').onclick = async () => {
   try {

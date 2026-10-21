@@ -209,9 +209,60 @@ def history_scan():
     if not _is_local():
         abort(403)
     from .history import scan
+
+    return jsonify(scan(_supported))
+
+
+def _supported(u: str):
     from .sources import SOURCES
 
-    return jsonify(scan(lambda u: next((c.name for c in SOURCES if c.matches(u)), None)))
+    return next((c.name for c in SOURCES if c.matches(u)), None)
+
+
+@app.get("/api/phone/status")
+def phone_status():
+    """Root'lu Android telefon: adb var mı, bağlı cihaz ve izin durumu (yalnız yerel)."""
+    if not _is_local():
+        abort(403)
+    from .history import find_adb, phone_devices
+
+    adb = find_adb(BASE)
+    if not adb:
+        return jsonify({"adb": False})
+    try:
+        return jsonify({"adb": True, "devices": [{"serial": sn, "state": st} for sn, st in phone_devices(adb)]})
+    except Exception as e:
+        return jsonify({"adb": True, "devices": [], "error": str(e)[:200]})
+
+
+@app.post("/api/phone/adb-download")
+def phone_adb_download():
+    if not _is_local():
+        abort(403)
+    from .history import download_adb
+
+    try:
+        return jsonify({"ok": True, "adb": download_adb(BASE)})
+    except Exception as e:
+        return jsonify({"error": f"adb indirilemedi: {e}"}), 400
+
+
+@app.post("/api/phone/scan")
+def phone_scan():
+    """Telefondan (root, USB) tarayıcı geçmişi + yer işaretlerini PC'ye kopyalar ve tarar."""
+    if not _is_local():
+        abort(403)
+    from .history import PhoneError, find_adb, pull_android, scan
+
+    adb = find_adb(BASE)
+    if not adb:
+        return jsonify({"error": "adb yok; önce indir"}), 400
+    dest = BASE / "telefon-gecmis"
+    try:
+        dirs = pull_android(adb, dest)
+    except PhoneError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({**scan(_supported, dirs), "copied_to": str(dest)})
 
 
 @app.get("/api/models")
