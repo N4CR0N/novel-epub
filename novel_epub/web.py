@@ -12,7 +12,7 @@ from flask import Flask, abort, jsonify, render_template, request, send_from_dir
 
 from .pipeline import Job, Options
 from .store import BookStore
-from .translator import DEFAULT_MODEL, DEFAULT_MODELS, MAX_AUTO_CHAPTERS, THINKING_LEVELS
+from .translator import DEFAULT_MODEL, DEFAULT_MODELS, DEFAULT_TEMPERATURE, MAX_AUTO_CHAPTERS, THINKING_LEVELS
 
 BASE = Path(os.environ.get("NOVEL_EPUB_HOME", Path.cwd()))
 SETTINGS_PATH = BASE / "ayarlar.json"
@@ -23,11 +23,45 @@ app = Flask(__name__)
 JOBS: dict[str, Job] = {}
 
 
+KEYRING_SERVICE, KEYRING_USER = "novel-epub", "gemini_api_key"
+
+
+def _keyring():
+    """İşletim sisteminin şifre kasası (Windows: Kimlik Bilgisi Yöneticisi); yoksa None."""
+    try:
+        import keyring
+        from keyring.backends.fail import Keyring as FailKeyring
+
+        return None if isinstance(keyring.get_keyring(), FailKeyring) else keyring
+    except Exception:
+        return None
+
+
+def _read_file() -> dict:
+    return json.loads(SETTINGS_PATH.read_text("utf-8")) if SETTINGS_PATH.exists() else {}
+
+
 def load_settings() -> dict:
-    s = {"api_key": os.environ.get("GEMINI_API_KEY", ""), "model": os.environ.get("GEMINI_MODEL", DEFAULT_MODELS),
-         "delay": 0.7, "workers": 3, "batch": 0, "thinking": "medium"}
-    if SETTINGS_PATH.exists():
-        s.update(json.loads(SETTINGS_PATH.read_text("utf-8")))
+    s = {"model": os.environ.get("GEMINI_MODEL", DEFAULT_MODELS), "delay": 0.7, "workers": 3, "batch": 0,
+         "thinking": "medium", "temperature": DEFAULT_TEMPERATURE}
+    file = _read_file()
+    s.update(file)
+    kr = _keyring()
+    key, store = "", "yok"
+    if kr:
+        try:
+            if file.get("api_key"):  # eski sürümden kalan düz metin anahtarı kasaya taşı
+                kr.set_password(KEYRING_SERVICE, KEYRING_USER, file["api_key"])
+                file.pop("api_key")
+                SETTINGS_PATH.write_text(json.dumps(file, ensure_ascii=False, indent=1), encoding="utf-8")
+            key, store = kr.get_password(KEYRING_SERVICE, KEYRING_USER) or "", "kasa"
+        except Exception:
+            kr = None
+    if not kr:
+        key, store = file.get("api_key", ""), "dosya"
+    if os.environ.get("GEMINI_API_KEY"):
+        key, store = os.environ["GEMINI_API_KEY"], "ortam"
+    s["api_key"], s["key_store"] = key, store
     if s.get("batch") == 3 and not s.get("batch_set"):  # eski sabit varsayılan → otomatik
         s["batch"] = 0
     if s.get("model") == DEFAULT_MODEL:  # eski tek-model varsayılanı: yedek modeli ekle
@@ -35,8 +69,20 @@ def load_settings() -> dict:
     return s
 
 
-def save_settings(s: dict) -> None:
-    SETTINGS_PATH.write_text(json.dumps(s, ensure_ascii=False, indent=1), encoding="utf-8")
+def save_settings(s: dict, new_key: str = "") -> None:
+    """Ayarları ayarlar.json'a yazar; anahtar kasa varsa kasaya, yoksa dosyaya gider."""
+    out = {k: v for k, v in s.items() if k not in ("api_key", "key_store")}
+    key = new_key or (s.get("api_key") if s.get("key_store") == "dosya" else "")
+    kr = _keyring()
+    if new_key and kr:
+        try:
+            kr.set_password(KEYRING_SERVICE, KEYRING_USER, new_key)
+            key = ""
+        except Exception:
+            pass
+    if key:
+        out["api_key"] = key
+    SETTINGS_PATH.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 @app.get("/")
@@ -51,22 +97,24 @@ def get_settings():
     return jsonify({**s, "api_key": "", "has_key": bool(key), "key_hint": f"…{key[-4:]}" if key else ""})
 
 
+
 @app.post("/api/settings")
 def post_settings():
     s = load_settings()
     data = request.get_json(force=True)
-    if data.get("api_key"):
-        s["api_key"] = data["api_key"].strip()
+    new_key = (data.get("api_key") or "").strip()
     for k in ("model",):
         if data.get(k):
             s[k] = data[k].strip()
     if data.get("thinking") in THINKING_LEVELS:
         s["thinking"] = data["thinking"]
+    if data.get("temperature") not in (None, ""):
+        s["temperature"] = max(0.0, min(1.5, float(data["temperature"])))
     for k, typ in (("delay", float), ("workers", int), ("batch", int)):
         if data.get(k) not in (None, ""):
             s[k] = typ(data[k])
     s["batch_set"] = True
-    save_settings(s)
+    save_settings(s, new_key)
     return get_settings()
 
 
@@ -102,6 +150,7 @@ def start_job():
         batch=max(0, min(MAX_AUTO_CHAPTERS, int(s.get("batch", 0)))),
         edit=bool(data.get("edit", True)),
         thinking=s.get("thinking", "medium"),
+        temperature=float(s.get("temperature", DEFAULT_TEMPERATURE)),
         review_after=20 if data.get("review") else 0,
         library=LIBRARY,
         output=OUTPUT,
@@ -154,7 +203,14 @@ def library():
 @app.get("/api/library/<name>/glossary")
 def get_glossary(name: str):
     st = _book(name)
-    return jsonify({"glossary": st.load_glossary(), "memory": st.load_memory()})
+    return jsonify({"glossary": st.load_glossary(), "memory": st.load_memory(), "notes": st.load_notes()})
+
+
+@app.post("/api/library/<name>/notes")
+def put_notes(name: str):
+    st = _book(name)
+    st.save_notes(str(request.get_json(force=True).get("notes") or "")[:8000])
+    return jsonify({"ok": True})
 
 
 @app.post("/api/library/<name>/glossary")
@@ -177,6 +233,18 @@ def retranslate(name: str):
         return jsonify({"error": "Bölüm aralığı gir"}), 400
     n = sum(st.drop_tr(i) for i in range(a, b + 1))
     return jsonify({"ok": True, "removed": n})
+
+
+@app.post("/api/library/<name>/restore")
+def restore(name: str):
+    st = _book(name)
+    data = request.get_json(force=True)
+    try:
+        a, b = int(data["start"]), int(data["end"])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"error": "Bölüm aralığı gir"}), 400
+    n = sum(st.restore_tr(i) for i in range(a, b + 1))
+    return jsonify({"ok": True, "restored": n})
 
 
 @app.get("/api/books")

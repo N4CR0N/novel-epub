@@ -127,7 +127,7 @@ def test_partial_epub_when_quota_runs_out(tmp_path: Path, monkeypatch):
         def plan_batch(self, pending, cap):
             return pending[:cap]
 
-        def translate_batch(self, chs, glossary, context):
+        def translate_batch(self, chs, glossary, context, lookahead=None):
             self.n += 1
             if self.n > 1:
                 raise translator.QuotaExhausted("kota doldu")
@@ -270,7 +270,7 @@ def test_pipeline_skips_failed_group_and_continues(tmp_path: Path, monkeypatch):
         def plan_batch(self, pending, cap):
             return pending[:1]
 
-        def translate_batch(self, chs, glossary, context):
+        def translate_batch(self, chs, glossary, context, lookahead=None):
             if chs[0].index == 2:
                 raise translator.TransientFailure("hep hata")
             return [Chapter(c.index, "TR", c.url, ["tr"]) for c in chs], {}
@@ -297,7 +297,7 @@ def test_cancel_interrupts_wait(tmp_path: Path, monkeypatch):
         def plan_batch(self, pending, cap):
             return pending[:1]
 
-        def translate_batch(self, chs, glossary, context):
+        def translate_batch(self, chs, glossary, context, lookahead=None):
             job.cancel()
             self.sleep(60)  # iptal edildiği için hemen dönmeli
 
@@ -356,7 +356,7 @@ def test_pipeline_edits_and_pauses_for_review(tmp_path: Path, monkeypatch):
         def plan_batch(self, pending, cap):
             return pending[:2]
 
-        def translate_batch(self, chs, glossary, context):
+        def translate_batch(self, chs, glossary, context, lookahead=None):
             self.memory["summary"] = f"{chs[-1].index}. bölüme kadar"
             return [Chapter(c.index, "TR", c.url, ["tr"]) for c in chs], {}
 
@@ -369,4 +369,100 @@ def test_pipeline_edits_and_pauses_for_review(tmp_path: Path, monkeypatch):
     out = job._translate([Chapter(i, f"c{i}", "u", ["en"]) for i in range(1, 9)], store)
     assert [c.title for c in out] == ["RED"] * 4 and all(c.edited for c in out)
     assert "İlk 4 bölüm" in job.p.notice and store.load_memory()["summary"] == "4. bölüme kadar"
-    assert store.counts() == {"ham": 0, "ceviri": 4, "redakte": 4}
+    assert store.counts() == {"ham": 0, "ceviri": 4, "redakte": 4, "yedek": 0}
+
+
+def test_fancy_unicode_watermark_and_end_notes_removed():
+    paras = ["Qin Yu smiled. 𝐟𝗿𝐞𝚎𝚠𝐞𝚋𝕟𝐨𝚟𝐞𝕝.𝕔𝕠𝚖 He left.", "𝐟𝗿𝐞𝚎𝚠𝐞𝚋𝕟𝐨𝚟𝐞𝕝.𝕔𝕠𝚖", "End of b1c7",
+             "The free web of the novel was vast."]
+    assert clean_paragraphs(paras) == ["Qin Yu smiled. He left.", "The free web of the novel was vast."]
+
+
+def test_retranslate_backs_up_and_restore_swaps(tmp_path: Path):
+    from novel_epub.store import BookStore
+
+    st = BookStore(tmp_path, Novel(url="u", title="k", source="t"))
+    st.save_tr(Chapter(5, "eski", "u", ["e"]))
+    assert st.drop_tr(5) and st.load_tr(5) is None and st.backup_count() == 1
+    st.save_tr(Chapter(5, "yeni", "u", ["y"]))
+    assert st.restore_tr(5) and st.load_tr(5).title == "eski"
+    assert st.restore_tr(5) and st.load_tr(5).title == "yeni"  # yer değiştirir; hiçbir sürüm kaybolmaz
+    assert not st.restore_tr(6)
+
+
+def test_lookahead_and_notes_and_temperature():
+    from novel_epub.translator import EDIT_PROMPT, SYSTEM_PROMPT
+
+    tr = _fake_translator()
+    tr.thinking, tr.book_notes = False, "Big brother → Ağabey"
+    seen = []
+
+    def fake(payload, schema=None, bad_retries=None, system=None):
+        seen.append(payload)
+        return {"title": "t", "paragraphs": payload["paragraphs"], "new_terms": []}
+
+    tr._call_model = fake
+    tr.translate_batch([Chapter(1, "c", "u", ["a"])], {}, [], ["next p1", "next p2"])
+    assert seen[0]["next_context"] == ["next p1", "next p2"]
+    cfg = tr._config(RESPONSE_SCHEMA_FOR_TEST(), SYSTEM_PROMPT)
+    assert cfg.temperature == 0.7 and "Big brother → Ağabey" in cfg.system_instruction
+    assert tr._config(RESPONSE_SCHEMA_FOR_TEST(), EDIT_PROMPT).temperature == 0.5
+
+
+def RESPONSE_SCHEMA_FOR_TEST():
+    from novel_epub.translator import RESPONSE_SCHEMA
+
+    return RESPONSE_SCHEMA
+
+
+def test_pipeline_sends_next_chapter_start(tmp_path: Path, monkeypatch):
+    from novel_epub import pipeline, translator
+    from novel_epub.store import BookStore
+
+    got = []
+
+    class FakeTr:
+        def __init__(self, *a, **k):
+            self.model, self.memory = "sahte", {}
+
+        def plan_batch(self, pending, cap):
+            return pending[:2]
+
+        def translate_batch(self, chs, glossary, context, lookahead=None):
+            got.append(lookahead)
+            return [Chapter(c.index, "TR", c.url, ["tr"]) for c in chs], {}
+
+    monkeypatch.setattr(translator, "GeminiTranslator", FakeTr)
+    job = pipeline.Job(pipeline.Options(url="u", translate=True, edit=False))
+    store = BookStore(tmp_path, Novel(url="u", title="k", source="t"))
+    job._translate([Chapter(i, f"c{i}", "u", [f"p{i}a", f"p{i}b", f"p{i}c", f"p{i}d"]) for i in range(1, 5)], store)
+    assert got == [["p3a", "p3b", "p3c"], []]
+
+
+def test_api_key_moves_from_file_to_keyring(tmp_path: Path, monkeypatch):
+    from novel_epub import web
+
+    class FakeKR:
+        store = {}
+
+        def set_password(self, s, u, p):
+            self.store[(s, u)] = p
+
+        def get_password(self, s, u):
+            return self.store.get((s, u))
+
+    kr = FakeKR()
+    monkeypatch.setattr(web, "SETTINGS_PATH", tmp_path / "ayarlar.json")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    (tmp_path / "ayarlar.json").write_text(json.dumps({"api_key": "AIzaGIZLI", "model": "m"}), "utf-8")
+    monkeypatch.setattr(web, "_keyring", lambda: kr)
+    s = web.load_settings()
+    assert s["api_key"] == "AIzaGIZLI" and s["key_store"] == "kasa"
+    assert "AIzaGIZLI" not in (tmp_path / "ayarlar.json").read_text("utf-8")
+    web.save_settings(s, "AIzaYENI")
+    assert kr.get_password(web.KEYRING_SERVICE, web.KEYRING_USER) == "AIzaYENI"
+    assert "AIza" not in (tmp_path / "ayarlar.json").read_text("utf-8")
+    # Kasa yoksa dosyaya düşer
+    monkeypatch.setattr(web, "_keyring", lambda: None)
+    web.save_settings({"model": "m", "key_store": "dosya", "api_key": "AIzaDOSYA"})
+    assert web.load_settings()["api_key"] == "AIzaDOSYA"

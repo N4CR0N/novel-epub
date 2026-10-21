@@ -66,6 +66,18 @@ python -m novel_epub https://freewebnovel.com/novel/stellar-transformations --ba
   - *Düşünme seviyesi* (Ayarlar): düşük / orta (varsayılan) / yüksek.
   - *Sözlük kontrolü*: "ilk 20 bölümden sonra dur" kutucuğu; sonra **Kitaplığım · Sözlük · Hafıza**
     bölümünden sözlüğü düzelt, ilgili bölümleri "Yeniden çevrilecek" ile işaretle ve aynı linkle Başlat.
+- **Daha fazla kalite ayarı:**
+  - *Sonraki bölüme bakma:* her isteğe sonraki bölümün ilk 3 paragrafı (çevrilmeden) bağlam olarak eklenir.
+  - *Kitaba özel çeviri talimatı* (Kitaplığım ekranı, `talimat.txt`): üslup, hitaplar, zaman kipi gibi kurallar
+    her isteğin sistem talimatına eklenir. Terim karşılıkları için yine sözlüğü kullan.
+  - *Sıcaklık* (Ayarlar, varsayılan 0,7): anlatımı doğal Türkçe roman diline uyarlayacak esneklik;
+    redaksiyon en çok 0,5 ile çalışır. Anlatım geniş zamanla yazılmış olsa da -dı'lı geçmiş zamanla çevrilir.
+  - *Eski çeviriler korunur:* "Yeniden çevrilecek" eski çeviriyi `ceviri_eski/` klasörüne taşır;
+    "Eskiye dön" en son yedeği geri getirir.
+  - *Süslü Unicode filigranlar* (ör. 𝐟𝗿𝐞𝚎𝚠𝐞𝚋𝕟𝐨𝚟𝐞𝕝.𝕔𝕠𝚖) ve "End of b1c…" notları kodla silinir; önbellekteki
+    eski indirmeler de çeviriden önce yeniden temizlenir.
+- **API anahtarı** Windows'ta Kimlik Bilgisi Yöneticisi'nde (şifre kasası) saklanır; eski sürümde `ayarlar.json`'a
+  yazılmış anahtar ilk açılışta oraya taşınıp dosyadan silinir. Kasa yoksa (ör. bazı Linux kurulumları) dosyada kalır.
 - **Hata olunca durmaz:** ağ kopması, Google yoğunluğu (503), dakikalık sınır (429) ya da bozuk yanıtta
   en çok 60 sn bekleyip yeniden dener (10 deneme). Sürerse aynı isteği listedeki diğer modelle dener;
   o da olmazsa o bölümleri atlar, EPUB'da "[Çevrilemedi]" başlığıyla orijinal metin olarak bırakır ve

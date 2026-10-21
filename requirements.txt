@@ -4,3 +4,4 @@ lxml>=5.0
 EbookLib>=0.18
 google-genai>=1.0
 flask>=3.0
+keyring>=24

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import unicodedata
 from pathlib import Path
 
@@ -76,14 +77,53 @@ class BookStore:
     def save_memory(self, m: dict) -> None:
         _write_json(self.memory_path, m)
 
+    # Yeniden çevirmede eski çeviri silinmez, ceviri_eski/ altına zaman damgasıyla taşınır.
+    def _backups(self, index: int) -> list[Path]:
+        return sorted((self.dir / "ceviri_eski").glob(f"{index:05d}_*.json"))
+
     def drop_tr(self, index: int) -> bool:
+        """Çeviriyi yedeğe taşır; sonraki çalıştırmada bölüm yeniden çevrilir."""
         p = self._p("ceviri", index)
-        if p.exists():
-            p.unlink()
-            return True
-        return False
+        if not p.exists():
+            return False
+        bak = self.dir / "ceviri_eski"
+        bak.mkdir(exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        n = 0
+        while (bak / f"{index:05d}_{stamp}_{n}.json").exists():
+            n += 1
+        p.replace(bak / f"{index:05d}_{stamp}_{n}.json")
+        return True
+
+    def restore_tr(self, index: int) -> bool:
+        """En son yedeği geri getirir; o an duran çeviri varsa o da yedeğe geçer (yer değiştirir)."""
+        backups = self._backups(index)
+        if not backups:
+            return False
+        latest = backups[-1]
+        tmp = latest.with_suffix(".geri")
+        latest.replace(tmp)
+        self.drop_tr(index)
+        tmp.replace(self._p("ceviri", index))
+        return True
+
+    def backup_count(self) -> int:
+        d = self.dir / "ceviri_eski"
+        return len({p.name[:5] for p in d.glob("*.json")}) if d.exists() else 0
+
+    # Kitaba özel çeviri talimatı (üslup, hitaplar, zaman kipi…): sistem talimatına eklenir.
+    @property
+    def notes_path(self) -> Path:
+        return self.dir / "talimat.txt"
+
+    def load_notes(self) -> str:
+        return self.notes_path.read_text("utf-8").strip() if self.notes_path.exists() else ""
+
+    def save_notes(self, text: str) -> None:
+        self.notes_path.write_text(text.strip() + "\n", encoding="utf-8")
 
     def counts(self) -> dict:
         tr = list((self.dir / "ceviri").glob("*.json"))
         edited = sum(1 for p in tr if '"edited": true' in p.read_text("utf-8"))
-        return {"ham": len(list((self.dir / "ham").glob("*.json"))), "ceviri": len(tr), "redakte": edited}
+        return {"ham": len(list((self.dir / "ham").glob("*.json"))), "ceviri": len(tr), "redakte": edited,
+                "yedek": self.backup_count()}

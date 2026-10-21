@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import unicodedata
 
 from bs4 import Tag
 
@@ -13,9 +14,27 @@ NOISE_RE = re.compile(
     r"(free\s*web\s*novel|novel\s*bin|light\s*novel\s*(world|pub|cave)|webnovel\.com|"
     r"read\s+(the\s+)?(latest|more|next)\s+chapters?|visit\s+\S+\s+for|for\s+the\s+best\s+novel|"
     r"^(translated|translator|edited|editor|proofread(er)?|tl|ed|tlc)\s*(by)?\s*[:：]|"
-    r"^\s*(advertisement|sponsored content)\s*$|https?://|www\.\S+)",
+    r"^\s*(advertisement|sponsored content)\s*$|https?://|www\.\S+|"
+    r"^\s*(end of|-+\s*end)\s+(b\d+\s*c\d+|chapter|book|volume)\b)",
     re.I,
 )
+# Paragrafın ortasına gömülü site adları (süslü Unicode harfler NFKC ile düz harfe çevrildikten sonra).
+INLINE_WATERMARK_RE = re.compile(
+    r"\s*[\(\[]?\s*(f\s*r\s*e\s*e\s*w\s*e\s*b\s*n\s*o\s*v\s*e\s*l|n\s*o\s*v\s*e\s*l\s*b\s*i\s*n)"
+    r"\s*[\.,·]\s*(c\s*o\s*m|n\s*e\s*t|m\s*e|o\s*r\s*g)\s*[\)\]]?",
+    re.I,
+)
+# Matematiksel alfanümerik (𝐟𝗿𝐞𝚎…), tam genişlik (ｆｒｅｅ) ve daire içi (ⓕ) harfler: filigranlarda kullanılır.
+FANCY_RE = re.compile("[\U0001D400-\U0001D7FF\uFF01-\uFF5E\u24B6-\u24E9]")
+
+
+def defancy(p: str) -> str:
+    """Süslü Unicode harf içeren paragrafı düz harfe çevirir ve gömülü site filigranını siler."""
+    if FANCY_RE.search(p):
+        p = unicodedata.normalize("NFKC", p)
+    return INLINE_WATERMARK_RE.sub(" ", p)
+
+
 BLOCK_RE = re.compile(r"(just a moment|enable javascript|checking your browser|access denied|captcha)", re.I)
 NOISE_TAGS = ("script", "style", "noscript", "iframe", "ins", "button", "form", "svg")
 NOISE_CLASS_RE = re.compile(r"(\bads?\b|advert|banner|sponsor|\bshare|comment|\bnav\b|skiptranslate)", re.I)
@@ -45,7 +64,7 @@ def clean_paragraphs(paragraphs: list[str], title: str = "") -> list[str]:
     out: list[str] = []
     norm_title = re.sub(r"\W+", "", title.lower())
     for i, p in enumerate(paragraphs):
-        p = re.sub(r"\s+", " ", p).strip()
+        p = re.sub(r"\s+", " ", defancy(p)).strip()
         if not p:
             continue
         if len(p) < 200 and NOISE_RE.search(p):

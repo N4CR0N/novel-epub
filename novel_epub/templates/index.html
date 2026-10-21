@@ -78,7 +78,12 @@
         <div><input id="reA" type="number" min="1" placeholder="ilk"></div>
         <div><input id="reB" type="number" min="1" placeholder="son"></div>
         <button class="ghost" id="reGo" style="flex:0 0 auto">Yeniden çevrilecek</button>
+        <button class="ghost" id="reBack" style="flex:0 0 auto">Eskiye dön</button>
       </div>
+      <div class="mut">Yeniden çevirmede eski çeviri silinmez, yedeğe alınır; "Eskiye dön" aynı aralıkta en son yedeği geri getirir.</div>
+      <label for="notes">Bu kitaba özel çeviri talimatı (üslup, hitaplar, zaman kipi…; her isteğe eklenir)</label>
+      <textarea id="notes" rows="6" placeholder="Ör: Big brother → Ağabey, Second brother → İkinci Ağabey, Your Highness → Ekselansları. Qin Yu'nun babasına konuşurken 'siz' kullan."></textarea>
+      <div class="actions"><button id="saveNotes">Talimatı kaydet</button></div>
       <details style="margin-top:12px"><summary class="mut">Hikâye hafızası (modelin tuttuğu özet ve karakter notları)</summary><pre id="mem"></pre></details>
     </details>
   </div>
@@ -99,6 +104,8 @@
       <input id="batch" type="number" min="0" max="12">
       <label for="thinking">Düşünme seviyesi (yüksek = daha özenli, daha yavaş, yanıt sınırından daha çok yer)</label>
       <select id="thinking"><option value="low">Düşük</option><option value="medium">Orta</option><option value="high">Yüksek</option></select>
+      <label for="temp">Sıcaklık (0,6–0,8 önerilir; düşük = kaynağa daha sıkı bağlı, yüksek = daha serbest). Redaksiyon en çok 0,5 ile çalışır.</label>
+      <input id="temp" type="number" step="0.05" min="0" max="1.5">
       <div class="actions"><button id="saveSet">Kaydet</button><span class="mut" id="setMsg"></span></div>
     </details>
   </div>
@@ -117,14 +124,15 @@ async function api(path, body) {
 
 async function loadSettings() {
   const s = await api('/api/settings');
-  $('model').value = s.model || ''; $('delay').value = s.delay; $('workers').value = s.workers; $('batch').value = s.batch ?? 0; $('thinking').value = s.thinking || 'medium';
-  $('keyHint').textContent = s.has_key ? '(kayıtlı ' + s.key_hint + ')' : '(kayıtlı değil)';
+  $('model').value = s.model || ''; $('delay').value = s.delay; $('workers').value = s.workers; $('batch').value = s.batch ?? 0; $('thinking').value = s.thinking || 'medium'; $('temp').value = s.temperature ?? 0.7;
+  const where = {kasa:'Windows kimlik bilgisi kasasında', dosya:'ayarlar.json dosyasında', ortam:'GEMINI_API_KEY ortam değişkeninden'}[s.key_store] || '';
+  $('keyHint').textContent = s.has_key ? `(kayıtlı ${s.key_hint} · ${where})` : '(kayıtlı değil)';
   if (!s.has_key) $('settings').open = true;
 }
 
 $('saveSet').onclick = async () => {
   try {
-    await api('/api/settings', {api_key:$('key').value, model:$('model').value, delay:$('delay').value, workers:$('workers').value, batch:$('batch').value, thinking:$('thinking').value});
+    await api('/api/settings', {api_key:$('key').value, model:$('model').value, delay:$('delay').value, workers:$('workers').value, batch:$('batch').value, thinking:$('thinking').value, temperature:$('temp').value});
     $('key').value = ''; $('setMsg').textContent = 'Kaydedildi ✓'; loadSettings();
   } catch (e) { $('setMsg').textContent = e.message; }
 };
@@ -183,10 +191,11 @@ async function loadLibrary() {
 }
 async function showBook() {
   const b = lib.find(x => x.id === $('libSel').value);
-  if (!b) { $('libInfo').textContent = ''; $('gloss').value = ''; $('mem').textContent = ''; return; }
-  $('libInfo').textContent = `${b.ham} bölüm indi · ${b.ceviri} çevrildi · ${b.redakte} redakte · ${b.terms} terim`;
+  if (!b) { $('libInfo').textContent = ''; $('gloss').value = ''; $('notes').value = ''; $('mem').textContent = ''; return; }
+  $('libInfo').textContent = `${b.ham} bölüm indi · ${b.ceviri} çevrildi · ${b.redakte} redakte · ${b.terms} terim · ${b.yedek} bölümde yedek`;
   const d = await api(`/api/library/${encodeURIComponent(b.id)}/glossary`);
   $('gloss').value = JSON.stringify(d.glossary, null, 1);
+  $('notes').value = d.notes || '';
   const chars = Object.entries(d.memory.characters || {}).map(([n, v]) => `• ${n}: ${v}`).join('\n');
   $('mem').textContent = (d.memory.summary || '(henüz özet yok)') + (chars ? '\n\nKarakterler:\n' + chars : '');
 }
@@ -197,10 +206,19 @@ $('saveGloss').onclick = async () => {
   try { const d = await api(`/api/library/${encodeURIComponent($('libSel').value)}/glossary`, {glossary:g}); $('glossMsg').textContent = `Kaydedildi ✓ (${d.terms} terim)`; loadLibrary(); }
   catch (e) { $('glossMsg').textContent = e.message; }
 };
+$('saveNotes').onclick = async () => {
+  try { await api(`/api/library/${encodeURIComponent($('libSel').value)}/notes`, {notes:$('notes').value}); $('glossMsg').textContent = 'Talimat kaydedildi ✓'; }
+  catch (e) { $('glossMsg').textContent = e.message; }
+};
+$('reBack').onclick = async () => {
+  try { const d = await api(`/api/library/${encodeURIComponent($('libSel').value)}/restore`, {start:$('reA').value, end:$('reB').value});
+        $('glossMsg').textContent = `${d.restored} bölüm en son yedeğine döndü. EPUB için aynı linkle Başlat.`; loadLibrary(); }
+  catch (e) { $('glossMsg').textContent = e.message; }
+};
 $('reGo').onclick = async () => {
-  if (!confirm(`${$('reA').value}–${$('reB').value}. bölümlerin çevirisi silinecek; sonra Başlat ile yeniden çevrilir. Devam?`)) return;
+  if (!confirm(`${$('reA').value}–${$('reB').value}. bölümlerin çevirisi yedeğe alınacak; sonra Başlat ile yeniden çevrilir. Devam?`)) return;
   try { const d = await api(`/api/library/${encodeURIComponent($('libSel').value)}/retranslate`, {start:$('reA').value, end:$('reB').value});
-        $('glossMsg').textContent = `${d.removed} bölümün çevirisi silindi. Şimdi aynı linkle Başlat.`; loadLibrary(); }
+        $('glossMsg').textContent = `${d.removed} bölümün çevirisi yedeğe alındı. Şimdi aynı linkle Başlat.`; loadLibrary(); }
   catch (e) { $('glossMsg').textContent = e.message; }
 };
 

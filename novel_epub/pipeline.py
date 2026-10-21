@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from .cleaner import check_book, check_chapter
+from .cleaner import check_book, check_chapter, clean_paragraphs
 from .epub_builder import build_epub
 from .fetcher import Fetcher
 from .models import Chapter, ChapterRef, Novel
@@ -33,6 +33,7 @@ class Options:
     batch: int = 0  # tek Gemini isteğinde en fazla kaç bölüm (0 = bölüm uzunluğuna göre otomatik)
     edit: bool = True  # redaksiyon turu: taslak çeviriyi bir editör gibi ikinci kez düzelt (2× istek)
     thinking: str = "medium"  # düşünme seviyesi: low / medium / high
+    temperature: float = 0.7
     review_after: int = 0  # yeni kitapta bu kadar bölüm çevrilince dur (sözlüğü gözden geçirmek için)
     max_follow: int = 3000  # genel kaynakta "Sonraki" ile en fazla kaç bölüm gezilsin
     library: Path = Path("kutuphane")
@@ -144,6 +145,8 @@ class Job:
         todo = []
         for r in refs:
             ch = store.load_raw(r.index)
+            if ch:  # önbellekteki eski indirmeler de güncel temizleyiciden geçsin (ör. süslü filigranlar)
+                ch.paragraphs = clean_paragraphs(ch.paragraphs, ch.title)
             if ch and not check_chapter(ch):
                 result[r.index] = ch
                 self.p.done += 1
@@ -227,7 +230,7 @@ class Job:
             self.log("Denetim: tüm bölümler sağlam görünüyor ✓")
 
     def _translate(self, chapters: list[Chapter], store: BookStore) -> list[Chapter]:
-        from .translator import FatalError, GeminiTranslator, QuotaExhausted, TranslationError
+        from .translator import LOOKAHEAD_PARAGRAPHS, FatalError, GeminiTranslator, QuotaExhausted, TranslationError
 
         o = self.opts
         tr = GeminiTranslator(o.api_key, o.model, o.target, log=self.log, thinking_level=o.thinking)
@@ -238,6 +241,10 @@ class Job:
 
         tr.sleep = wait
         tr.memory = store.load_memory()
+        tr.temperature = o.temperature
+        tr.book_notes = store.load_notes()
+        if tr.book_notes:
+            self.log(f"Kitaba özel çeviri talimatı kullanılıyor ({len(tr.book_notes)} karakter)")
         self.p.phase = f"çevriliyor ({tr.model})"
         self.p.total = len(chapters)
         glossary = store.load_glossary()
@@ -262,6 +269,10 @@ class Job:
         def context_before(index: int) -> list[str]:
             prev = results.get(index - 1)
             return prev.paragraphs[-4:] if prev else []
+
+        def lookahead_after(index: int) -> list[str]:
+            nxt = source.get(index + 1)
+            return nxt.paragraphs[:LOOKAHEAD_PARAGRAPHS] if nxt else []
 
         def save_state(new_terms: dict) -> None:
             store.save_memory(tr.memory)
@@ -312,7 +323,8 @@ class Job:
             i += len(group)
             self.p.phase = f"çevriliyor ({tr.model})"
             try:
-                outs, new_terms = tr.translate_batch(group, glossary, context_before(group[0].index))
+                outs, new_terms = tr.translate_batch(group, glossary, context_before(group[0].index),
+                                                     lookahead_after(group[-1].index))
             except QuotaExhausted as e:
                 stop_reason = str(e)
                 break
