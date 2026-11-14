@@ -48,4 +48,4 @@ class Wattpad(Source):
         if not m:
             raise ValueError(f"Bölüm kimliği yok: {ref.url}")
         html = self.f.get(f"https://www.wattpad.com/apiv2/?m=storytext&id={m.group(1)}").text
-        return self.build_chapter(ref, BeautifulSoup(f"<div>{html}</div>", "lxml").div, ref.title)
+        return self.build_chapter(ref, BeautifulSoup(f"<div>{html}</div>", "html.parser").div, ref.title)

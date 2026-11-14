@@ -65,12 +65,21 @@ def self_test(home: Path) -> int:
     try:
         import webview  # noqa: F401  (pencere kütüphanesi paketlenmiş mi)
         from curl_cffi import requests as _cc  # noqa: F401
-        from .translator import _litellm
+        from . import llm
 
-        lt = _litellm()  # LiteLLM ve fiyat/model tablosu paketlenmiş mi: ağsız sahte yanıtla tam yol
-        r = lt.completion(model="gemini/gemini-2.5-flash", messages=[{"role": "user", "content": "x"}],
-                          mock_response='{"ok": true}')
-        report["litellm"] = r.choices[0].message.content == '{"ok": true}' and lt.get_max_tokens("gemini/gemini-2.5-flash") > 0
+        class _R:  # ağsız sahte yanıt: istek kurma + yanıt çözme yolunun tamamı
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json():
+                return {"candidates": [{"content": {"parts": [{"text": '{"ok": true}'}]}, "finishReason": "STOP"}]}
+
+        r = llm.completion("gemini/gemini-2.5-flash", [{"role": "user", "content": "x"}], api_key="test",
+                           response_format={"type": "json_object"}, post=lambda *a: _R())
+        report["llm"] = r.choices[0].message.content == '{"ok": true}' and all(
+            llm.build_request(m, [{"role": "user", "content": "x"}])[0].startswith("https://")
+            for m in ("openai/gpt-5", "anthropic/claude-sonnet-4-5", "deepseek/deepseek-chat"))
 
         from . import web
 
@@ -88,7 +97,7 @@ def self_test(home: Path) -> int:
         report["info"] = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/api/info").read())["local"]
         kr = web._keyring()
         report["kasa"] = type(kr.get_keyring()).__name__ if kr else "yok"
-        report["ok"] = report["arayuz"] and report["info"] and report["litellm"]
+        report["ok"] = report["arayuz"] and report["info"] and report["llm"]
     except Exception as e:  # rapora yaz, çıkış kodu 1
         report["hata"] = repr(e)
         report["ok"] = False

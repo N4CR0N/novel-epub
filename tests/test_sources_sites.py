@@ -19,7 +19,7 @@ class FakeFetcher:
         return self.pages[url]
 
     def soup(self, url, **kw):
-        return BeautifulSoup(self._get(url), "lxml")
+        return BeautifulSoup(self._get(url), "html.parser")
 
     def json(self, url, **kw):
         return self._get(url)

@@ -65,7 +65,7 @@ class FreeWebNovel(Source):
             if not data or data.get("code") != 200:
                 break
             total = int(data.get("totalPage") or 1)
-            add_from(BeautifulSoup(data.get("html", ""), "lxml"))
+            add_from(BeautifulSoup(data.get("html", ""), "html.parser"))
             page += 1
         if not refs:
             # Yedek: sayfadaki listeden (yalnızca ilk 40 bölüm + son bölümler) al.

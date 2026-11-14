@@ -1,6 +1,6 @@
 """Yapay zekâ sağlayıcıları: API anahtarından sağlayıcıyı tanıma, erişilen modelleri listeleme, sıralama.
 
-Çeviri LiteLLM üzerinden yapılır; model adları LiteLLM biçimindedir: "<önek>/<model>" (ör. "gemini/gemini-3.8-flash",
+Model adları "<önek>/<model>" biçimindedir (LiteLLM ile aynı adlandırma; ör. "gemini/gemini-3.8-flash",
 "openai/gpt-5", "anthropic/claude-sonnet-4-5"). Önek olmayan eski adlar Gemini sayılır.
 
 Kullanıcı yalnız anahtarı yapıştırır: biçiminden sağlayıcı tahmin edilir, belirsizse (ör. "sk-..." hem OpenAI hem
@@ -17,7 +17,7 @@ from typing import Callable
 class Provider:
     id: str  # ayar/kasa anahtarı
     name: str  # arayüz adı
-    prefix: str  # LiteLLM model öneki
+    prefix: str  # model adı öneki ("gemini/…")
     patterns: tuple[str, ...]  # anahtar biçimleri (regex, tam eşleşme)
     models_url: str  # model listesi ucu ("" = liste yok)
     auth: str = "bearer"  # bearer | x-api-key | goog | none
@@ -63,7 +63,7 @@ BY_PREFIX = {p.prefix: p for p in PROVIDERS}
 # Çeviri için işe yaramayan model türleri (adlarına göre).
 _SKIP = re.compile(
     r"embed|tts|whisper|transcri|audio|realtime|speech|image|imagen|dall-e|veo|moderation|search|aqa|"
-    r"nano-banana|computer-use|robotics|native-audio|live|guard|rerank|vision-only|sora|codex|babbage|davinci|"
+    r"nano-banana|computer-use|customtools|robotics|native-audio|live|guard|rerank|vision-only|sora|codex|babbage|davinci|"
     r"text-similarity|clip|ocr|-instruct$|^o1-mini|omni-moderation|learnlm|gemma-?\d*-?\d*b?-it$",
     re.I)
 
@@ -99,9 +99,9 @@ HttpGet = Callable[[str, dict], tuple[int, dict]]
 
 
 def _http_get(url: str, headers: dict) -> tuple[int, dict]:
-    import httpx  # LiteLLM ile gelir
+    from curl_cffi import requests
 
-    r = httpx.get(url, headers=headers, timeout=20)
+    r = requests.get(url, headers=headers, timeout=20)
     try:
         return r.status_code, r.json()
     except ValueError:

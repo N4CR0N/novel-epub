@@ -1,9 +1,5 @@
 curl_cffi>=0.7
 beautifulsoup4>=4.12
-lxml>=5.0
-EbookLib>=0.18
-litellm>=1.70
 flask>=3.0
 keyring>=24
 pypdf>=4
-python-docx>=1.1

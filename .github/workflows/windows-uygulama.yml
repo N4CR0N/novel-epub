@@ -39,10 +39,17 @@ jobs:
           --icon assets/icon.ico
           --add-data "novel_epub/templates;novel_epub/templates"
           --collect-all curl_cffi --collect-all webview --collect-data certifi
-          --collect-submodules keyring --copy-metadata keyring --collect-data docx
-          --collect-data litellm --collect-submodules litellm --copy-metadata litellm
-          --hidden-import tiktoken_ext --hidden-import tiktoken_ext.openai_public --collect-data tiktoken
+          --collect-submodules keyring --copy-metadata keyring
+          --exclude-module tkinter --exclude-module unittest --exclude-module test --exclude-module pydoc_data
+          --exclude-module setuptools --exclude-module pip --exclude-module lib2to3 --exclude-module idlelib
+          --exclude-module ensurepip --exclude-module distutils
           uygulama.py
+
+      - name: Exe boyutu
+        shell: pwsh
+        run: |
+          $mb = [math]::Round((Get-Item dist\WebNovelDownloaderTranslator.exe).Length / 1MB, 2)
+          "Exe boyutu: $mb MB" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
 
       - name: Öz-test (pencere açmadan)
         shell: pwsh
@@ -59,12 +66,14 @@ jobs:
           path: dist/WebNovelDownloaderTranslator.exe
 
       - name: "Sürüm sayfasına koy (etiket: son)"
+        if: github.ref == 'refs/heads/main'
         shell: bash
         run: |
           git tag -f son
           git push -f origin son
 
       - uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
         with:
           tag_name: son
           name: WebNovel Downloader & Translator — son sürüm

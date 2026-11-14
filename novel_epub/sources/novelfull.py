@@ -105,7 +105,7 @@ class NovelFull(Source):
                 if not data or data.get("code") != 200:
                     break
                 total = int(data.get("totalPage") or 1)
-                add(self._links(BeautifulSoup(data.get("html", ""), "lxml"), url))
+                add(self._links(BeautifulSoup(data.get("html", ""), "html.parser"), url))
                 page += 1
             if refs:
                 return refs

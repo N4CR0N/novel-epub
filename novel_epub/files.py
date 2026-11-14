@@ -5,10 +5,14 @@ Bölümler, dosyanın kendi yapısından (EPUB içindekiler, PDF yer imleri, Wor
 """
 from __future__ import annotations
 
+import posixpath
 import re
 import warnings
+import xml.etree.ElementTree as ET
+import zipfile
 from collections import Counter
 from pathlib import Path
+from urllib.parse import unquote
 
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 
@@ -104,38 +108,69 @@ def reflow(lines: list[str]) -> list[str]:
 
 
 # --- türler ---
+def _zip_path(base_dir: str, href: str) -> str:
+    """EPUB içindeki göreli bağlantı → zip içindeki tam yol (#parça ve %-kodlama atılır)."""
+    href = unquote(href.split("#")[0])
+    return posixpath.normpath(posixpath.join(base_dir, href)) if href else ""
+
+
 def read_epub(path: Path) -> tuple[Novel, list[Chapter], bytes | None]:
-    import ebooklib
-    from ebooklib import epub
+    """EPUB 2/3: container.xml → OPF (üst veri, manifest, spine) → içindekiler (nav.xhtml ya da toc.ncx)."""
+    ns = {"opf": "http://www.idpf.org/2007/opf", "dc": "http://purl.org/dc/elements/1.1/",
+          "c": "urn:oasis:names:tc:opendocument:xmlns:container", "ncx": "http://www.daisy.org/z3986/2005/ncx/"}
+    try:
+        z = zipfile.ZipFile(path)
+        root = ET.fromstring(z.read("META-INF/container.xml"))
+        opf_path = root.find(".//c:rootfile", ns).get("full-path")
+        opf = ET.fromstring(z.read(opf_path))
+    except Exception as e:
+        raise FileError(f"EPUB okunamadı: {e}") from e
+    opf_dir = posixpath.dirname(opf_path)
 
-    book = epub.read_epub(str(path), options={"ignore_ncx": False})
+    def dc(name: str) -> list[str]:
+        return [(el.text or "").strip() for el in opf.findall(f".//dc:{name}", ns) if (el.text or "").strip()]
 
-    def meta(name: str) -> str:
-        v = book.get_metadata("DC", name)
-        return v[0][0].strip() if v and v[0] and v[0][0] else ""
+    desc = (dc("description") or [""])[0]
+    novel = _book(path, (dc("title") or [""])[0], ", ".join(dc("creator")),
+                  BeautifulSoup(desc, "html.parser").get_text(" ", strip=True) if desc else "")
+    manifest: dict[str, dict] = {}
+    for it in opf.findall(".//opf:manifest/opf:item", ns):
+        manifest[it.get("id")] = {"path": _zip_path(opf_dir, it.get("href", "")), "type": it.get("media-type", ""),
+                                  "props": it.get("properties", "")}
 
-    novel = _book(path, meta("title"), ", ".join(m[0] for m in book.get_metadata("DC", "creator") if m[0]),
-                  BeautifulSoup(meta("description"), "lxml").get_text(" ", strip=True) if meta("description") else "")
     toc_titles: dict[str, str] = {}
+    nav = next((m for m in manifest.values() if "nav" in m["props"].split()), None)
+    spine_el = opf.find(".//opf:spine", ns)
+    ncx = manifest.get(spine_el.get("toc", "")) if spine_el is not None else None
+    try:
+        if nav:
+            nsoup = BeautifulSoup(z.read(nav["path"]), "html.parser")
+            box = nsoup.find("nav", attrs={"epub:type": "toc"}) or nsoup
+            for a in box.find_all("a", href=True):
+                toc_titles.setdefault(_zip_path(posixpath.dirname(nav["path"]), a["href"]), a.get_text(" ", strip=True))
+        elif ncx:
+            nroot = ET.fromstring(z.read(ncx["path"]))
+            for pt in nroot.iter(f"{{{ns['ncx']}}}navPoint"):
+                label = pt.find("ncx:navLabel/ncx:text", ns)
+                content = pt.find("ncx:content", ns)
+                if content is not None and label is not None:
+                    toc_titles.setdefault(_zip_path(posixpath.dirname(ncx["path"]), content.get("src", "")),
+                                          (label.text or "").strip())
+    except Exception:
+        toc_titles = {}
 
-    def walk(items):
-        for it in items:
-            if isinstance(it, tuple):
-                walk([it[0]])
-                walk(it[1])
-            elif getattr(it, "href", None):
-                toc_titles.setdefault(it.href.split("#")[0], it.title)
-
-    walk(book.toc)
     parts: list[tuple[str, list[str]]] = []
-    for idref, _linear in book.spine:
-        item = book.get_item_with_id(idref)
-        if item is None or item.get_type() != ebooklib.ITEM_DOCUMENT:
+    for ref in (spine_el.findall("opf:itemref", ns) if spine_el is not None else []):
+        item = manifest.get(ref.get("idref", ""))
+        if not item or item["type"] not in ("application/xhtml+xml", "text/html") or "nav" in item["props"].split():
             continue
-        soup = BeautifulSoup(item.get_content(), "lxml")
+        try:
+            soup = BeautifulSoup(z.read(item["path"]), "html.parser")
+        except KeyError:
+            continue
         body = soup.body or soup
         h = body.find(["h1", "h2", "h3"])
-        title = toc_titles.get(item.get_name(), "") or (h.get_text(" ", strip=True) if h else "")
+        title = toc_titles.get(item["path"], "") or (h.get_text(" ", strip=True) if h else "")
         paras = extract_paragraphs(body)
         if sum(len(p) for p in paras) < 80:  # kapak, içindekiler, boş sayfa
             continue
@@ -145,12 +180,18 @@ def read_epub(path: Path) -> tuple[Novel, list[Chapter], bytes | None]:
             parts += split_by_headings(paras)
         else:
             parts.append((title, paras))
+
     cover = None
-    for it in book.get_items():
-        if it.get_type() == ebooklib.ITEM_COVER or ("cover" in (it.get_name() or "").lower()
-                                                     and (it.media_type or "").startswith("image/")):
-            cover = it.get_content()
+    cover_id = next((m.get("content") for m in opf.findall(".//opf:metadata/opf:meta", ns) if m.get("name") == "cover"), None)
+    cands = [m for m in manifest.values() if "cover-image" in m["props"].split()]
+    cands += [manifest[cover_id]] if cover_id in manifest else []
+    cands += [m for m in manifest.values() if m["type"].startswith("image/") and "cover" in m["path"].lower()]
+    for m in cands:
+        try:
+            cover = z.read(m["path"])
             break
+        except KeyError:
+            continue
     novel, chapters = _finish(novel, parts)
     return novel, chapters, cover
 
@@ -201,19 +242,42 @@ def read_pdf(path: Path) -> tuple[Novel, list[Chapter], bytes | None]:
     return novel, chapters, None
 
 
-def read_docx(path: Path) -> tuple[Novel, list[Chapter], bytes | None]:
-    import docx
+W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 
-    d = docx.Document(str(path))
-    cp = d.core_properties
-    novel = _book(path, (cp.title or "").strip(), (cp.author or "").strip())
+
+def read_docx(path: Path) -> tuple[Novel, list[Chapter], bytes | None]:
+    """Word (.docx): word/document.xml paragrafları; Başlık 1/2 (Heading 1/2, Title) stilleri bölüm başlarıdır."""
+    try:
+        z = zipfile.ZipFile(path)
+        doc = ET.fromstring(z.read("word/document.xml"))
+    except Exception as e:
+        raise FileError(f"Word dosyası okunamadı: {e}") from e
+    title = author = ""
+    try:
+        core = ET.fromstring(z.read("docProps/core.xml"))
+        title = (core.findtext("{http://purl.org/dc/elements/1.1/}title") or "").strip()
+        author = (core.findtext("{http://purl.org/dc/elements/1.1/}creator") or "").strip()
+    except KeyError:
+        pass
+    style_names: dict[str, str] = {}  # stil kimliği → adı ("Heading1" → "heading 1")
+    try:
+        for st in ET.fromstring(z.read("word/styles.xml")).iter(f"{W}style"):
+            name = st.find(f"{W}name")
+            style_names[st.get(f"{W}styleId", "")] = (name.get(f"{W}val") if name is not None else "") or ""
+    except KeyError:
+        pass
+    novel = _book(path, title, author)
     parts: list[tuple[str, list[str]]] = []
     all_paras, styled = [], False
-    for p in d.paragraphs:
-        text = p.text.strip()
+    body = doc.find(f"{W}body")
+    for p in (body.iter(f"{W}p") if body is not None else []):
+        text = "".join((t.text or "") if t.tag == f"{W}t" else ("\t" if t.tag == f"{W}tab" else "\n")
+                       for t in p.iter() if t.tag in (f"{W}t", f"{W}tab", f"{W}br")).strip()
         if not text:
             continue
-        style = (p.style.name or "").lower() if p.style is not None else ""
+        ps = p.find(f"{W}pPr/{W}pStyle")
+        sid = ps.get(f"{W}val", "") if ps is not None else ""
+        style = (style_names.get(sid) or sid).lower()
         if re.match(r"(heading|başlık|title)\s*[12]?$", style):
             styled = True
             parts.append((text, []))
@@ -265,7 +329,7 @@ def read_text(path: Path) -> tuple[Novel, list[Chapter], bytes | None]:
 
 
 def read_html(path: Path) -> tuple[Novel, list[Chapter], bytes | None]:
-    soup = BeautifulSoup(_decode(path.read_bytes()), "lxml")
+    soup = BeautifulSoup(_decode(path.read_bytes()), "html.parser")
     title = soup.title.get_text(strip=True) if soup.title else ""
     body = soup.body or soup
     heads = body.find_all(["h1", "h2"])

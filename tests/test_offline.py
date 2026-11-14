@@ -20,13 +20,13 @@ PAGE = """<html><body><div class="nav">Home | Library</div>
 
 
 def test_extract_and_clean():
-    soup = BeautifulSoup(PAGE, "lxml")
+    soup = BeautifulSoup(PAGE, "html.parser")
     paras = clean_paragraphs(extract_paragraphs(soup.select_one("#article")), "Chapter 7 - The Gate")
     assert paras == ["The old man raised his hand.", '"Go," he said, and the gate opened.']
 
 
 def test_generic_picks_content():
-    soup = BeautifulSoup(PAGE, "lxml")
+    soup = BeautifulSoup(PAGE, "html.parser")
     assert best_content(soup).get("id") == "article"
 
 
@@ -680,22 +680,30 @@ def _lorem(n: int, seed: str) -> list[str]:
     return [f"{seed} paragraph {i}: the lantern swayed while Arin counted the steps to the mill." for i in range(n)]
 
 
-def test_files_txt_docx_epub_split_into_chapters(tmp_path: Path):
-    import docx
+def _write_docx(path: Path, title: str, sections: list) -> None:
+    """Word'ün yazdığı yapıda küçük bir .docx: Başlık 1 stili kimliği "Heading1", adı "heading 1"."""
+    from xml.sax.saxutils import escape
 
+    w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    paras = ""
+    for head, body in sections:
+        paras += f'<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>{escape(head)}</w:t></w:r></w:p>'
+        paras += "".join(f"<w:p><w:r><w:t>{escape(t)}</w:t></w:r></w:p>" for t in body)
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("word/document.xml", f"<w:document {w}><w:body>{paras}</w:body></w:document>")
+        z.writestr("word/styles.xml", f'<w:styles {w}><w:style w:styleId="Heading1"><w:name w:val="heading 1"/></w:style></w:styles>')
+        z.writestr("docProps/core.xml", '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" '
+                   f'xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>{escape(title)}</dc:title></cp:coreProperties>')
+
+
+def test_files_txt_docx_epub_split_into_chapters(tmp_path: Path):
     from novel_epub.files import load_file
 
     (tmp_path / "a.txt").write_text("\n\n".join(["Chapter 1: Start", *_lorem(3, "a"), "Chapter 2: Mill", *_lorem(2, "b")]), "utf-8")
     n, chs, _ = load_file(tmp_path / "a.txt")
     assert [(c.title, len(c.paragraphs)) for c in chs] == [("Chapter 1: Start", 3), ("Chapter 2: Mill", 2)]
 
-    d = docx.Document()
-    d.core_properties.title = "Belge"
-    for h, seed in (("Ön Söz", "x"), ("Asıl Kısım", "y")):
-        d.add_heading(h, level=1)
-        for p in _lorem(2, seed):
-            d.add_paragraph(p)
-    d.save(tmp_path / "b.docx")
+    _write_docx(tmp_path / "b.docx", "Belge", [("Ön Söz", _lorem(2, "x")), ("Asıl Kısım", _lorem(2, "y"))])
     n, chs, _ = load_file(tmp_path / "b.docx")
     assert n.title == "Belge" and [c.title for c in chs] == ["Ön Söz", "Asıl Kısım"]
 
@@ -828,3 +836,59 @@ def test_pull_android_with_fake_adb(tmp_path: Path):
         history.pull_android("adb", tmp_path / "x", lambda a, timeout=0: R(b"List\nABC\tdevice\n") if a[-1] == "devices" else R(b"", 1))
     with pytest.raises(history.PhoneError, match="görünmüyor"):
         history.pull_android("adb", tmp_path / "x", lambda a, timeout=0: R(b"List of devices attached\n"))
+
+
+class _HTTP:
+    def __init__(self, status, data):
+        self.status_code, self._data = status, data
+        self.text = json.dumps(data)
+
+    def json(self):
+        return self._data
+
+
+def test_llm_requests_and_responses_per_provider():
+    from novel_epub import llm
+
+    msgs = [{"role": "system", "content": "SYS"}, {"role": "user", "content": "U"}]
+    schema = {"type": "object", "properties": {"p": {"type": "array", "items": {"type": "string"}}}}
+    rf = {"type": "json_schema", "json_schema": {"name": "c", "schema": schema}}
+    url, h, b = llm.build_request("gemini/gemini-3.8-flash", msgs, "g-test", None, 0.7, 1000, rf, "medium")
+    assert url.endswith("/models/gemini-3.8-flash:generateContent") and h["x-goog-api-key"] == "g-test"
+    assert b["systemInstruction"]["parts"][0]["text"] == "SYS" and b["contents"][0]["parts"][0]["text"] == "U"
+    cfg = b["generationConfig"]
+    assert cfg["responseSchema"]["type"] == "OBJECT" and cfg["responseSchema"]["properties"]["p"]["items"]["type"] == "STRING"
+    assert cfg["thinkingConfig"] == {"thinkingLevel": "medium"} and cfg["maxOutputTokens"] == 1000
+
+    url, h, b = llm.build_request("openai/gpt-5", msgs, "o-test", None, 0.7, 1000, rf, "medium")
+    assert url == "https://api.openai.com/v1/chat/completions" and h["Authorization"] == "Bearer o-test"
+    assert "temperature" not in b and b["max_completion_tokens"] == 1000 and b["reasoning_effort"] == "medium"
+    url, h, b = llm.build_request("deepseek/deepseek-chat", msgs, "d", None, 0.7, 500, {"type": "json_object"})
+    assert url.startswith("https://api.deepseek.com") and b["max_tokens"] == 500 and b["temperature"] == 0.7
+    url, h, b = llm.build_request("anthropic/claude-sonnet-4-5", msgs, "a", None, 0.7, 500, {"type": "json_object"})
+    assert url.endswith("/v1/messages") and b["system"] == "SYS" and b["messages"] == [msgs[1]] and h["x-api-key"] == "a"
+    url, _, _ = llm.build_request("ollama_chat/qwen3", msgs, None, "http://localhost:11434")
+    assert url == "http://localhost:11434/v1/chat/completions"
+
+    gem = {"candidates": [{"content": {"parts": [{"text": "düşünce", "thought": True}, {"text": '{"a": 1}'}]},
+                           "finishReason": "MAX_TOKENS"}], "usageMetadata": {"candidatesTokenCount": 10, "thoughtsTokenCount": 5}}
+    r = llm.completion("gemini/x", msgs, "k", post=lambda *a: _HTTP(200, gem))
+    assert r.choices[0].message.content == '{"a": 1}' and r.choices[0].finish_reason == "length"
+    assert (r.usage.completion_tokens, r.usage.completion_tokens_details.reasoning_tokens) == (15, 5)
+    ant = {"content": [{"type": "text", "text": "{}"}], "stop_reason": "end_turn", "usage": {"output_tokens": 7}}
+    assert llm.completion("anthropic/c", msgs, "k", post=lambda *a: _HTTP(200, ant)).usage.completion_tokens == 7
+
+    from novel_epub.translator import _classify
+
+    def fail(status, body):
+        try:
+            llm.completion("gemini/x", msgs, "k", post=lambda *a: _HTTP(status, body))
+        except Exception as e:
+            return _classify(e)
+
+    assert fail(400, {"error": {"message": "API key not valid. Please pass a valid API key."}}) == "auth"
+    assert fail(429, {"error": {"details": [{"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]}}) == "quota"
+    assert fail(429, {"error": {"message": "Please retry in 12.5s."}}) == "busy"
+    assert fail(404, {"error": {"message": "models/x is not found"}}) == "missing"
+    assert fail(503, {"error": {"message": "overloaded"}}) == "busy"
+    assert _classify(llm.APIConnectionError("koptu")) == "net"

@@ -1,4 +1,4 @@
-"""Yapay zekâ ile edebi çeviri (LiteLLM: Gemini, OpenAI, Claude, DeepSeek, OpenRouter, Groq, Ollama…).
+"""Yapay zekâ ile edebi çeviri (llm.py: Gemini, OpenAI, Claude, DeepSeek, OpenRouter, Groq, Ollama…).
 
 - Bölüm, paragraf sınırları korunarak parçalara bölünür; her parça JSON (paragraf dizisi) olarak döner.
 - Terim sözlüğü (isimler, kültivasyon kademeleri, teknikler) her parçada verilir ve model yeni
@@ -286,21 +286,6 @@ def _parse_json(text: str) -> dict:
     return data
 
 
-def _litellm():
-    import os
-
-    os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")  # açılışta internetten fiyat tablosu çekmesin
-    import litellm
-
-    import logging
-
-    litellm.telemetry = False
-    litellm.suppress_debug_info = True
-    logging.getLogger("LiteLLM").setLevel(logging.ERROR)
-    litellm.drop_params = True  # sağlayıcının desteklemediği parametre sessizce düşer
-    return litellm
-
-
 class Translator:
     """Model zinciri en iyiden en kötüye: kotası dolan sıradakine geçer, saatte bir en iyiler yeniden denenir."""
 
@@ -327,7 +312,7 @@ class Translator:
         self.exhausted: dict[str, float] = {}  # kotası dolan model → dolduğu an
         self.clock: Callable[[], float] = time.time
         self.keys: dict[str, str] = {}
-        self.complete: Callable | None = None  # LiteLLM completion (testlerde sahtesi konur)
+        self.complete: Callable | None = None  # llm.completion (testlerde sahtesi konur)
         self.no_schema: set[str] = set()  # JSON şemasını desteklemeyen modeller (şema talimata yazılır)
         self.no_temperature: set[str] = set()
         self.lang = lang if lang in LANGUAGES else "tr"
@@ -406,20 +391,13 @@ class Translator:
         self.log(f"  {', '.join(back)} yeniden deneniyor (kota yenilenmiş olabilir)")
 
     def output_cap(self, model: str | None = None) -> int:
-        """Modelin yanıt token tavanı (LiteLLM tablosundan; bilinmiyorsa sağlayıcıya göre tahmin)."""
-        from .providers import provider_of
+        """Modelin yanıt token tavanı (model adından)."""
+        from .llm import max_output_tokens
 
-        model = model or (self.models[0] if self.models else self.model)
-        try:
-            cap = int(_litellm().get_max_tokens(model) or 0)
-        except Exception:
-            cap = 0
-        if cap <= 0:
-            cap = OUTPUT_CAP if provider_of(model).id == "gemini" else 8192
-        return min(cap, OUTPUT_CAP)
+        return min(max_output_tokens(model or (self.models[0] if self.models else self.model)), OUTPUT_CAP)
 
     def _config(self, schema: dict, system: str = SYSTEM_PROMPT, model: str | None = None) -> dict:
-        """LiteLLM istek ayarları (mesajlar hariç)."""
+        """İstek ayarları (mesajlar hariç); llm.completion'a gider."""
         from .providers import provider_of
 
         model = model or self.model
@@ -430,9 +408,7 @@ class Translator:
             instruction += ("\n\nBu kitaba özel talimatlar (genel kurallarla çelişirse bunlar geçerlidir; "
                             "terim karşılıkları ayrıca \"glossary\" alanında da gelir):\n" + self.book_notes)
         p = provider_of(model)
-        # Büyük sağlayıcılar JSON şemasını destekler (LiteLLM tablosunda olmayan yeni modeller dahil).
-        native = model not in self.no_schema and (p.id in ("gemini", "openai", "anthropic")
-                                                  or _supports(model, "supports_response_schema"))
+        native = model not in self.no_schema and _supports(model, "supports_response_schema")
         if not native:
             instruction += ("\n\nYanıtını YALNIZCA şu JSON şemasına uyan tek bir JSON nesnesi olarak ver; "
                             "açıklama ya da kod bloğu yazma:\n" + json.dumps(schema, ensure_ascii=False))
@@ -443,7 +419,7 @@ class Translator:
             kw["temperature"] = temperature
         kw["response_format"] = ({"type": "json_schema", "json_schema": {"name": "cikti", "schema": schema}}
                                  if native else {"type": "json_object"})
-        if self.thinking and (p.id == "gemini" or _supports(model, "supports_reasoning")):
+        if self.thinking and _supports(model, "supports_reasoning"):
             kw["reasoning_effort"] = self.thinking_level  # düşünme token'ları çıktı sınırından yer
         if p.id == "ollama":
             key = self.keys.get("ollama", "")
@@ -458,7 +434,9 @@ class Translator:
         key = "chapters" if "chapters" in schema["properties"] else "paragraphs"
         bad_left = 2 if bad_retries is None else bad_retries
         attempt = 0
-        complete = self.complete or _litellm().completion
+        from . import llm
+
+        complete = self.complete or llm.completion
         while True:
             reason, wait = "", None
             try:
@@ -760,14 +738,14 @@ class Translator:
 
 
 def _supports(model: str, fn: str, default: bool = False) -> bool:
-    try:
-        return bool(getattr(_litellm(), fn)(model=model))
-    except Exception:
-        return default
+    from . import llm
+
+    check = {"supports_response_schema": llm.supports_schema, "supports_reasoning": llm.supports_reasoning}.get(fn)
+    return check(model) if check else default
 
 
 def _classify(e: Exception) -> str:
-    """LiteLLM/sağlayıcı hatası → auth | missing | quota | bad | busy | net."""
+    """Sağlayıcı hatası (llm.py sınıfları) → auth | missing | quota | bad | busy | net."""
     name = type(e).__name__
     code = getattr(e, "status_code", None)
     text = str(e)

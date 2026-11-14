@@ -72,7 +72,7 @@ class Fetcher:
         raise FetchError(f"{self.retries} denemede alınamadı: {url} ({last_err})")
 
     def soup(self, url: str, **kw) -> BeautifulSoup:
-        return BeautifulSoup(self.get(url, **kw).text, "lxml")
+        return BeautifulSoup(self.get(url, **kw).text, "html.parser")
 
     def json(self, url: str, **kw):
         return self.get(url, **kw).json()
