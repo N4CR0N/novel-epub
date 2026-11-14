@@ -95,7 +95,8 @@ def test_daily_quota_detection():
     assert is_daily_quota(Exception(daily))
     assert not is_daily_quota(Exception("429 RESOURCE_EXHAUSTED. {'retryDelay': '12s'}"))
     assert is_daily_quota(Exception("429 {'retryDelay': '27476s'}"))
-    assert parse_models("a, b,,a") == ["a", "b"]
+    assert parse_models("a, b,,a") == ["gemini/a", "gemini/b"]
+    assert parse_models("openai/gpt-5, gemini/x") == ["openai/gpt-5", "gemini/x"]
 
 
 def test_model_fallback_on_quota():
@@ -107,13 +108,37 @@ def test_model_fallback_on_quota():
 
     def fake_model_call(payload, schema=None, bad_retries=None, system=None):
         used.append(tr.model)
-        if tr.model == "m1":
+        if tr.model == "gemini/m1":
             raise QuotaExhausted("dolu")
         return {"title": "t", "paragraphs": payload["paragraphs"], "new_terms": []}
 
     tr._call_model = fake_model_call
     assert tr._call({"paragraphs": ["x"]})["paragraphs"] == ["x"]
-    assert used == ["m1", "m2"] and tr.model == "m2"
+    assert used == ["gemini/m1", "gemini/m2"] and tr.model == "gemini/m2"
+
+
+def test_exhausted_best_model_is_retried_after_an_hour():
+    from novel_epub.translator import QuotaExhausted
+
+    tr = GeminiTranslator.__new__(GeminiTranslator)
+    tr._init_state("iyi, orta, kotu", log=lambda m: None)
+    now = [1000.0]
+    tr.clock = lambda: now[0]
+    full = {"gemini/iyi"}
+
+    def fake(payload, schema=None, bad_retries=None, system=None):
+        if tr.model in full:
+            raise QuotaExhausted("dolu")
+        return {"title": "t", "paragraphs": [tr.model.split("/")[1]], "new_terms": []}
+
+    tr._call_model = fake
+    assert tr._call({"paragraphs": ["x"]})["paragraphs"] == ["orta"]
+    now[0] += 1800  # yarım saat: iyi model hâlâ dışarıda
+    assert tr._call({"paragraphs": ["x"]})["paragraphs"] == ["orta"]
+    full.clear()  # kota yenilendi
+    now[0] += 1900
+    assert tr._call({"paragraphs": ["x"]})["paragraphs"] == ["iyi"]
+    assert tr.models == ["gemini/iyi", "gemini/orta", "gemini/kotu"]
 
 
 def test_partial_epub_when_quota_runs_out(tmp_path: Path, monkeypatch):
@@ -217,26 +242,26 @@ def test_learning_adjusts_budget_and_ratio():
 
 
 class _Resp:
-    def __init__(self, text):
-        self.text, self.usage_metadata, self.candidates = text, None, []
+    """LiteLLM ModelResponse benzeri."""
+
+    def __init__(self, text, finish="stop", usage=None):
+        msg = type("M", (), {"content": text})()
+        self.choices = [type("C", (), {"message": msg, "finish_reason": finish})()]
+        self.usage = usage
 
 
 def _client(behaviour):
-    """behaviour(model, n) → yanıt metni ya da fırlatılacak istisna."""
+    """behaviour(model, n) → yanıt metni ya da fırlatılacak istisna; sahte litellm.completion döner."""
     calls = []
 
-    class Models:
-        def generate_content(self, model, contents, config):
-            calls.append(model)
-            r = behaviour(model, len(calls))
-            if isinstance(r, Exception):
-                raise r
-            return _Resp(r)
+    def complete(model, messages, **kw):
+        calls.append(model)
+        r = behaviour(model, len(calls))
+        if isinstance(r, Exception):
+            raise r
+        return _Resp(r)
 
-    class C:
-        models = Models()
-
-    return C(), calls
+    return complete, calls
 
 
 def test_network_error_waits_max_60s_and_retries():
@@ -244,7 +269,7 @@ def test_network_error_waits_max_60s_and_retries():
     waits = []
     tr.sleep, tr.max_retries = waits.append, 10
     ok = json.dumps({"title": "t", "paragraphs": ["x"], "new_terms": []})
-    tr.client, calls = _client(lambda m, n: ConnectionError("koptu") if n <= 6 else ok)
+    tr.complete, calls = _client(lambda m, n: ConnectionError("koptu") if n <= 6 else ok)
     assert tr._call({"paragraphs": ["x"]})["paragraphs"] == ["x"]
     assert len(calls) == 7 and max(waits) == 60 and waits[:3] == [10, 20, 40]
 
@@ -253,7 +278,7 @@ def test_persistent_error_moves_request_to_next_model():
     tr = _fake_translator()
     tr.models, tr.sleep, tr.max_retries = ["a", "b"], lambda s: None, 2
     ok = json.dumps({"title": "t", "paragraphs": ["x"], "new_terms": []})
-    tr.client, calls = _client(lambda m, n: TimeoutError() if m == "a" else ok)
+    tr.complete, calls = _client(lambda m, n: TimeoutError() if m == "a" else ok)
     assert tr._call({"paragraphs": ["x"]})["paragraphs"] == ["x"]
     assert calls == ["a", "a", "a", "b"]
     assert tr.models == ["a", "b"]  # geçici hata modeli listeden atmaz; sonraki istek yine "a" ile başlar
@@ -405,8 +430,8 @@ def test_lookahead_and_notes_and_temperature():
     tr.translate_batch([Chapter(1, "c", "u", ["a"])], {}, [], ["next p1", "next p2"])
     assert seen[0]["next_context"] == ["next p1", "next p2"]
     cfg = tr._config(RESPONSE_SCHEMA_FOR_TEST(), SYSTEM_PROMPT)
-    assert cfg.temperature == 0.7 and "Big brother → Ağabey" in cfg.system_instruction
-    assert tr._config(RESPONSE_SCHEMA_FOR_TEST(), EDIT_PROMPT).temperature == 0.5
+    assert cfg["temperature"] == 0.7 and "Big brother → Ağabey" in cfg["system"]
+    assert tr._config(RESPONSE_SCHEMA_FOR_TEST(), EDIT_PROMPT)["temperature"] == 0.5
 
 
 def RESPONSE_SCHEMA_FOR_TEST():
@@ -457,15 +482,121 @@ def test_api_key_moves_from_file_to_keyring(tmp_path: Path, monkeypatch):
     (tmp_path / "ayarlar.json").write_text(json.dumps({"api_key": "AIzaGIZLI", "model": "m"}), "utf-8")
     monkeypatch.setattr(web, "_keyring", lambda: kr)
     s = web.load_settings()
-    assert s["api_key"] == "AIzaGIZLI" and s["key_store"] == "kasa"
+    assert s["api_key"] == "AIzaGIZLI" and s["key_store"] == "kasa" and s["keys"] == {"gemini": "AIzaGIZLI"}
+    assert s["models"] == ["gemini/m"]  # eski "model" metni LiteLLM adına taşındı
     assert "AIzaGIZLI" not in (tmp_path / "ayarlar.json").read_text("utf-8")
-    web.save_settings(s, "AIzaYENI")
-    assert kr.get_password(web.KEYRING_SERVICE, web.KEYRING_USER) == "AIzaYENI"
+    web.save_settings(s, {"gemini": "AIzaYENI"})
+    assert kr.get_password(web.KEYRING_SERVICE, "gemini_api_key") == "AIzaYENI"  # eski sürümle aynı kasa adı
     assert "AIza" not in (tmp_path / "ayarlar.json").read_text("utf-8")
     # Kasa yoksa dosyaya düşer
     monkeypatch.setattr(web, "_keyring", lambda: None)
-    web.save_settings({"model": "m", "key_store": "dosya", "api_key": "AIzaDOSYA"})
+    web.save_settings({"models": ["gemini/m"], "key_store": "dosya", "keys": {"gemini": "AIzaDOSYA"}})
     assert web.load_settings()["api_key"] == "AIzaDOSYA"
+
+
+FAKE_OPENAI = "sk-proj-" + "TEST" * 10  # uydurma anahtar biçimi
+
+
+def test_add_key_detects_provider_and_preselects_best_models(tmp_path: Path, monkeypatch):
+    from novel_epub import providers, web
+
+    monkeypatch.setattr(web, "SETTINGS_PATH", tmp_path / "ayarlar.json")
+    monkeypatch.setattr(web, "_keyring", lambda: None)
+    for env in providers.ENV_KEYS.values():
+        monkeypatch.delenv(env, raising=False)
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    (tmp_path / "ayarlar.json").write_text(json.dumps({"models": []}), "utf-8")
+    models = ["gpt-4o-mini", "gpt-5", "text-embedding-3-large", "gpt-5-nano", "gpt-4.1", "whisper-1", "gpt-5-mini",
+              "gpt-4o", "o4-mini"]
+
+    def fake_get(url, headers):
+        if "openai.com" in url and headers.get("Authorization") == "Bearer " + FAKE_OPENAI:
+            return 200, {"data": [{"id": m} for m in models]}
+        return 401, {}
+
+    monkeypatch.setattr(providers, "_http_get", fake_get)
+    c = web.app.test_client()
+    r = c.post("/api/keys", json={"key": FAKE_OPENAI}).get_json()
+    assert r["provider"] == "openai"
+    avail = r["providers"][0]["available"]
+    assert "openai/text-embedding-3-large" not in avail and "openai/whisper-1" not in avail
+    assert r["models"][0] == "openai/gpt-5" and len(r["models"]) == 5
+    # Kullanıcı sırasız seçer; sıra otomatik en iyiden kötüye
+    r = c.post("/api/models", json={"models": ["openai/gpt-5-nano", "openai/gpt-5", "openai/yok"]}).get_json()
+    assert r["models"] == ["openai/gpt-5", "openai/gpt-5-nano"]
+    assert c.post("/api/keys", json={"key": "tanimsiz"}).status_code == 400
+    r = c.delete("/api/keys/openai").get_json()
+    assert r["models"] == [] and r["providers"] == []
+
+
+def test_provider_guess_and_rank():
+    from novel_epub.providers import guess, rank
+
+    assert [p.id for p in guess("AIza" + "X" * 35)] == ["gemini"]
+    assert [p.id for p in guess("AQ." + "Y" * 30)] == ["gemini"]
+    assert [p.id for p in guess("sk-ant-" + "Z" * 30)] == ["anthropic"]
+    assert [p.id for p in guess("sk-or-" + "Z" * 30)] == ["openrouter"]
+    assert [p.id for p in guess("gsk_" + "Z" * 30)] == ["groq"]
+    assert len(guess("bilinmeyen-bicim")) > 3  # tanınmayan biçim: hepsi denenir
+    g = ["gemini/gemini-3.1-flash-lite", "gemini/gemini-3.8-flash", "gemini/gemini-4-hydrogen",
+         "gemini/gemini-3.5-flash-lite", "gemini/gemini-4-argon"]
+    assert rank(g) == ["gemini/gemini-4-argon", "gemini/gemini-4-hydrogen", "gemini/gemini-3.8-flash",
+                       "gemini/gemini-3.5-flash-lite", "gemini/gemini-3.1-flash-lite"]
+    a = ["anthropic/claude-haiku-4-5", "anthropic/claude-opus-4-5", "anthropic/claude-sonnet-4-5"]
+    assert rank(a) == ["anthropic/claude-opus-4-5", "anthropic/claude-sonnet-4-5", "anthropic/claude-haiku-4-5"]
+
+
+def _err(name, code, msg=""):
+    return type(name, (Exception,), {"status_code": code})(msg)
+
+
+def test_litellm_errors_map_to_actions():
+    from novel_epub.translator import ModelUnusable, QuotaExhausted, _classify
+
+    assert _classify(_err("AuthenticationError", 401)) == "auth"
+    assert _classify(_err("BadRequestError", 400, "API key not valid. Please pass a valid API key.")) == "auth"
+    assert _classify(_err("NotFoundError", 404)) == "missing"
+    assert _classify(_err("RateLimitError", 429, "Quota exceeded ... PerDay")) == "quota"
+    assert _classify(_err("RateLimitError", 429, "try again in 3s")) == "busy"
+    assert _classify(_err("RateLimitError", 429, "You exceeded your current quota: insufficient_quota")) == "quota"
+    assert _classify(_err("ServiceUnavailableError", 503)) == "busy"
+    assert _classify(ConnectionError("koptu")) == "net"
+
+    tr = _fake_translator()
+    tr._init_state("openai/gpt-5, gemini/g", log=lambda m: None)
+    tr.keys, tr.sleep = {"openai": "o-test", "gemini": "g-test"}, lambda s: None
+
+    def complete(model, messages, **kw):
+        if model.startswith("openai/"):
+            raise _err("AuthenticationError", 401, "Incorrect API key provided")
+        assert kw["api_key"] == "g-test"
+        return _Resp('```json\n{"title": "t", "paragraphs": ["ok"], "new_terms": []}\n```')
+
+    tr.complete = complete
+    assert tr._call({"paragraphs": ["x"]})["paragraphs"] == ["ok"]  # kod bloğu içindeki JSON da okunur
+    assert tr.all_models == ["gemini/g"]  # anahtarı geçersiz sağlayıcı zincirden çıktı
+    assert issubclass(ModelUnusable, QuotaExhausted)
+
+
+def test_schema_falls_back_to_prompt_when_unsupported(monkeypatch):
+    import novel_epub.translator as T
+
+    tr = _fake_translator()
+    tr._init_state("deepseek/deepseek-chat", log=lambda m: None)
+    tr.keys, tr.sleep = {"deepseek": "d-test"}, lambda s: None
+    seen = []
+
+    def complete(model, messages, **kw):
+        seen.append(kw["response_format"]["type"])
+        if kw["response_format"]["type"] == "json_schema":
+            raise _err("BadRequestError", 400, "response_format json_schema unsupported")
+        assert "JSON şemasına" in messages[0]["content"]
+        return _Resp('{"title": "t", "paragraphs": ["ok"], "new_terms": []}')
+
+    tr.complete = complete
+    monkeypatch.setattr(T, "_supports", lambda model, fn, default=False: fn == "supports_response_schema")
+    assert tr._call({"paragraphs": ["x"]})["paragraphs"] == ["ok"]
+    assert seen == ["json_schema", "json_object"]
 
 
 def test_name_matching_aliases_without_false_positives():
@@ -525,6 +656,8 @@ def test_data_home_portable_or_documents(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("NOVEL_EPUB_HOME", raising=False)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(app, "_documents_dir", lambda: tmp_path / "Belgeler")
+    assert app.data_home() == tmp_path / "Belgeler" / "WebNovel Downloader & Translator"
+    (tmp_path / "Belgeler" / "Novel EPUB").mkdir(parents=True)  # eski sürümün verisi varsa o kullanılır
     assert app.data_home() == tmp_path / "Belgeler" / "Novel EPUB"
     (tmp_path / "kutuphane").mkdir()  # eski kurulum klasöründen açıldıysa orası kullanılır
     assert app.data_home() == tmp_path
@@ -609,11 +742,11 @@ def test_turkish_rules_only_for_turkish_target():
     from novel_epub.translator import SYSTEM_PROMPT, TURKISH_RULES
 
     tr = _fake_translator()
-    assert "Cilt N Bölüm M" in tr._config(RESPONSE_SCHEMA_FOR_TEST(), SYSTEM_PROMPT).system_instruction
+    assert "Cilt N Bölüm M" in tr._config(RESPONSE_SCHEMA_FOR_TEST(), SYSTEM_PROMPT)["system"]
     en = GeminiTranslator.__new__(GeminiTranslator)
     en._init_state("m", lang="en")
     en.thinking = False
-    instr = en._config(RESPONSE_SCHEMA_FOR_TEST(), SYSTEM_PROMPT).system_instruction
+    instr = en._config(RESPONSE_SCHEMA_FOR_TEST(), SYSTEM_PROMPT)["system"]
     assert "İngilizce (English)" in instr and TURKISH_RULES.strip() not in instr
 
 

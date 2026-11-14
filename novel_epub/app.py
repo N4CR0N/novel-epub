@@ -11,7 +11,8 @@ import sys
 import threading
 from pathlib import Path
 
-APP_NAME = "Novel EPUB"
+APP_NAME = "WebNovel Downloader & Translator"
+LEGACY_DIR = "Novel EPUB"  # eski sürümün Belgeler altındaki veri klasörü
 
 
 def _documents_dir() -> Path:
@@ -32,14 +33,16 @@ def data_home() -> Path:
     """Kitaplık, çıktılar ve ayarların klasörü.
 
     Uygulamanın yanında kutuphane/ ya da ayarlar.json varsa (taşınabilir kullanım, eski kurulum)
-    orası; yoksa Belgeler/Novel EPUB.
+    orası; yoksa Belgeler altında: eski "Novel EPUB" klasörü varsa o (kitaplık ve ayarlar korunur),
+    yoksa "WebNovel Downloader & Translator".
     """
     if os.environ.get("NOVEL_EPUB_HOME"):
         return Path(os.environ["NOVEL_EPUB_HOME"])
     here = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path.cwd()
     if (here / "kutuphane").exists() or (here / "ayarlar.json").exists():
         return here
-    return _documents_dir() / APP_NAME
+    docs = _documents_dir()
+    return docs / LEGACY_DIR if (docs / LEGACY_DIR).exists() else docs / APP_NAME
 
 
 def _free_port(preferred: int = 5000) -> int:
@@ -62,7 +65,12 @@ def self_test(home: Path) -> int:
     try:
         import webview  # noqa: F401  (pencere kütüphanesi paketlenmiş mi)
         from curl_cffi import requests as _cc  # noqa: F401
-        from google import genai  # noqa: F401
+        from .translator import _litellm
+
+        lt = _litellm()  # LiteLLM ve fiyat/model tablosu paketlenmiş mi: ağsız sahte yanıtla tam yol
+        r = lt.completion(model="gemini/gemini-2.5-flash", messages=[{"role": "user", "content": "x"}],
+                          mock_response='{"ok": true}')
+        report["litellm"] = r.choices[0].message.content == '{"ok": true}' and lt.get_max_tokens("gemini/gemini-2.5-flash") > 0
 
         from . import web
 
@@ -76,11 +84,11 @@ def self_test(home: Path) -> int:
                 import time
 
                 time.sleep(0.2)
-        report["arayuz"] = "Novel → EPUB" in html
+        report["arayuz"] = "WebNovel Downloader" in html
         report["info"] = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/api/info").read())["local"]
         kr = web._keyring()
         report["kasa"] = type(kr.get_keyring()).__name__ if kr else "yok"
-        report["ok"] = report["arayuz"] and report["info"]
+        report["ok"] = report["arayuz"] and report["info"] and report["litellm"]
     except Exception as e:  # rapora yaz, çıkış kodu 1
         report["hata"] = repr(e)
         report["ok"] = False

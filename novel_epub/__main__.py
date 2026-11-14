@@ -16,8 +16,11 @@ def main() -> None:
     ap.add_argument("url", nargs="?", help="Novel ana sayfası veya bölüm linki (boşsa web arayüzü açılır)")
     ap.add_argument("--bas", type=int, help="İlk bölüm sırası (1'den başlar)")
     ap.add_argument("--son", type=int, help="Son bölüm sırası (dahil)")
-    ap.add_argument("--cevir", action="store_true", help="Gemini ile Türkçeye çevir")
-    ap.add_argument("--model", default=os.environ.get("GEMINI_MODEL", ""), help="Gemini model(ler)i, virgülle (kota dolunca sıradakine geçer)")
+    ap.add_argument("--cevir", action="store_true", help="Yapay zekâ ile çevir")
+    ap.add_argument("--dil", default="tr", help="Hedef dil kodu (tr, en, de…)")
+    ap.add_argument("--model", default=os.environ.get("NOVEL_MODELS", os.environ.get("GEMINI_MODEL", "")),
+                    help="Modeller en iyiden kötüye, virgülle; LiteLLM adı (gemini/…, openai/…, anthropic/…). "
+                         "Önek yoksa Gemini. Kota dolunca sıradakine geçer, saatte bir en iyiler yeniden denenir.")
     ap.add_argument("--bekleme", type=float, default=0.7, help="İstekler arası saniye")
     ap.add_argument("--isci", type=int, default=3, help="Paralel indirme sayısı")
     ap.add_argument("--toplu", type=int, default=0, help="Tek Gemini isteğinde en fazla kaç bölüm (0 = otomatik)")
@@ -31,12 +34,17 @@ def main() -> None:
         serve(a.host, a.port)
         return
 
-    key = os.environ.get("GEMINI_API_KEY", "")
-    if a.cevir and not key:
+    from .providers import ENV_KEYS
+
+    keys = {pid: os.environ[env] for pid, env in ENV_KEYS.items() if os.environ.get(env)}
+    model = a.model
+    if a.cevir and (not keys or not model):
         from .web import load_settings
 
-        key = load_settings().get("api_key", "")
-    opts = Options(url=a.url, start=a.bas, end=a.son, translate=a.cevir, api_key=key, model=a.model,
+        s = load_settings()
+        keys = keys or s.get("keys", {})
+        model = model or ", ".join(s.get("models") or [])
+    opts = Options(url=a.url, start=a.bas, end=a.son, translate=a.cevir, keys=keys, model=model, lang=a.dil,
                    delay=a.bekleme, workers=a.isci, batch=a.toplu, library=Path("kutuphane"), output=Path("cikti"))
     job = Job(opts, on_log=print)
     out = job.run()

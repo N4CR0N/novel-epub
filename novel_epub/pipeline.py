@@ -26,8 +26,9 @@ class Options:
     start: int | None = None  # 1'den başlayan bölüm sırası (dahil)
     end: int | None = None
     translate: bool = False
-    api_key: str = ""
-    model: str = ""
+    api_key: str = ""  # eski: tek Gemini anahtarı
+    keys: dict = field(default_factory=dict)  # sağlayıcı → anahtar (providers.PROVIDERS id'leri)
+    model: str = ""  # LiteLLM adları, virgülle, en iyiden en kötüye
     lang: str = "tr"  # hedef dil kodu (translator.LANGUAGES)
     file: str = ""  # doluysa site yerine bu dosyadan (EPUB/PDF/DOCX/TXT/HTML) okunur
     delay: float = 0.7
@@ -219,7 +220,7 @@ class Job:
         self.p.phase = "bölümler gezilerek indiriliyor"
         o = self.opts
         chapters: list[Chapter] = []
-        url, idx, seen = novel.url, 1, set()
+        url, idx, seen = (novel.chapters[0].url if novel.chapters else novel.url), 1, set()
         start, end = o.start or 1, min(o.end or o.max_follow, o.max_follow)
         self.p.total = end - start + 1
         while url and url not in seen and idx <= end:
@@ -250,11 +251,12 @@ class Job:
             self.log("Denetim: tüm bölümler sağlam görünüyor ✓")
 
     def _translate(self, chapters: list[Chapter], store: BookStore) -> list[Chapter]:
-        from .translator import (LOOKAHEAD_PARAGRAPHS, FatalError, GeminiTranslator, QuotaExhausted, TranslationError,
-                                 untranslated_suspects)
+        from . import translator as _t
+        from .translator import LOOKAHEAD_PARAGRAPHS, FatalError, QuotaExhausted, TranslationError, untranslated_suspects
 
         o = self.opts
-        tr = GeminiTranslator(o.api_key, o.model, o.lang, log=self.log, thinking_level=o.thinking)
+        keys = dict(o.keys) or ({"gemini": o.api_key} if o.api_key else {})
+        tr = _t.GeminiTranslator(keys, o.model, o.lang, log=self.log, thinking_level=o.thinking)
 
         def wait(seconds: float) -> None:  # "Durdur" bekleme sırasında da çalışsın
             if self.cancel_event.wait(seconds):

@@ -15,8 +15,7 @@ from flask import Flask, abort, jsonify, render_template, request, send_from_dir
 
 from .pipeline import Job, Options
 from .store import BookStore
-from .translator import (DEFAULT_MODEL, DEFAULT_MODELS, DEFAULT_TEMPERATURE, LANGUAGES, MAX_AUTO_CHAPTERS,
-                         THINKING_LEVELS)
+from .translator import DEFAULT_MODELS, DEFAULT_TEMPERATURE, LANGUAGES, MAX_AUTO_CHAPTERS, THINKING_LEVELS
 
 BASE = Path(os.environ.get("NOVEL_EPUB_HOME", Path.cwd()))
 SETTINGS_PATH = BASE / "ayarlar.json"
@@ -35,7 +34,11 @@ def running_jobs() -> list[Job]:
     return [j for j in JOBS.values() if j.p.phase not in DONE_PHASES]
 
 
-KEYRING_SERVICE, KEYRING_USER = "novel-epub", "gemini_api_key"
+KEYRING_SERVICE = "novel-epub"
+
+
+def _kr_user(pid: str) -> str:
+    return f"{pid}_api_key"  # Gemini için eski ad da budur: "gemini_api_key"
 
 
 def _keyring():
@@ -58,48 +61,88 @@ def _read_file() -> dict:
     return json.loads(SETTINGS_PATH.read_text("utf-8")) if SETTINGS_PATH.exists() else {}
 
 
+def _write_file(data: dict) -> None:
+    SETTINGS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
 def load_settings() -> dict:
-    s = {"model": os.environ.get("GEMINI_MODEL", DEFAULT_MODELS), "delay": 0.7, "workers": 3, "batch": 0,
-         "thinking": "medium", "temperature": DEFAULT_TEMPERATURE, "lang": "tr"}
+    """Ayarlar + anahtarlar. Anahtarlar kasada (yoksa ayarlar.json'da); ortam değişkeni hepsini ezer.
+
+    s["keys"]: {sağlayıcı: anahtar}, s["models"]: seçili modeller (LiteLLM adları, en iyiden kötüye),
+    s["providers"]: {sağlayıcı: {"models": [erişilen modeller]}}.
+    """
+    from .providers import ENV_KEYS, parse_or_empty, provider_of
+
+    s = {"delay": 0.7, "workers": 3, "batch": 0, "thinking": "medium", "temperature": DEFAULT_TEMPERATURE,
+         "lang": "tr", "providers": {}, "models": []}
     file = _read_file()
     s.update(file)
+    # Eski sürüm: tek Gemini anahtarı + virgüllü "model" metni.
+    if "models" not in file:
+        s["models"] = parse_or_empty(os.environ.get("GEMINI_MODEL") or file.get("model") or DEFAULT_MODELS)
+    file_keys: dict = dict(file.get("keys") or {})
+    if file.get("api_key"):
+        file_keys.setdefault("gemini", file["api_key"])
+    for m in s["models"]:  # seçili modellerin sağlayıcıları listede görünsün
+        s["providers"].setdefault(provider_of(m).id, {})
     kr = _keyring()
-    key, store = "", "yok"
+    keys: dict[str, str] = {}
+    store = "dosya"
     if kr:
         try:
-            if file.get("api_key"):  # eski sürümden kalan düz metin anahtarı kasaya taşı
-                kr.set_password(KEYRING_SERVICE, KEYRING_USER, file["api_key"])
-                file.pop("api_key")
-                SETTINGS_PATH.write_text(json.dumps(file, ensure_ascii=False, indent=1), encoding="utf-8")
-            key, store = kr.get_password(KEYRING_SERVICE, KEYRING_USER) or "", "kasa"
+            if file_keys:  # düz metin anahtarları kasaya taşı
+                for pid, k in file_keys.items():
+                    kr.set_password(KEYRING_SERVICE, _kr_user(pid), k)
+                file.pop("api_key", None)
+                file.pop("keys", None)
+                file.setdefault("models", s["models"])
+                _write_file(file)
+            for pid in set(s["providers"]) | set(file_keys) | {"gemini"}:
+                k = kr.get_password(KEYRING_SERVICE, _kr_user(pid))
+                if k:
+                    keys[pid] = k
+                    s["providers"].setdefault(pid, {})
+            store = "kasa"
         except Exception:
             kr = None
     if not kr:
-        key, store = file.get("api_key", ""), "dosya"
-    if os.environ.get("GEMINI_API_KEY"):
-        key, store = os.environ["GEMINI_API_KEY"], "ortam"
-    s["api_key"], s["key_store"] = key, store
+        keys = file_keys
+    for pid, env in ENV_KEYS.items():
+        if os.environ.get(env):
+            keys[pid], store = os.environ[env], "ortam"
+            s["providers"].setdefault(pid, {})
+    s["keys"], s["key_store"] = keys, store
+    s["api_key"] = keys.get("gemini", "")  # eski kullanım
     if s.get("batch") == 3 and not s.get("batch_set"):  # eski sabit varsayılan → otomatik
         s["batch"] = 0
-    if s.get("model") == DEFAULT_MODEL:  # eski tek-model varsayılanı: yedek modeli ekle
-        s["model"] = DEFAULT_MODELS
     return s
 
 
-def save_settings(s: dict, new_key: str = "") -> None:
-    """Ayarları ayarlar.json'a yazar; anahtar kasa varsa kasaya, yoksa dosyaya gider."""
-    out = {k: v for k, v in s.items() if k not in ("api_key", "key_store")}
-    key = new_key or (s.get("api_key") if s.get("key_store") == "dosya" else "")
+def save_settings(s: dict, new_keys: dict | None = None, removed: tuple = ()) -> None:
+    """Ayarları ayarlar.json'a yazar; anahtarlar kasa varsa kasaya, yoksa dosyaya gider."""
+    out = {k: v for k, v in s.items() if k not in ("api_key", "key_store", "keys", "model")}
+    file_keys = dict(s.get("keys") or {}) if s.get("key_store") == "dosya" else {}
     kr = _keyring()
-    if new_key and kr:
-        try:
-            kr.set_password(KEYRING_SERVICE, KEYRING_USER, new_key)
-            key = ""
-        except Exception:
-            pass
-    if key:
-        out["api_key"] = key
-    SETTINGS_PATH.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
+    for pid, key in (new_keys or {}).items():
+        stored = False
+        if kr:
+            try:
+                kr.set_password(KEYRING_SERVICE, _kr_user(pid), key)
+                stored = True
+            except Exception:
+                pass
+        if not stored:
+            file_keys[pid] = key
+    for pid in removed:
+        file_keys.pop(pid, None)
+        if kr:
+            try:
+                kr.delete_password(KEYRING_SERVICE, _kr_user(pid))
+            except Exception:
+                pass
+    if file_keys:
+        out["keys"] = file_keys
+    _write_file(out)
 
 
 @app.get("/")
@@ -107,22 +150,32 @@ def index():
     return render_template("index.html")
 
 
+def _public_settings(s: dict) -> dict:
+    from .providers import BY_ID
+
+    provs = []
+    for pid, info in s.get("providers", {}).items():
+        p = BY_ID.get(pid)
+        if not p:
+            continue
+        key = s["keys"].get(pid, "")
+        provs.append({"id": pid, "name": p.name, "prefix": p.prefix, "has_key": bool(key) or p.auth == "none",
+                      "hint": (f"…{key[-4:]}" if key and not key.startswith("http") else key),
+                      "available": info.get("models") or [], "key_url": p.key_url})
+    hidden = ("api_key", "keys", "providers")
+    return {**{k: v for k, v in s.items() if k not in hidden}, "providers": provs,
+            "has_key": any(x["has_key"] for x in provs)}
+
+
 @app.get("/api/settings")
 def get_settings():
-    s = load_settings()
-    key = s.get("api_key", "")
-    return jsonify({**s, "api_key": "", "has_key": bool(key), "key_hint": f"…{key[-4:]}" if key else ""})
-
+    return jsonify(_public_settings(load_settings()))
 
 
 @app.post("/api/settings")
 def post_settings():
     s = load_settings()
     data = request.get_json(force=True)
-    new_key = (data.get("api_key") or "").strip()
-    for k in ("model",):
-        if data.get(k):
-            s[k] = data[k].strip()
     if data.get("lang") in LANGUAGES:
         s["lang"] = data["lang"]
     if data.get("thinking") in THINKING_LEVELS:
@@ -133,8 +186,79 @@ def post_settings():
         if data.get(k) not in (None, ""):
             s[k] = typ(data[k])
     s["batch_set"] = True
-    save_settings(s, new_key)
+    save_settings(s)
     return get_settings()
+
+
+@app.post("/api/keys")
+def add_key():
+    """Anahtarı yapıştır: sağlayıcı tanınır, erişilen modeller listelenir, en iyi 5'i seçili gelir (ilk kez)."""
+    from .providers import KeyError_, detect, rank
+
+    key = (request.get_json(force=True).get("key") or "").strip()
+    if not key:
+        return jsonify({"error": "Anahtar boş"}), 400
+    try:
+        prov, available = detect(key)
+    except KeyError_ as e:
+        return jsonify({"error": str(e)}), 400
+    s = load_settings()
+    s["providers"].setdefault(prov.id, {})["models"] = available
+    if not any(m.startswith(prov.prefix + "/") for m in s["models"]):
+        s["models"] = rank(s["models"] + available[:5])
+    save_settings(s, new_keys={prov.id: key})
+    return jsonify({"provider": prov.id, "name": prov.name, "models": len(available),
+                    **_public_settings(load_settings())})
+
+
+@app.delete("/api/keys/<pid>")
+def remove_key(pid: str):
+    from .providers import BY_ID
+
+    if pid not in BY_ID:
+        abort(404)
+    s = load_settings()
+    s["providers"].pop(pid, None)
+    s["keys"].pop(pid, None)
+    s["models"] = [m for m in s["models"] if not m.startswith(BY_ID[pid].prefix + "/")]
+    save_settings(s, removed=(pid,))
+    return get_settings()
+
+
+@app.post("/api/keys/<pid>/refresh")
+def refresh_models(pid: str):
+    from .providers import BY_ID, KeyError_, list_models
+
+    s = load_settings()
+    if pid not in BY_ID or (pid not in s["keys"] and BY_ID[pid].auth != "none"):
+        return jsonify({"error": "Bu sağlayıcı için anahtar yok"}), 400
+    try:
+        s["providers"].setdefault(pid, {})["models"] = list_models(BY_ID[pid], s["keys"].get(pid, ""))
+    except Exception as e:
+        return jsonify({"error": str(e)[:300]}), 400
+    save_settings(s)
+    return get_settings()
+
+
+@app.post("/api/models")
+def set_models():
+    """Seçili modeller; sıra her zaman otomatik: en iyiden en kötüye."""
+    from .providers import rank
+
+    chosen = request.get_json(force=True).get("models") or []
+    s = load_settings()
+    allowed = {m for info in s["providers"].values() for m in info.get("models") or []} | set(s["models"])
+    s["models"] = rank([m for m in dict.fromkeys(chosen) if m in allowed])
+    save_settings(s)
+    return get_settings()
+
+
+@app.get("/api/sources")
+def sources():
+    """Özel destekli siteler (arayüzde gösterilir)."""
+    from .sources import SOURCES
+
+    return jsonify([{"name": c.name, "domains": list(c.domains)} for c in SOURCES])
 
 
 @app.get("/api/languages")
@@ -265,19 +389,6 @@ def phone_scan():
     return jsonify({**scan(_supported, dirs), "copied_to": str(dest)})
 
 
-@app.get("/api/models")
-def models():
-    from .translator import list_models
-
-    key = load_settings().get("api_key")
-    if not key:
-        return jsonify({"error": "Önce API anahtarını kaydet"}), 400
-    try:
-        return jsonify({"models": list_models(key)})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
-
-
 @app.post("/api/jobs")
 def start_job():
     data = request.get_json(force=True)
@@ -296,8 +407,8 @@ def start_job():
         start=int(data["start"]) if data.get("start") else None,
         end=int(data["end"]) if data.get("end") else None,
         translate=bool(data.get("translate")),
-        api_key=s.get("api_key", ""),
-        model=s.get("model") or DEFAULT_MODELS,
+        keys=s.get("keys", {}),
+        model=", ".join(s.get("models") or []),
         delay=float(s.get("delay", 0.7)),
         workers=int(s.get("workers", 3)),
         batch=max(0, min(MAX_AUTO_CHAPTERS, int(s.get("batch", 0)))),
@@ -308,8 +419,8 @@ def start_job():
         library=LIBRARY,
         output=OUTPUT,
     )
-    if opts.translate and not opts.api_key:
-        return jsonify({"error": "Çeviri için önce Ayarlar'dan Gemini API anahtarını kaydet"}), 400
+    if opts.translate and (not opts.model or (not opts.keys and not opts.model.startswith("ollama_chat/"))):
+        return jsonify({"error": "Çeviri için önce Ayarlar'dan bir API anahtarı ekle ve en az bir model seç"}), 400
     job_id = uuid.uuid4().hex[:10]
     job = Job(opts, on_log=print)
     JOBS[job_id] = job
@@ -454,7 +565,7 @@ def lan_ip() -> str:
 def serve(host: str = "0.0.0.0", port: int = 5000) -> None:
     OUTPUT.mkdir(exist_ok=True)
     LIBRARY.mkdir(exist_ok=True)
-    print(f"\n  Novel → EPUB hazır.\n  Bu PC'de:      http://127.0.0.1:{port}")
+    print(f"\n  WebNovel Downloader & Translator hazır.\n  Bu PC'de:      http://127.0.0.1:{port}")
     if host == "0.0.0.0":
         print(f"  Telefonda (aynı Wi‑Fi): http://{lan_ip()}:{port}\n")
     app.run(host=host, port=port, threaded=True)

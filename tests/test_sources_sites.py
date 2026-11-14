@@ -161,3 +161,99 @@ def test_novelfull_chapter():
     assert ch.title == "Chapter 1 - a"
     assert ch.paragraphs == [LOREM, "Lorem two.", "Lorem three."]
     assert ch.next_url == "https://novelfull.com/lorem/chapter-2-b.html"
+
+
+# ---------------- libread (freewebnovel motoru) ----------------
+def test_libread_routes_to_freewebnovel_engine():
+    from novel_epub.sources.freewebnovel import FreeWebNovel
+
+    assert FreeWebNovel.matches("https://libread.com/libread/lorem-novel-123/chapter-01")
+    assert FreeWebNovel.novel_url("https://libread.com/libread/lorem-novel-123/chapter-01") == \
+        "https://libread.com/libread/lorem-novel-123"
+
+
+# ---------------- FanMTL / ReadWN ----------------
+RW = "https://www.fanmtl.com"
+RW_NOVEL = f"""<html><body><div class="novel-header"><figure class="cover"><img data-src="/d/file/c.jpg"></figure>
+<h1 class="novel-title text2row">Lorem Talents</h1><div class="author"><span>Author:</span><span itemprop="author">Ipsum</span></div>
+<div class="categories"><a>Fantasy</a><a>Lorem</a></div></div><div class="summary"><div class="content">Lorem özet.</div></div>
+<ul class="chapter-list"><li><a href="/novel/lorem-talents_1.html" title="Chapter 1 One">x</a></li>
+<li><a href="/novel/lorem-talents_2.html" title="Chapter 2 Two">x</a></li></ul>
+<div class="pagination"><a href="/e/extend/fy.php?page=1&wjm=lorem-talents">2</a>
+<a href="/e/extend/fy.php?page=2&wjm=lorem-talents">&gt;&gt;</a></div></body></html>"""
+
+
+def _rw_page(n):
+    return f'<ul class="chapter-list"><li><a href="/novel/lorem-talents_{n + 2}.html" title="Chapter {n + 2}">x</a></li></ul>'
+
+
+def test_readwn_paginated_list_and_content():
+    from novel_epub.sources.readwn import ReadWN
+
+    ff = FakeFetcher({
+        f"{RW}/novel/lorem-talents.html": RW_NOVEL,
+        f"{RW}/e/extend/fy.php?page=1&wjm=lorem-talents": _rw_page(1),
+        f"{RW}/e/extend/fy.php?page=2&wjm=lorem-talents": _rw_page(2),
+        f"{RW}/novel/lorem-talents_1.html": f'<div class="chapter-content"><p>{LOREM}</p><p>{LOREM} 2</p></div>'
+                                            f'<a rel="next" href="/novel/lorem-talents_2.html">Next</a>',
+    })
+    src = source_for(f"{RW}/novel/lorem-talents_7.html", ff)
+    assert isinstance(src, ReadWN)
+    n = src.novel(f"{RW}/novel/lorem-talents_7.html")
+    assert (n.title, n.author, n.genres, n.source) == ("Lorem Talents", "Ipsum", "Fantasy, Lorem", "fanmtl")
+    assert n.cover_url == f"{RW}/d/file/c.jpg" and n.description == "Lorem özet."
+    assert [c.title for c in n.chapters] == ["Chapter 1 One", "Chapter 2 Two", "Chapter 3", "Chapter 4"]
+    ch = src.chapter(n.chapters[0])
+    assert len(ch.paragraphs) == 2 and ch.next_url == f"{RW}/novel/lorem-talents_2.html"
+
+
+# ---------------- NovelBuddy ----------------
+NB = "https://novelbuddy.com"
+
+
+def test_novelbuddy_starts_at_first_chapter_and_follows_next():
+    from novel_epub.sources.novelbuddy import NovelBuddy
+
+    page = f"""<html><head><meta property="og:image" content="https://rs.example/c.png"></head><body>
+    <h1>Lorem War</h1><a href="/authors/ipsum">Ipsum</a><ul>
+    <li><a href="/lorem-war/chapter-120-late">Chapter 120</a></li><li><a href="/lorem-war/chapter-1-start">Chapter 1</a></li>
+    <li><a href="/lorem-war/chapter-119-late">Chapter 119</a></li></ul></body></html>"""
+    chap = f"""<html><body><h1 class="sr-only">Lorem War Chapter 1 Start</h1><nav><a href="/">Home</a></nav>
+    <div><p>{LOREM}</p><p>{LOREM} b</p><p>{LOREM} c</p></div>
+    <a class="inline-flex" href="/lorem-war/chapter-2-next">Next</a></body></html>"""
+    ff = FakeFetcher({f"{NB}/lorem-war": page, f"{NB}/lorem-war/chapter-1-start": chap})
+    src = source_for(f"{NB}/lorem-war/chapter-119-late", ff)
+    assert isinstance(src, NovelBuddy)
+    n = src.novel(f"{NB}/lorem-war/chapter-119-late")
+    assert n.follow_next and n.title == "Lorem War" and n.author == "Ipsum"
+    assert n.chapters[0].url == f"{NB}/lorem-war/chapter-1-start"
+    ch = src.chapter(n.chapters[0])
+    assert len(ch.paragraphs) == 3 and ch.next_url == f"{NB}/lorem-war/chapter-2-next"
+
+
+# ---------------- Wattpad ----------------
+def test_wattpad_api_story_and_part_link():
+    from novel_epub.sources.wattpad import API, FIELDS, Wattpad
+
+    story = {"title": "Lorem Story", "user": {"name": "ipsum"}, "cover": "https://img.example/c.jpg",
+             "description": "Lorem.", "tags": ["romance", "lorem"],
+             "parts": [{"id": 11, "title": "Intro", "url": "https://www.wattpad.com/11-lorem-intro"},
+                       {"id": 12, "title": "Part Two", "url": "https://www.wattpad.com/12-lorem-two"}]}
+
+    class Resp:
+        def __init__(self, text):
+            self.text = text
+
+    class WF(FakeFetcher):
+        def get(self, url, **kw):
+            return Resp(self._get(url))
+
+    ff = WF({f"{API}/story_parts/12?fields=groupId": {"groupId": "99"},
+             f"{API}/stories/99?fields={FIELDS}": story,
+             "https://www.wattpad.com/apiv2/?m=storytext&id=11": f'<p data-p-id="a">{LOREM}</p><p data-p-id="b">{LOREM} 2</p>'})
+    src = source_for("https://www.wattpad.com/12-lorem-two", ff)
+    assert isinstance(src, Wattpad)
+    n = src.novel("https://www.wattpad.com/12-lorem-two")
+    assert (n.title, n.author, n.genres) == ("Lorem Story", "ipsum", "romance, lorem")
+    assert n.url == "https://www.wattpad.com/story/99" and [c.title for c in n.chapters] == ["Intro", "Part Two"]
+    assert len(src.chapter(n.chapters[0]).paragraphs) == 2

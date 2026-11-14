@@ -10,18 +10,19 @@ from .base import Source
 
 
 class FreeWebNovel(Source):
-    """freewebnovel.com — bölüm listesi `?ajax=chapters` JSON ucundan sayfa sayfa (200'er) gelir."""
+    """freewebnovel.com ve aynı motoru kullanan libread.com — bölüm listesi `?ajax=chapters` JSON ucundan
+    sayfa sayfa (200'er) gelir."""
 
     name = "freewebnovel"
-    domains = ("freewebnovel.com",)
+    domains = ("freewebnovel.com", "libread.com")
     PAGE_SIZE = 200
 
     @staticmethod
     def novel_url(url: str) -> str:
         p = urlparse(url)
-        m = re.match(r"(/novel/[^/]+)", p.path)
+        m = re.match(r"(/(?:novel|libread)/[^/]+)", p.path)
         if not m:
-            raise ValueError("freewebnovel linki /novel/<ad> biçiminde olmalı")
+            raise ValueError("freewebnovel/libread linki /novel/<ad> ya da /libread/<ad> biçiminde olmalı")
         return f"{p.scheme}://{p.netloc}{m.group(1)}"
 
     def novel(self, url: str) -> Novel:
@@ -29,7 +30,7 @@ class FreeWebNovel(Source):
         soup = self.f.soup(url)
         novel = Novel(
             url=url,
-            source=self.name,
+            source="libread" if "libread." in urlparse(url).netloc else self.name,
             title=self.meta(soup, "og:novel:novel_name", "og:title") or self.text(soup, "h1"),
             author=self.meta(soup, "og:novel:author").replace(",", ", "),
             cover_url=urljoin(url, self.meta(soup, "og:image")) if self.meta(soup, "og:image") else "",

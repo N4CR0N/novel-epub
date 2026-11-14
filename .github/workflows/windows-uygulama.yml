@@ -35,11 +35,13 @@ jobs:
 
       - name: Exe derle
         run: >
-          pyinstaller --noconfirm --onefile --windowed --name NovelEPUB
+          pyinstaller --noconfirm --onefile --windowed --name WebNovelDownloaderTranslator
           --icon assets/icon.ico
           --add-data "novel_epub/templates;novel_epub/templates"
           --collect-all curl_cffi --collect-all webview --collect-data certifi
           --collect-submodules keyring --copy-metadata keyring --collect-data docx
+          --collect-data litellm --collect-submodules litellm --copy-metadata litellm
+          --hidden-import tiktoken_ext --hidden-import tiktoken_ext.openai_public --collect-data tiktoken
           uygulama.py
 
       - name: Öz-test (pencere açmadan)
@@ -47,14 +49,14 @@ jobs:
         run: |
           $env:NOVEL_EPUB_HOME = "$env:RUNNER_TEMP\oztest"
           New-Item -ItemType Directory -Force $env:NOVEL_EPUB_HOME | Out-Null
-          $p = Start-Process dist\NovelEPUB.exe -ArgumentList "--oz-test" -Wait -PassThru
+          $p = Start-Process dist\WebNovelDownloaderTranslator.exe -ArgumentList "--oz-test" -Wait -PassThru
           Get-Content "$env:NOVEL_EPUB_HOME\oz-test.json"
           if ($p.ExitCode -ne 0) { exit 1 }
 
       - uses: actions/upload-artifact@v4
         with:
-          name: NovelEPUB
-          path: dist/NovelEPUB.exe
+          name: WebNovelDownloaderTranslator
+          path: dist/WebNovelDownloaderTranslator.exe
 
       - name: "Sürüm sayfasına koy (etiket: son)"
         shell: bash
@@ -65,9 +67,10 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: son
-          name: Novel EPUB — son sürüm
+          name: WebNovel Downloader & Translator — son sürüm
           body: |
-            Windows uygulaması. NovelEPUB.exe'yi indir ve çift tıkla (kurulum gerekmez).
+            Windows uygulaması. WebNovelDownloaderTranslator.exe'yi indir ve çift tıkla (kurulum gerekmez).
+            Eski "Novel EPUB" sürümünün kitaplığı ve ayarları olduğu gibi kullanılır.
             Derleme: ${{ github.sha }}
-          files: dist/NovelEPUB.exe
+          files: dist/WebNovelDownloaderTranslator.exe
           make_latest: true

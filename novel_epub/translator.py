@@ -1,4 +1,4 @@
-"""Gemini ile edebi çeviri.
+"""Yapay zekâ ile edebi çeviri (LiteLLM: Gemini, OpenAI, Claude, DeepSeek, OpenRouter, Groq, Ollama…).
 
 - Bölüm, paragraf sınırları korunarak parçalara bölünür; her parça JSON (paragraf dizisi) olarak döner.
 - Terim sözlüğü (isimler, kültivasyon kademeleri, teknikler) her parçada verilir ve model yeni
@@ -160,6 +160,7 @@ THINKING_LEVELS = ("low", "medium", "high")
 DEFAULT_TEMPERATURE = 0.7
 LOOKAHEAD_PARAGRAPHS = 3  # sonraki bölümün başından bağlam olarak gönderilen paragraf sayısı
 MAX_MEMORY_CHARACTERS = 300
+RETRY_EXHAUSTED_AFTER = 3600  # kotası dolan model bu kadar saniye sonra (en iyiden başlayarak) yeniden denenir
 # Otomatik paketleme: bölümler, tahmini Türkçe çıktı token'ı bu bütçeye sığana kadar tek isteğe konur.
 # Modelin yanıt tavanı ~65k token; düşünme payı ve güvenlik için hedef daha düşük tutulur. Kesik yanıtta
 # bütçe küçülür, başarılı yanıtlarda yavaşça büyür.
@@ -195,14 +196,18 @@ class ModelUnusable(QuotaExhausted):
     """Model yok ya da bu iş için gereken özelliği (JSON şeması, sistem talimatı) desteklemiyor."""
 
 
-def parse_models(spec: str) -> list[str]:
-    models = [m.strip() for m in (spec or "").replace(";", ",").split(",") if m.strip()]
-    return list(dict.fromkeys(models)) or [DEFAULT_MODEL]
+def parse_models(spec: str | list[str]) -> list[str]:
+    """'a, gemini/b' ya da liste → tekrarsız LiteLLM adları; önekli olmayanlar Gemini sayılır."""
+    from .providers import full_name
+
+    items = spec if isinstance(spec, list) else (spec or "").replace(";", ",").split(",")
+    models = [full_name(m.strip()) for m in items if m and m.strip()]
+    return list(dict.fromkeys(models)) or [full_name(DEFAULT_MODEL)]
 
 
 def is_daily_quota(err: Exception) -> bool:
     text = str(err)
-    if "PerDay" in text or "per day" in text.lower():
+    if re.search(r"PerDay|per.day|daily", text, re.I):
         return True
     m = re.search(r"retryDelay'?\"?:\s*'?\"?(\d+)s", text)
     return bool(m and int(m.group(1)) > 600)
@@ -260,20 +265,71 @@ def untranslated_suspects(source: list[str], draft: list[str], glossary: dict[st
     return sorted((found & src_words) - allowed)[:30]
 
 
-class GeminiTranslator:
-    def __init__(self, api_key: str, model: str = DEFAULT_MODEL, lang: str = "tr",
-                 log: Callable[[str], None] = print, max_retries: int = 10, thinking_level: str = "medium"):
-        from google import genai  # geç içe aktarma: çeviri kapalıyken gerekmez
+class KeyInvalid(FatalError):
+    """Bir sağlayıcının anahtarı geçersiz; o sağlayıcının modelleri zincirden çıkar."""
 
-        if not api_key:
-            raise FatalError("Gemini API anahtarı yok. Ayarlar'dan gir (aistudio.google.com/apikey).")
-        self.client = genai.Client(api_key=api_key)
+
+def _parse_json(text: str) -> dict:
+    """Model yanıtından JSON nesnesi: kod bloğu (```json) ve öncesi/sonrası açıklama tolere edilir."""
+    text = (text or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```\w*\s*|\s*```$", "", text)
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        a, b = text.find("{"), text.rfind("}")
+        if a < 0 or b <= a:
+            raise
+        data = json.loads(text[a:b + 1])
+    if not isinstance(data, dict):
+        raise ValueError("yanıt JSON nesnesi değil")
+    return data
+
+
+def _litellm():
+    import os
+
+    os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")  # açılışta internetten fiyat tablosu çekmesin
+    import litellm
+
+    import logging
+
+    litellm.telemetry = False
+    litellm.suppress_debug_info = True
+    logging.getLogger("LiteLLM").setLevel(logging.ERROR)
+    litellm.drop_params = True  # sağlayıcının desteklemediği parametre sessizce düşer
+    return litellm
+
+
+class Translator:
+    """Model zinciri en iyiden en kötüye: kotası dolan sıradakine geçer, saatte bir en iyiler yeniden denenir."""
+
+    def __init__(self, keys: dict[str, str] | str, model: str = DEFAULT_MODEL, lang: str = "tr",
+                 log: Callable[[str], None] = print, max_retries: int = 10, thinking_level: str = "medium"):
+        from .providers import provider_of
+
+        if isinstance(keys, str):  # eski kullanım: tek Gemini anahtarı
+            keys = {"gemini": keys} if keys else {}
         self._init_state(model, lang, log, max_retries, thinking_level)
+        self.keys = dict(keys)
+        usable = [m for m in self.all_models if provider_of(m).auth == "none" or self.keys.get(provider_of(m).id)]
+        if not usable:
+            raise FatalError("Seçili modeller için API anahtarı yok. Ayarlar'dan anahtar ekle ve model seç.")
+        self.all_models = usable
+        self.models = list(usable)
+        self.model = self.models[0]
 
     def _init_state(self, model: str = "", lang: str = "tr", log: Callable[[str], None] = print,
                     max_retries: int = 10, thinking_level: str = "medium") -> None:
-        self.models = parse_models(model or DEFAULT_MODELS)
+        self.all_models = parse_models(model or DEFAULT_MODELS)  # en iyiden en kötüye
+        self.models = list(self.all_models)  # şu an kullanılabilenler (aynı sırada)
         self.model = self.models[0]
+        self.exhausted: dict[str, float] = {}  # kotası dolan model → dolduğu an
+        self.clock: Callable[[], float] = time.time
+        self.keys: dict[str, str] = {}
+        self.complete: Callable | None = None  # LiteLLM completion (testlerde sahtesi konur)
+        self.no_schema: set[str] = set()  # JSON şemasını desteklemeyen modeller (şema talimata yazılır)
+        self.no_temperature: set[str] = set()
         self.lang = lang if lang in LANGUAGES else "tr"
         self.target = language_name(self.lang)
         self.log = log
@@ -295,19 +351,39 @@ class GeminiTranslator:
               system: str = SYSTEM_PROMPT) -> dict:
         """Her istek, kotası bitmemiş en iyi modelle başlar.
 
-        Günlük kota dolan ya da kullanılamayan model listeden çıkar; hepsi biterse QuotaExhausted.
-        Geçici hata bekleyip denemelere rağmen sürerse aynı istek sıradaki modelle denenir.
+        Günlük kota dolan model listeden çıkar ama saatte bir yeniden denenir (kota gün içinde yenilenir;
+        böylece kitabın kalanı alt modelle değil yine en iyi modelle sürer). Kullanılamayan model, anahtarı
+        geçersiz sağlayıcının modelleri kalıcı çıkar. Hepsi biterse QuotaExhausted. Geçici hata sürerse aynı
+        istek sıradaki modelle denenir.
         """
+        self._readmit()
+        if not self.models:
+            raise QuotaExhausted("Seçili modellerin hepsinin kotası dolu")
         self.model = self.models[0]
         tried: set[str] = set()
         while True:
             try:
                 return self._call_model(payload, schema, bad_retries, system)
+            except KeyInvalid as e:
+                from .providers import provider_of
+
+                pid = provider_of(self.model).id
+                gone = [m for m in self.all_models if provider_of(m).id == pid]
+                self.all_models = [m for m in self.all_models if m not in gone]
+                self.models = [m for m in self.models if m not in gone]
+                if not self.models:
+                    raise FatalError(str(e)) from e
+                self.log(f"  {e} → {pid} modelleri atlanıyor, {self.models[0]} ile devam")
+                self.model = self.models[0]
             except QuotaExhausted as e:
-                why = "kullanılamıyor" if isinstance(e, ModelUnusable) else "günlük kotası doldu"
+                why = "kullanılamıyor" if isinstance(e, ModelUnusable) else "kotası doldu"
+                if isinstance(e, ModelUnusable):
+                    self.all_models = [m for m in self.all_models if m != self.model]
+                else:
+                    self.exhausted[self.model] = self.clock()
                 self.models.remove(self.model)
                 if not self.models:
-                    raise QuotaExhausted(f"Seçili modellerin hepsinin günlük kotası doldu (son: {e})") from e
+                    raise QuotaExhausted(f"Seçili modellerin hepsinin kotası doldu (son: {e})") from e
                 self.log(f"  {self.model} {why} → {self.models[0]} modeline geçiliyor")
                 self.model = self.models[0]
             except TransientFailure:
@@ -318,76 +394,135 @@ class GeminiTranslator:
                 self.log(f"  {self.model} ısrarla hata veriyor → bu istek {others[0]} ile deneniyor")
                 self.model = others[0]
 
-    def _config(self, schema: dict, system: str = SYSTEM_PROMPT):
-        from google.genai import types
+    def _readmit(self) -> None:
+        """Kotası dolalı RETRY_EXHAUSTED_AFTER saniye geçmiş modelleri, asıl sıralarıyla listeye geri alır."""
+        now = self.clock()
+        back = [m for m, t in self.exhausted.items() if now - t >= RETRY_EXHAUSTED_AFTER]
+        if not back:
+            return
+        for m in back:
+            del self.exhausted[m]
+        self.models = [m for m in self.all_models if m not in self.exhausted]
+        self.log(f"  {', '.join(back)} yeniden deneniyor (kota yenilenmiş olabilir)")
 
+    def output_cap(self, model: str | None = None) -> int:
+        """Modelin yanıt token tavanı (LiteLLM tablosundan; bilinmiyorsa sağlayıcıya göre tahmin)."""
+        from .providers import provider_of
+
+        model = model or (self.models[0] if self.models else self.model)
+        try:
+            cap = int(_litellm().get_max_tokens(model) or 0)
+        except Exception:
+            cap = 0
+        if cap <= 0:
+            cap = OUTPUT_CAP if provider_of(model).id == "gemini" else 8192
+        return min(cap, OUTPUT_CAP)
+
+    def _config(self, schema: dict, system: str = SYSTEM_PROMPT, model: str | None = None) -> dict:
+        """LiteLLM istek ayarları (mesajlar hariç)."""
+        from .providers import provider_of
+
+        model = model or self.model
         instruction = system.format(target=self.target)
         if self.lang == "tr":
             instruction += TURKISH_RULES if system is SYSTEM_PROMPT else TURKISH_EDIT_RULES
         if self.book_notes:
             instruction += ("\n\nBu kitaba özel talimatlar (genel kurallarla çelişirse bunlar geçerlidir; "
                             "terim karşılıkları ayrıca \"glossary\" alanında da gelir):\n" + self.book_notes)
+        p = provider_of(model)
+        # Büyük sağlayıcılar JSON şemasını destekler (LiteLLM tablosunda olmayan yeni modeller dahil).
+        native = model not in self.no_schema and (p.id in ("gemini", "openai", "anthropic")
+                                                  or _supports(model, "supports_response_schema"))
+        if not native:
+            instruction += ("\n\nYanıtını YALNIZCA şu JSON şemasına uyan tek bir JSON nesnesi olarak ver; "
+                            "açıklama ya da kod bloğu yazma:\n" + json.dumps(schema, ensure_ascii=False))
         temperature = self.temperature if system is SYSTEM_PROMPT else min(self.temperature, 0.5)
-        kw = dict(system_instruction=instruction, response_mime_type="application/json",
-                  response_schema=schema, temperature=temperature, max_output_tokens=OUTPUT_CAP)
-        if self.thinking:
-            # Düşünme token'ları çıktı sınırından yer; Ayarlar'dan düşük/orta/yüksek seçilir.
-            kw["thinking_config"] = types.ThinkingConfig(thinking_level=self.thinking_level)
-        return types.GenerateContentConfig(**kw)
+        kw: dict = dict(model=model, system=instruction, max_tokens=self.output_cap(model), timeout=900,
+                        num_retries=0)
+        if model not in self.no_temperature:
+            kw["temperature"] = temperature
+        kw["response_format"] = ({"type": "json_schema", "json_schema": {"name": "cikti", "schema": schema}}
+                                 if native else {"type": "json_object"})
+        if self.thinking and (p.id == "gemini" or _supports(model, "supports_reasoning")):
+            kw["reasoning_effort"] = self.thinking_level  # düşünme token'ları çıktı sınırından yer
+        if p.id == "ollama":
+            key = self.keys.get("ollama", "")
+            kw["api_base"] = key if key.startswith("http") else p.base_url
+        elif self.keys.get(p.id):
+            kw["api_key"] = self.keys[p.id]
+        return kw
 
     def _call_model(self, payload: dict, schema: dict = RESPONSE_SCHEMA, bad_retries: int | None = None,
                     system: str = SYSTEM_PROMPT) -> dict:
         """Tek modelle istek. Geçici hatada bekler (en çok 60 sn) ve `max_retries` kez yeniden dener."""
-        from google.genai import errors
-
         key = "chapters" if "chapters" in schema["properties"] else "paragraphs"
         bad_left = 2 if bad_retries is None else bad_retries
         attempt = 0
+        complete = self.complete or _litellm().completion
         while True:
             reason, wait = "", None
             try:
-                resp = self.client.models.generate_content(
-                    model=self.model, contents=json.dumps(payload, ensure_ascii=False), config=self._config(schema, system))
-                um = getattr(resp, "usage_metadata", None)
-                self.last_usage = (getattr(um, "candidates_token_count", 0) or 0,
-                                   getattr(um, "thoughts_token_count", 0) or 0) if um else None
-                cands = getattr(resp, "candidates", None) or []
-                if cands and "MAX_TOKENS" in str(getattr(cands[0], "finish_reason", "")):
+                kw = self._config(schema, system)
+                instruction = kw.pop("system")
+                resp = complete(messages=[{"role": "system", "content": instruction},
+                                          {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}], **kw)
+                usage = getattr(resp, "usage", None)
+                if usage:
+                    details = getattr(usage, "completion_tokens_details", None)
+                    thought = getattr(details, "reasoning_tokens", 0) or 0
+                    total = getattr(usage, "completion_tokens", 0) or 0
+                    self.last_usage = (max(0, total - thought), thought)
+                else:
+                    self.last_usage = None
+                choice = resp.choices[0]
+                if getattr(choice, "finish_reason", "") == "length":
                     raise ValueError("yanıt çıktı sınırında kesildi")
-                data = json.loads(resp.text or "{}")
+                data = _parse_json(choice.message.content or "")
                 if not isinstance(data.get(key), list):
                     raise ValueError(f"yanıtta {key} yok")
                 return data
-            except errors.APIError as e:
-                code = getattr(e, "code", 0) or 0
-                if code == 400 and self.thinking and "think" in str(e).lower():
-                    self.thinking = False  # bu model düşünme ayarını desteklemiyor
-                    continue
-                if code == 404:
-                    raise ModelUnusable(f"Model bulunamadı: {self.model}") from e
-                if code == 400 and re.search(r"not (supported|enabled|available)|unsupported", str(e), re.I):
-                    raise ModelUnusable(f"{self.model} bu işi desteklemiyor: {str(e)[:160]}") from e
-                if code in (400, 401, 403) and re.search(r"API.?key|permission|unauthenticated", str(e), re.I):
-                    raise FatalError(f"API anahtarı geçersiz ya da yetkisiz: {str(e)[:160]}") from e
-                if code == 429 and is_daily_quota(e):
-                    raise QuotaExhausted(f"{self.model} günlük ücretsiz kotası doldu") from e
-                if code == 400:
-                    # Kalıcı olabilecek istek hatası: bozuk yanıt gibi say, birkaç kez dene.
-                    if bad_left <= 0:
-                        raise TransientFailure(f"Gemini 400: {str(e)[:200]}") from e
-                    bad_left -= 1
-                    reason, wait = f"istek hatası (400)", 10
-                else:
-                    m = re.search(r"retry in ([\d.]+)s", str(e), re.I)
-                    wait = float(m.group(1)) + 1 if m else None
-                    reason = f"API sınırı/yoğunluk ({code})"
             except (ValueError, json.JSONDecodeError) as e:
                 if bad_left <= 0:
                     raise TransientFailure(f"Yanıt çözülemedi: {e}") from e
                 bad_left -= 1
-                reason, wait = f"bozuk yanıt ({e})", 5
-            except Exception as e:  # ağ kopması, zaman aşımı vb.
-                reason = f"bağlantı hatası ({type(e).__name__})"
+                reason, wait = f"bozuk yanıt ({str(e)[:80]})", 5
+            except TranslationError:
+                raise
+            except Exception as e:
+                kind = _classify(e)
+                text = str(e)
+                if kind == "auth":
+                    raise KeyInvalid(f"{self.model}: API anahtarı geçersiz ya da yetkisiz") from e
+                if kind == "missing":
+                    raise ModelUnusable(f"Model bulunamadı ya da erişim yok: {self.model}") from e
+                if kind == "quota":
+                    raise QuotaExhausted(f"{self.model} kotası/kredisi doldu") from e
+                if kind == "bad":
+                    low = text.lower()
+                    if self.thinking and re.search(r"think|reason", low):
+                        self.thinking = False  # bu model düşünme ayarını desteklemiyor
+                        continue
+                    if "temperature" in low and self.model not in self.no_temperature:
+                        self.no_temperature.add(self.model)
+                        continue
+                    if re.search(r"response_format|json_schema|response_schema|structured", low) \
+                            and self.model not in self.no_schema:
+                        self.no_schema.add(self.model)
+                        continue
+                    if re.search(r"not (supported|enabled|available)|unsupported|does not exist", low):
+                        raise ModelUnusable(f"{self.model} bu işi desteklemiyor: {text[:160]}") from e
+                    if re.search(r"context.?(window|length)|too (long|large)|maximum context", low):
+                        raise TransientFailure(f"{self.model}: istek modele fazla uzun") from e
+                    if bad_left <= 0:
+                        raise TransientFailure(f"{self.model} 400: {text[:200]}") from e
+                    bad_left -= 1
+                    reason, wait = "istek hatası (400)", 10
+                else:
+                    m = re.search(r"retry (?:in|after) ([\d.]+)\s*s", text, re.I)
+                    wait = float(m.group(1)) + 1 if m else None
+                    code = getattr(e, "status_code", None)
+                    reason = (f"API sınırı/yoğunluk ({code})" if kind == "busy" and code
+                              else f"bağlantı hatası ({type(e).__name__})")
             attempt += 1
             if attempt > self.max_retries:
                 raise TransientFailure(f"{self.model}: {self.max_retries} denemede olmadı, son hata: {reason}")
@@ -495,7 +630,7 @@ class GeminiTranslator:
 
     def effective_budget(self) -> int:
         # Düşünme token'ları da yanıt tavanından yer; tavanı aşmayacak şekilde kırp.
-        return int(min(self.budget, OUTPUT_CAP * 0.85 - self.thought_tokens))
+        return int(max(MIN_BUDGET // 2, min(self.budget, self.output_cap() * 0.85 - self.thought_tokens)))
 
     def plan_batch(self, pending: list[Chapter], max_chapters: int = 0) -> list[Chapter]:
         """Sıradaki ardışık bölümlerden tahmini çıktısı bütçeye sığanları seçer (en az 1)."""
@@ -624,14 +759,42 @@ class GeminiTranslator:
         return result
 
 
-def list_models(api_key: str) -> list[str]:
-    from google import genai
+def _supports(model: str, fn: str, default: bool = False) -> bool:
+    try:
+        return bool(getattr(_litellm(), fn)(model=model))
+    except Exception:
+        return default
 
-    client = genai.Client(api_key=api_key)
-    names = []
-    for m in client.models.list():
-        actions = getattr(m, "supported_actions", None) or []
-        name = (m.name or "").removeprefix("models/")
-        if "gemini" in name and (not actions or "generateContent" in actions):
-            names.append(name)
-    return sorted(set(names))
+
+def _classify(e: Exception) -> str:
+    """LiteLLM/sağlayıcı hatası → auth | missing | quota | bad | busy | net."""
+    name = type(e).__name__
+    code = getattr(e, "status_code", None)
+    text = str(e)
+    if name in ("AuthenticationError",) or code == 401 or re.search(r"api.?key (not valid|invalid)|invalid.?api.?key|"
+                                                                    r"incorrect api key|unauthenticated", text, re.I):
+        return "auth"
+    if name == "NotFoundError" or code == 404 or re.search(r"no longer available|model.{0,40}not found", text, re.I):
+        return "missing"
+    if name == "PermissionDeniedError" or code == 403:
+        return "missing"
+    if name == "PaymentRequiredError" or code == 402 or re.search(r"insufficient.?quota|credit balance|billing", text, re.I):
+        return "quota"
+    if name == "RateLimitError" or code == 429:
+        return "quota" if is_daily_quota(e) else "busy"
+    if name in ("BadRequestError", "UnsupportedParamsError", "ContextWindowExceededError",
+                "UnprocessableEntityError") or code in (400, 422):
+        return "bad"
+    if code and code >= 500 or name in ("ServiceUnavailableError", "InternalServerError", "BadGatewayError"):
+        return "busy"
+    return "net"
+
+
+GeminiTranslator = Translator  # eski ad (geriye uyumluluk)
+
+
+def list_models(api_key: str) -> list[str]:
+    """Eski uç: Gemini anahtarının modelleri (LiteLLM adlarıyla)."""
+    from .providers import BY_ID, list_models as _list
+
+    return _list(BY_ID["gemini"], api_key)
