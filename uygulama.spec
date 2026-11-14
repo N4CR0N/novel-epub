@@ -1,0 +1,59 @@
+# PyInstaller tarifi: tek dosyalık, pencereli Windows exe'si (GitHub Actions derler).
+# Boyut için: kullanılmayan paketler dışlanır, Windows 10/11'de zaten bulunan UCRT DLL'leri ve
+# x64 dışındaki WebView2Loader kopyaları pakete konmaz.
+import os
+from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules, copy_metadata
+
+datas = [("novel_epub/templates", "novel_epub/templates")] + collect_data_files("certifi") + copy_metadata("keyring")
+binaries, hidden = [], [m for m in collect_submodules("keyring") if ".testing" not in m]
+for pkg in ("curl_cffi", "webview"):
+    d, b, h = collect_all(pkg)
+    datas += d
+    binaries += b
+    hidden += [m for m in h if "__pyinstaller" not in m and ".tests" not in m]
+
+EXCLUDES = [
+    "tkinter", "unittest", "test", "pydoc_data", "setuptools", "pip", "lib2to3", "idlelib", "ensurepip",
+    # keyring.testing → pytest → pygments zinciri ve derleme araçları (çalışırken hiç kullanılmaz)
+    "keyring.testing", "pytest", "_pytest", "pygments", "pluggy", "iniconfig", "PyInstaller", "pefile",
+    "doctest", "pydoc",
+]
+
+a = Analysis(
+    ["uygulama.py"],
+    datas=datas,
+    binaries=binaries,
+    hiddenimports=hidden,
+    excludes=EXCLUDES,
+    noarchive=False,
+    optimize=1,
+)
+
+
+def _keep(entry) -> bool:
+    name = entry[0].replace("\\", "/").lower()
+    base = name.rsplit("/", 1)[-1]
+    if base.startswith("api-ms-win-") or base == "ucrtbase.dll":  # Windows 10+ içinde var
+        return False
+    if "webview2loader.dll" in base and "win-x64" not in name:  # yalnız 64 bit Windows hedefleniyor
+        return False
+    return True
+
+
+a.binaries = [b for b in a.binaries if _keep(b)]
+a.datas = [d for d in a.datas if _keep(d)]
+
+pyz = PYZ(a.pure)
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.datas,
+    [],
+    name="WebNovelDownloaderTranslator",
+    icon="assets/icon.ico",
+    console=False,
+    upx=True,
+    upx_exclude=["vcruntime140.dll", "python3.dll"],
+    runtime_tmpdir=None,
+)

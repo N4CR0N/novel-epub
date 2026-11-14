@@ -6,6 +6,7 @@ on:
     paths:
       - "novel_epub/**"
       - "uygulama.py"
+      - "uygulama.spec"
       - "requirements.txt"
       - "assets/**"
       - "tests/**"
@@ -41,17 +42,7 @@ jobs:
           "UPX_DIR=$PWD\upx-4.2.4-win64" | Out-File -Append $env:GITHUB_ENV
 
       - name: Exe derle
-        run: >
-          pyinstaller --noconfirm --onefile --windowed --name WebNovelDownloaderTranslator
-          --icon assets/icon.ico
-          --add-data "novel_epub/templates;novel_epub/templates"
-          --collect-all curl_cffi --collect-all webview --collect-data certifi
-          --collect-submodules keyring --copy-metadata keyring
-          --exclude-module tkinter --exclude-module unittest --exclude-module test --exclude-module pydoc_data
-          --exclude-module setuptools --exclude-module pip --exclude-module lib2to3 --exclude-module idlelib
-          --exclude-module ensurepip
-          --upx-dir "${{ env.UPX_DIR }}" --upx-exclude vcruntime140.dll --upx-exclude python3.dll
-          uygulama.py
+        run: pyinstaller --noconfirm --upx-dir "${{ env.UPX_DIR }}" uygulama.spec
 
       - name: Exe boyutu
         shell: pwsh
