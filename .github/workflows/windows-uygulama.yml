@@ -59,16 +59,6 @@ jobs:
           $mb = [math]::Round((Get-Item dist\WebNovelDownloaderTranslator.exe).Length / 1MB, 2)
           "Exe boyutu: $mb MB" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
 
-      - name: Boyut dökümü (en büyük 25 parça)
-        shell: python
-        run: |
-          from PyInstaller.archive.readers import CArchiveReader
-          a = CArchiveReader("dist/WebNovelDownloaderTranslator.exe")
-          rows = sorted(((v[1], v[2], k) for k, v in a.toc.items()), reverse=True)
-          print(f"Toplam {sum(r[0] for r in rows) / 2**20:.2f} MB, {len(rows)} parça")
-          for c, u, k in rows[:25]:
-              print(f"{c / 2**20:7.2f} MB (açık {u / 2**20:6.2f})  {k}")
-
       - name: Öz-test (pencere açmadan)
         shell: pwsh
         run: |
@@ -77,6 +67,19 @@ jobs:
           $p = Start-Process dist\WebNovelDownloaderTranslator.exe -ArgumentList "--oz-test" -Wait -PassThru
           Get-Content "$env:NOVEL_EPUB_HOME\oz-test.json"
           if ($p.ExitCode -ne 0) { exit 1 }
+
+      - name: Boyut dökümü (en büyük 25 parça)
+        if: always()
+        shell: python
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          from PyInstaller.archive.readers import CArchiveReader
+          a = CArchiveReader("dist/WebNovelDownloaderTranslator.exe")
+          rows = sorted(((v[1], v[2], k) for k, v in a.toc.items()), reverse=True)
+          print(f"Toplam {sum(r[0] for r in rows) / 2**20:.2f} MB, {len(rows)} parça")
+          for c, u, k in rows[:25]:
+              print(f"{c / 2**20:7.2f} MB (açık {u / 2**20:6.2f})  {k}")
 
       - uses: actions/upload-artifact@v4
         with:
