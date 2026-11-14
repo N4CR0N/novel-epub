@@ -10,10 +10,11 @@ import sys
 import threading
 import uuid
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from . import __version__
 from flask import Flask, abort, jsonify, render_template, request, send_from_directory
 
+from . import __version__
 from .pipeline import Job, Options
 from .store import BookStore
 from .translator import DEFAULT_MODELS, DEFAULT_TEMPERATURE, LANGUAGES, MAX_AUTO_CHAPTERS, THINKING_LEVELS
@@ -171,7 +172,10 @@ def _public_settings(s: dict) -> dict:
 
 @app.get("/api/settings")
 def get_settings():
-    return jsonify(_public_settings(load_settings()))
+    data = _public_settings(load_settings())
+    if not _is_local():
+        data["providers"] = [{**p, "hint": "", "available": []} for p in data["providers"]]
+    return jsonify(data)
 
 
 @app.post("/api/settings")
@@ -536,6 +540,41 @@ def download(name: str):
 
 def _is_local() -> bool:
     return request.remote_addr in ("127.0.0.1", "::1")
+
+
+# Ağdaki başka cihazlar (telefon) yalnız bunları okuyabilir: sayfa, kitap listesi, EPUB indirme.
+_LAN_READ = {"/", "/api/info", "/api/books", "/api/languages", "/api/settings"}
+
+
+def _host_ok(host: str) -> bool:
+    """DNS yeniden bağlama saldırısına karşı: yalnız IP adresi ya da localhost ile gelinebilir."""
+    import ipaddress
+
+    name = host.rsplit(":", 1)[0] if host.count(":") == 1 or host.startswith("[") else host
+    name = name.strip("[]")
+    if name == "localhost":
+        return True
+    try:
+        ipaddress.ip_address(name)
+        return True
+    except ValueError:
+        return False
+
+
+@app.before_request
+def _guard():
+    if not _host_ok(request.host or ""):
+        abort(403)
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        origin = request.headers.get("Origin")
+        # başka bir sitenin sayfası, kullanıcının tarayıcısından buraya istek gönderemesin (CSRF)
+        if origin is not None and urlsplit(origin).netloc != request.host:
+            abort(403)
+    if not _is_local():
+        if request.method in ("GET", "HEAD") and (request.path in _LAN_READ or request.path.startswith("/indir/")):
+            return None
+        abort(403)
+    return None
 
 
 @app.get("/api/info")

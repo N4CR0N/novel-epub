@@ -52,6 +52,10 @@
   main { padding:22px 28px 60px; width:100%; max-width:1240px; margin:0 auto; }
   main > [data-pane] { max-width:880px; margin:0 auto; }
   main > [data-pane=run] { max-width:none; }
+  /* ağdaki başka bir cihaz (telefon): yalnız hazır kitaplar */
+  body.remote .rail .nav, body.remote [data-pane=run] > h1, body.remote [data-pane=run] > .lede,
+  body.remote .main-col, body.remote .side > section:not(#booksPanel) { display:none !important; }
+  body.remote .runcols { grid-template-columns:minmax(0, 880px) !important; }
   .runcols { display:grid; grid-template-columns:minmax(0, 880px); justify-content:center; gap:0 16px; align-items:start; }
   @media (min-width: 1240px) {
     .runcols { grid-template-columns:minmax(0, 1.2fr) minmax(340px, 1fr); }
@@ -238,7 +242,7 @@
         <details><summary>Kayıt</summary><pre class="log" id="jLog"></pre></details>
       </section>
 
-      <section class="panel">
+      <section class="panel" id="booksPanel">
         <div class="row" style="justify-content:space-between"><h2 style="margin:0">Hazır kitaplar</h2>
           <span id="localBtns" hidden><button class="ghost" id="openOut" type="button">Klasörü aç</button> <button class="ghost" id="openHome" type="button">Veri klasörü</button></span></div>
         <ul class="files" id="books"></ul>
@@ -622,6 +626,8 @@ async function loadInfo() {
   try {
     const i = await api('/api/info');
     $('localBtns').hidden = !i.local; $('navTools').hidden = !i.local;
+    document.body.classList.toggle('remote', !i.local);
+    if (!i.local) { show('run'); $('phoneInfo').textContent = T('Bu cihazdan yalnız hazır kitaplar indirilebilir; çeviri ve ayarlar bilgisayardaki uygulamada.'); }
     if (i.local) $('phoneInfo').textContent = T("Telefondan indirmek için aynı Wi‑Fi'de {url} adresini aç. Veriler: {home}", {url: i.phone_url, home: i.home});
   } catch (e) {}
 }

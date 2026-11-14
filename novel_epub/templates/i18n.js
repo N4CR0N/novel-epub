@@ -61,6 +61,7 @@ en: {
 "Telefon görünmüyor; aşağıdaki adımları izle.": "Phone not found; follow the steps below.", "Telefondan kopyalanıyor; root izni istenebilir…": "Copying from the phone; root permission may be requested…",
 "Taranıyor…": "Scanning…", "{n} site bulundu": "{n} sites found", "{n} yer işareti": "{n} bookmarks", "genel": "generic", "Dene": "Try",
 "Telefondan indirmek için aynı Wi‑Fi'de {url} adresini aç. Veriler: {home}": "To download on your phone, open {url} on the same Wi‑Fi. Data: {home}",
+"Bu cihazdan yalnız hazır kitaplar indirilebilir; çeviri ve ayarlar bilgisayardaki uygulamada.": "Only finished books can be downloaded from this device; translation and settings are in the app on the computer.",
 },
 de: {
 "Tema": "Design", "Açık tema": "Helles Design", "Koyu tema": "Dunkles Design", "Sistem teması": "Systemdesign",
@@ -123,6 +124,7 @@ de: {
 "Telefon görünmüyor; aşağıdaki adımları izle.": "Kein Handy gefunden; folge den Schritten unten.", "Telefondan kopyalanıyor; root izni istenebilir…": "Kopiere vom Handy; Root-Erlaubnis kann abgefragt werden…",
 "Taranıyor…": "Wird durchsucht…", "{n} site bulundu": "{n} Seiten gefunden", "{n} yer işareti": "{n} Lesezeichen", "genel": "allgemein", "Dene": "Testen",
 "Telefondan indirmek için aynı Wi‑Fi'de {url} adresini aç. Veriler: {home}": "Zum Laden aufs Handy {url} im selben WLAN öffnen. Daten: {home}",
+"Bu cihazdan yalnız hazır kitaplar indirilebilir; çeviri ve ayarlar bilgisayardaki uygulamada.": "Von diesem Gerät können nur fertige Bücher geladen werden; Übersetzung und Einstellungen gibt es in der App auf dem Computer.",
 },
 es: {
 "Tema": "Tema", "Açık tema": "Tema claro", "Koyu tema": "Tema oscuro", "Sistem teması": "Tema del sistema",
@@ -185,6 +187,7 @@ es: {
 "Telefon görünmüyor; aşağıdaki adımları izle.": "No se ve el teléfono; sigue los pasos de abajo.", "Telefondan kopyalanıyor; root izni istenebilir…": "Copiando del teléfono; puede pedir permiso de root…",
 "Taranıyor…": "Escaneando…", "{n} site bulundu": "{n} sitios encontrados", "{n} yer işareti": "{n} marcadores", "genel": "general", "Dene": "Probar",
 "Telefondan indirmek için aynı Wi‑Fi'de {url} adresini aç. Veriler: {home}": "Para descargar en el teléfono, abre {url} en la misma Wi‑Fi. Datos: {home}",
+"Bu cihazdan yalnız hazır kitaplar indirilebilir; çeviri ve ayarlar bilgisayardaki uygulamada.": "Desde este dispositivo solo se pueden descargar los libros terminados; la traducción y los ajustes están en la app del ordenador.",
 },
 ru: {
 "Tema": "Тема", "Açık tema": "Светлая тема", "Koyu tema": "Тёмная тема", "Sistem teması": "Системная тема",
@@ -247,6 +250,7 @@ ru: {
 "Telefon görünmüyor; aşağıdaki adımları izle.": "Телефон не найден; выполните шаги ниже.", "Telefondan kopyalanıyor; root izni istenebilir…": "Копирование с телефона; может потребоваться root…",
 "Taranıyor…": "Сканирование…", "{n} site bulundu": "Найдено сайтов: {n}", "{n} yer işareti": "закладок {n}", "genel": "общий", "Dene": "Проверить",
 "Telefondan indirmek için aynı Wi‑Fi'de {url} adresini aç. Veriler: {home}": "Чтобы скачать на телефон, откройте {url} в той же сети Wi‑Fi. Данные: {home}",
+"Bu cihazdan yalnız hazır kitaplar indirilebilir; çeviri ve ayarlar bilgisayardaki uygulamada.": "С этого устройства можно только скачивать готовые книги; перевод и настройки — в приложении на компьютере.",
 },
 };
 let LANG = "tr";

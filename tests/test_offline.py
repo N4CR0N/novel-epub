@@ -956,3 +956,36 @@ def test_llm_requests_and_responses_per_provider():
     assert fail(404, {"error": {"message": "models/x is not found"}}) == "missing"
     assert fail(503, {"error": {"message": "overloaded"}}) == "busy"
     assert _classify(llm.APIConnectionError("koptu")) == "net"
+
+
+def test_lan_devices_can_only_download_and_cross_site_requests_are_blocked(tmp_path: Path, monkeypatch):
+    from novel_epub import web
+
+    monkeypatch.setattr(web, "SETTINGS_PATH", tmp_path / "ayarlar.json")
+    monkeypatch.setattr(web, "_keyring", lambda: None)
+    monkeypatch.setattr(web, "OUTPUT", tmp_path / "cikti")
+    (tmp_path / "cikti").mkdir()
+    (tmp_path / "cikti" / "kitap.epub").write_bytes(b"PK")
+    web.save_settings({"models": ["gemini/m"], "key_store": "dosya", "keys": {"gemini": "AIzaUYDURMA1234"}})
+    c = web.app.test_client()
+
+    # telefon (aynı Wi-Fi): sayfa, kitap listesi ve indirme açık; anahtar ipucu bile gitmez
+    phone = {"REMOTE_ADDR": "192.168.1.20"}
+    lan = dict(base_url="http://192.168.1.10:5000", environ_base=phone)
+    assert c.get("/", **lan).status_code == 200
+    assert c.get("/api/books", **lan).get_json()[0]["name"] == "kitap.epub"
+    assert c.get("/indir/kitap.epub", **lan).status_code == 200
+    assert all(p["hint"] == "" for p in c.get("/api/settings", **lan).get_json()["providers"])
+    # ...ama hiçbir şeyi değiştiremez, kitaplığa ya da iş başlatmaya erişemez
+    assert c.delete("/api/keys/gemini", **lan).status_code == 403
+    assert c.post("/api/settings", json={"theme": "dark"}, **lan).status_code == 403
+    assert c.post("/api/jobs", json={"url": "https://example.com/novel/x"}, **lan).status_code == 403
+    assert c.get("/api/library", **lan).status_code == 403
+
+    # bu bilgisayar: kendi sayfasından gelen istek geçer, başka siteden gelen (CSRF) geçmez
+    assert c.post("/api/settings", json={"theme": "dark"}, headers={"Origin": "http://localhost"}).status_code == 200
+    assert c.post("/api/settings", json={"theme": "light"}, headers={"Origin": "https://kotu.example"}).status_code == 403
+    assert c.post("/api/settings", json={"theme": "light"}, headers={"Origin": "null"}).status_code == 403
+    # DNS yeniden bağlama: alan adıyla gelen istek reddedilir
+    assert c.get("/api/settings", base_url="http://kotu.example:5000").status_code == 403
+    assert c.get("/api/settings", base_url="http://127.0.0.1:5000").get_json()["providers"][0]["hint"] == "…1234"
