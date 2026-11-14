@@ -117,3 +117,11 @@ jobs:
           body_path: surum-notu.md
           files: dist/WebNovelDownloaderTranslator.exe
           make_latest: true
+
+      - name: 'Eski "son" sürümünü kaldır (her sürüm artık ayrı)'
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view son >/dev/null 2>&1; then gh release delete son --cleanup-tag -y || true; fi

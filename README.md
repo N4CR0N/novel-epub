@@ -8,8 +8,8 @@ for any e-book reader (Moon+ Reader, ReadEra, Apple Books, Google Play Books…)
 
 ## Install (Windows)
 
-1. From this repository's **Releases** page ("WebNovel Downloader & Translator — son sürüm") download
-   **WebNovelDownloaderTranslator.exe**.
+1. Download **[WebNovelDownloaderTranslator.exe](https://github.com/N4CR0N/novel-epub/releases/latest/download/WebNovelDownloaderTranslator.exe)** (latest release). Every version is listed on the
+   [Releases](https://github.com/N4CR0N/novel-epub/releases) page; the version number is shown under the app name.
 2. Double-click it. No installation; it opens in its own window.
    - It is unsigned, so Windows may say "Windows protected your PC": **More info → Run anyway**.
    - If the firewall asks, allow **Private networks** (for downloading to your phone).

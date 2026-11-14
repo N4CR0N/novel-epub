@@ -8,8 +8,8 @@ EPUB'u telefondaki kitap uygulamasıyla (Moon+ Reader, ReadEra, Apple Books, Goo
 
 ## Kurulum (Windows uygulaması)
 
-1. GitHub'da bu deponun **Releases** sayfasından ("WebNovel Downloader & Translator — son sürüm")
-   **WebNovelDownloaderTranslator.exe**'yi indir.
+1. **[WebNovelDownloaderTranslator.exe](https://github.com/N4CR0N/novel-epub/releases/latest/download/WebNovelDownloaderTranslator.exe)**'yi indir (son sürüm). Tüm sürümler
+   [Releases](https://github.com/N4CR0N/novel-epub/releases) sayfasında; sürüm numarası uygulamada adın altında yazar.
 2. Çift tıkla. Kurulum yok; kendi penceresinde açılır.
    - İmzasız olduğu için Windows ilk seferde "Windows bilgisayarınızı korudu" diyebilir: **Ek bilgi → Yine de çalıştır**.
    - Güvenlik duvarı izin sorarsa **Özel ağlar**'a izin ver (telefondan indirme için).

@@ -22,8 +22,12 @@ Web novel linki ya da dosya (EPUB/PDF/DOCX/TXT/MD/HTML) → bölümleri ayır/in
 `main`'e push → `.github/workflows/windows-uygulama.yml` (windows-latest): pytest → UPX → PyInstaller `uygulama.spec`
 (tek dosya, pencereli, simge `assets/icon.ico`; kullanılmayan paketler, UCRT ve x64 dışı WebView2Loader dışlanır) →
 `--oz-test` (pencere açmadan arayüz/sunucu/kasa + `llm` sahte yanıt denetimi) → boyut dökümü (PYZ paket paket) →
-Releases `son` etiketi. Push'tan sonra Actions sonucunu kontrol et; kullanıcıya Releases linkini ver
-(https://github.com/N4CR0N/novel-epub/releases/tag/son). Exe imzasız: kullanıcı "Özellikler → Engellemeyi kaldır" yapar.
+her main yayını ayrı sürüm: `VERSION` dosyası (ör. `1.1`) + sıradaki yama no → `v1.1.2` etiketi, değişiklik listesi
+commit başlıklarından (CI/CLAUDE.md hariç), exe içine `novel_epub/_surum.py` yazılır (arayüzde adın altında görünür).
+Yeni özellikte `VERSION`'ı artır (1.2 → v1.2.0), büyük değişiklikte 2.0. Push'tan sonra Actions sonucunu kontrol et;
+kullanıcıya sürüm linkini ver (https://github.com/N4CR0N/novel-epub/releases/latest). Eski derlemeler
+`eski-surumler.yml` ile v0.1.0–v1.1.1 olarak yayımlandı (etiket commit'leri eski kaynak + main'in workflow'ları:
+GitHub, Actions anahtarına workflow'u farklı commit'e etiket koydurmuyor; oturumdan etiket push'u da kapalı). Exe imzasız: kullanıcı "Özellikler → Engellemeyi kaldır" yapar.
 Yeni bir Python paketi eklersen `requirements.txt`'e ve gerekiyorsa `uygulama.spec`'e ekle. Boyut önemli (107 MB → ~18 MB;
 hedef ≤10 MB): ağır paket ekleme (LiteLLM, lxml, EbookLib, python-docx bu yüzden çıkarıldı). Dal push'ları Actions'ı
 tetiklemez: `gh workflow run windows-uygulama.yml --ref <dal>` (sürüm yalnız main'den yayımlanır).
