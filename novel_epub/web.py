@@ -77,6 +77,7 @@ def load_settings() -> dict:
          "lang": "tr", "providers": {}, "models": []}
     file = _read_file()
     s.update(file)
+    s["lang_set"] = bool(file.get("lang_set") or "lang" in file)  # kullanıcı hedef dili seçmiş mi
     # Eski sürüm: tek Gemini anahtarı + virgüllü "model" metni.
     if "models" not in file:
         s["models"] = parse_or_empty(os.environ.get("GEMINI_MODEL") or file.get("model") or DEFAULT_MODELS)
@@ -177,7 +178,7 @@ def post_settings():
     s = load_settings()
     data = request.get_json(force=True)
     if data.get("lang") in LANGUAGES:
-        s["lang"] = data["lang"]
+        s["lang"], s["lang_set"] = data["lang"], True
     if data.get("thinking") in THINKING_LEVELS:
         s["thinking"] = data["thinking"]
     if data.get("temperature") not in (None, ""):

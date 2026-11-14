@@ -254,6 +254,36 @@ def mentions(name: str, low_text: str) -> bool:
     return False
 
 
+# Çeviride kaynak dilde kalmış paragrafı yakalamak için: yalnız İngilizceye özgü sık kelimeler (başka dillerde
+# kelime olarak geçmeyenler; ör. "her/his/in/was/of" Türkçe/Almanca/Felemenkçede de kelime olduğu için yok).
+_EN_ONLY = re.compile(r"\b(the|and|with|that|you|they|said|this|from|would|could|were|have|been|which|what|there)\b", re.I)
+_NORM = re.compile(r"[\W_]+", re.U)
+
+
+def untranslated_paragraphs(source: list[str], out: list[str], lang: str) -> list[int]:
+    """Çıktıda kaynak dilde kalmış paragrafların sırası.
+
+    Ölçüt: (a) kaynaktaki bir paragrafla birebir aynı (4+ kelime), (b) kaynak İngilizce, hedef İngilizce değil ve
+    paragraf İngilizceye özgü sık kelimelerle dolu, (c) kaynak CJK, hedef CJK değil ve paragraf hâlâ CJK yazısı.
+    """
+    if not out:
+        return []
+    src_text = " ".join(source)
+    cjk_src = len(CJK_RE.findall(src_text)) > len(src_text) * 0.3
+    src_norm = {_NORM.sub(" ", p).strip().lower() for p in source if len(p.split()) >= 4}
+    bad = []
+    for i, p in enumerate(out):
+        words = p.split()
+        n = _NORM.sub(" ", p).strip().lower()
+        if len(words) >= 4 and n in src_norm and lang != "en":
+            bad.append(i)
+        elif not cjk_src and lang != "en" and len(words) >= 8 and len(_EN_ONLY.findall(p)) / len(words) > 0.12:
+            bad.append(i)
+        elif cjk_src and lang not in ("zh", "ja", "ko") and len(CJK_RE.findall(p)) > max(6, len(p) * 0.3):
+            bad.append(i)
+    return bad
+
+
 def untranslated_suspects(source: list[str], draft: list[str], glossary: dict[str, str]) -> list[str]:
     """Taslakta kalmış İngilizce kelimeler: kaynakta küçük harfle geçen (yani özel ad olmayan) 4+ harfli
     kelimelerden taslakta aynen bulunanlar; sözlükte izin verilenler hariç."""
@@ -550,6 +580,39 @@ class Translator:
         while len(address) > MAX_MEMORY_CHARACTERS:
             address.pop(next(iter(address)))
 
+    def repair(self, src: Chapter, out: Chapter, glossary: dict[str, str]) -> Chapter:
+        """Çeviride kaynak dilde kalmış paragrafları tek istekte yeniden çevirip yerine koyar.
+
+        Onarılamazsa (kota dışı hata) bölüm olduğu gibi döner; kalan sorun kayıtta görünür ve sonraki
+        çalıştırmada yeniden denenir. Kota/anahtar hatası yukarı çıkar.
+        """
+        bad = untranslated_paragraphs(src.paragraphs, out.paragraphs, self.lang)
+        if not bad:
+            return out
+        self.log(f"  {out.index}. bölümde {len(bad)} paragraf çevrilmeden kalmış; onarılıyor")
+        todo = [out.paragraphs[i] for i in bad]
+        payload = {"chapter_title": "", "glossary": relevant_glossary(glossary, " ".join(todo)),
+                   **self.memory_context(" ".join(todo)),
+                   "context": out.paragraphs[max(0, bad[0] - 3):bad[0]], "paragraphs": todo}
+        try:
+            data = self._call(payload)
+        except (QuotaExhausted, FatalError):
+            raise
+        except TranslationError as e:
+            self.log(f"  {out.index}. bölüm onarılamadı ({e}); sonraki çalıştırmada yeniden denenecek")
+            return out
+        fixed = [str(p).strip() for p in data.get("paragraphs") or []]
+        if len(fixed) != len(todo):
+            self.log(f"  {out.index}. bölüm onarımı paragraf sayısı tutmadı; sonraki çalıştırmada yeniden denenecek")
+            return out
+        paras = list(out.paragraphs)
+        for i, f in zip(bad, fixed):
+            if f:
+                paras[i] = f
+        left = untranslated_paragraphs(src.paragraphs, paras, self.lang)
+        self.log(f"  {out.index}. bölüm onarıldı" + (f" ({len(left)} paragraf hâlâ şüpheli)" if left else ""))
+        return Chapter(out.index, out.title, out.url, paras, edited=out.edited)
+
     def translate_chapter(self, ch: Chapter, glossary: dict[str, str], context: list[str],
                           lookahead: list[str] | None = None) -> tuple[Chapter, dict[str, str]]:
         """Bölümü çevirir; (çevrilmiş bölüm, yeni terimler) döndürür. `context` önceki çeviri paragraflarıdır."""
@@ -590,7 +653,7 @@ class Translator:
             paras = [p for p in paras if p]
             out_paras.extend(paras)
             ctx = (ctx + paras)[-4:]
-        return Chapter(ch.index, title, ch.url, out_paras), new_terms
+        return self.repair(ch, Chapter(ch.index, title, ch.url, out_paras), {**glossary, **new_terms}), new_terms
 
     # --- otomatik paketleme ---
     @staticmethod
@@ -669,6 +732,7 @@ class Translator:
                 if sum(map(len, paras)) < 0.7 * c.char_count:
                     raise ValueError(f"{c.index}. bölüm eksik çevrilmiş")
                 result.append(Chapter(c.index, (o.get("title") or c.title).strip(), c.url, paras))
+            result = [self.repair(c, r, glossary) for c, r in zip(chs, result)]
         except (QuotaExhausted, FatalError):
             raise
         except (TranslationError, ValueError) as e:
@@ -731,6 +795,11 @@ class Translator:
             paras = [p for p in (str(x).strip() for x in (o or {}).get("paragraphs") or []) if p]
             if o is None or sum(map(len, paras)) < 0.8 * d.char_count or len(paras) < 0.8 * len(d.paragraphs):
                 self.log(f"  {d.index}. bölüm redaksiyonu eksik döndü; taslak kalıyor")
+                result.append(d)
+                continue
+            src_p = sources[i].paragraphs
+            if len(untranslated_paragraphs(src_p, paras, self.lang)) > len(untranslated_paragraphs(src_p, d.paragraphs, self.lang)):
+                self.log(f"  {d.index}. bölüm redaksiyonu kaynak dilde paragraf bıraktı; taslak kalıyor")
                 result.append(d)
                 continue
             result.append(Chapter(d.index, (o.get("title") or d.title).strip(), d.url, paras, edited=True))

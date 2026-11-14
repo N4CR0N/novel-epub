@@ -4,24 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WebNovel Downloader & Translator</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232e7d6b'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='white'%3E%E8%AF%91%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232f7fc4'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='white'%3E%E8%AF%91%3C/text%3E%3C/svg%3E">
 <style>
   :root {
-    --paper:#eef1ee; --surface:#f8faf8; --sunk:#e6ebe8; --ink:#1f2a28; --mut:#5e6b68; --line:#d5ddda;
-    --jade:#2e7d6b; --jade-ink:#fff; --jade-soft:#dcebe6; --err:#b4483c; --ok:#2e7d6b; --warn:#9a6a12;
+    --paper:#eef3f8; --surface:#f8fbfe; --sunk:#e3ebf3; --ink:#1b2733; --mut:#5a6b7b; --line:#d3dee9;
+    --acc:#2f7fc4; --acc-ink:#fff; --acc-soft:#dcebf8; --err:#b4483c; --ok:#2a7d5f; --warn:#9a6a12;
     --r-lg:12px; --r:8px; --r-sm:6px;
     --font:"Segoe UI Variable Text","Segoe UI Variable","Segoe UI",system-ui,-apple-system,"Helvetica Neue",sans-serif;
     --font-disp:"Segoe UI Variable Display","Segoe UI Variable","Segoe UI",system-ui,-apple-system,sans-serif;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --paper:#121816; --surface:#18201e; --sunk:#0f1513; --ink:#e3eae7; --mut:#8fa09b; --line:#26302d;
-            --jade:#5fb9a2; --jade-ink:#0d1a16; --jade-soft:#1d3530; --err:#e07a6c; --ok:#5fb9a2; --warn:#d9a441; }
+    :root { --paper:#10161d; --surface:#16202a; --sunk:#0d1218; --ink:#e2ebf3; --mut:#8da0b3; --line:#233140;
+            --acc:#6db3f2; --acc-ink:#0b1725; --acc-soft:#1b3248; --err:#e07a6c; --ok:#5fc39a; --warn:#d9a441; }
   }
   * { box-sizing:border-box; }
   html, body { margin:0; }
   body { background:var(--paper); color:var(--ink); font:14px/1.45 var(--font); -webkit-font-smoothing:antialiased; }
-  a { color:var(--jade); }
-  :focus-visible { outline:2px solid var(--jade); outline-offset:2px; }
+  a { color:var(--acc); }
+  :focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
   @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
 
   /* iskelet: solda menü, sağda tek odak */
@@ -29,20 +29,29 @@
          background:linear-gradient(to right, transparent 195px, var(--line) 195px, var(--line) 196px, transparent 196px); }
   nav.rail { padding:18px 12px; display:flex; flex-direction:column; gap:2px; position:sticky; top:0; height:100vh; }
   .brand { display:flex; gap:10px; align-items:center; padding:0 6px 18px; }
-  .seal { width:34px; height:34px; flex:0 0 34px; border-radius:7px; background:var(--jade); color:var(--jade-ink);
+  .seal { width:34px; height:34px; flex:0 0 34px; border-radius:7px; background:var(--acc); color:var(--acc-ink);
           display:grid; place-items:center; font:600 20px/1 "Microsoft YaHei","PingFang SC","Noto Sans CJK SC",sans-serif;
-          box-shadow:inset 0 0 0 2px color-mix(in srgb, var(--jade-ink) 22%, transparent); }
+          box-shadow:inset 0 0 0 2px color-mix(in srgb, var(--acc-ink) 22%, transparent); }
   .brand b { font:600 13.5px/1.15 var(--font-disp); letter-spacing:-.01em; }
   .brand small { display:block; color:var(--mut); font-weight:400; font-size:12px; }
   .nav { all:unset; cursor:pointer; padding:7px 10px; border-radius:var(--r); color:var(--mut); font-weight:500; display:flex; gap:9px; align-items:center; }
   .nav svg { width:16px; height:16px; flex:0 0 16px; }
   .nav:hover { color:var(--ink); background:var(--sunk); }
-  .nav[aria-selected=true] { color:var(--ink); background:var(--surface); box-shadow:inset 3px 0 0 var(--jade); }
-  .rail .foot { margin-top:auto; padding:10px 6px 0; color:var(--mut); font-size:12px; }
+  .nav[aria-selected=true] { color:var(--ink); background:var(--surface); box-shadow:inset 3px 0 0 var(--acc); }
+  .rail .foot { margin-top:auto; padding:10px 6px 0; color:var(--mut); font-size:12px; display:flex; flex-direction:column; gap:8px; }
+  select.uilang { height:28px; padding:2px 6px; font-size:12px; background:transparent; }
   .rail .foot .dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--mut); margin-right:6px; vertical-align:1px; }
-  .rail .foot .dot.on { background:var(--jade); }
+  .rail .foot .dot.on { background:var(--acc); }
 
-  main { padding:22px 28px 60px; max-width:780px; width:100%; }
+  main { padding:22px 28px 60px; width:100%; max-width:1240px; margin:0 auto; }
+  main > [data-pane] { max-width:880px; margin:0 auto; }
+  main > [data-pane=run] { max-width:none; }
+  .runcols { display:grid; grid-template-columns:minmax(0, 880px); justify-content:center; gap:0 16px; align-items:start; }
+  @media (min-width: 1240px) {
+    .runcols { grid-template-columns:minmax(0, 1.2fr) minmax(340px, 1fr); }
+    .runcols > .side { position:sticky; top:22px; }
+    .runcols > .side ul.files { max-height:calc(100vh - 260px); }
+  }
   h1 { font:600 20px/1.2 var(--font-disp); letter-spacing:-.015em; margin:0 0 4px; }
   .lede { color:var(--mut); margin:0 0 18px; }
   h2 { font:600 14px/1.3 var(--font-disp); margin:0 0 10px; }
@@ -55,17 +64,17 @@
     color:var(--ink); font:inherit; }
   textarea { height:auto; resize:vertical; line-height:1.5; }
   textarea.mono { font:12.5px/1.45 ui-monospace,"Cascadia Mono",Consolas,monospace; }
-  input:focus, select:focus, textarea:focus { border-color:var(--jade); outline:none; box-shadow:0 0 0 3px var(--jade-soft); }
+  input:focus, select:focus, textarea:focus { border-color:var(--acc); outline:none; box-shadow:0 0 0 3px var(--acc-soft); }
   .row { display:flex; gap:8px; align-items:center; } .row > .grow { flex:1; }
   .grid3 { display:grid; grid-template-columns:1.1fr 1fr 1.2fr; gap:10px; }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   .pair { display:flex; gap:6px; align-items:center; } .pair input { min-width:0; } .pair span { color:var(--mut); }
 
   button { font:inherit; font-weight:600; height:34px; padding:0 14px; border-radius:var(--r); border:1px solid transparent; cursor:pointer;
-           background:var(--jade); color:var(--jade-ink); white-space:nowrap; }
+           background:var(--acc); color:var(--acc-ink); white-space:nowrap; }
   button.ghost { background:transparent; color:var(--ink); border-color:var(--line); font-weight:500; }
   button.ghost:hover { border-color:var(--mut); }
-  button.text { background:none; border:0; color:var(--jade); padding:0 4px; height:auto; font-weight:500; }
+  button.text { background:none; border:0; color:var(--acc); padding:0 4px; height:auto; font-weight:500; }
   button.danger { color:var(--err); }
   button:disabled { opacity:.45; cursor:default; }
   button.big { height:40px; padding:0 22px; font-size:15px; }
@@ -80,24 +89,24 @@
   .sw span small { display:block; color:var(--mut); font-size:12px; }
   .sw input { appearance:none; width:34px; height:20px; flex:0 0 34px; border-radius:10px; background:var(--line); position:relative; cursor:pointer; transition:background .15s; margin:0; }
   .sw input::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#fff; transition:left .15s; box-shadow:0 1px 2px rgb(0 0 0 / .25); }
-  .sw input:checked { background:var(--jade); } .sw input:checked::after { left:16px; }
+  .sw input:checked { background:var(--acc); } .sw input:checked::after { left:16px; }
 
   .mut { color:var(--mut); font-size:12.5px; } .err { color:var(--err); } .ok { color:var(--ok); } .warn { color:var(--warn); }
   .msg { margin-top:6px; font-size:12.5px; color:var(--mut); } .msg:empty { margin:0; }
-  .chip { display:inline-flex; align-items:center; gap:6px; height:24px; padding:0 9px; border-radius:12px; background:var(--jade-soft); color:var(--ink); font-size:12px; font-weight:500; }
+  .chip { display:inline-flex; align-items:center; gap:6px; height:24px; padding:0 9px; border-radius:12px; background:var(--acc-soft); color:var(--ink); font-size:12px; font-weight:500; }
   .chip.plain { background:var(--sunk); color:var(--mut); }
   .chips { display:flex; flex-wrap:wrap; gap:6px; }
   .modelpick { all:unset; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:8px; height:34px; padding:0 10px;
                border:1px solid var(--line); border-radius:var(--r); background:var(--paper); overflow:hidden; }
   .modelpick b { font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .modelpick:hover { border-color:var(--jade); }
+  .modelpick:hover { border-color:var(--acc); }
 
   .drop { border:1.5px dashed var(--line); border-radius:var(--r); padding:18px; text-align:center; color:var(--mut); }
-  .drop.over { border-color:var(--jade); color:var(--ink); background:var(--jade-soft); }
-  .link { color:var(--jade); cursor:pointer; text-decoration:underline; display:inline; margin:0; font-size:inherit; font-weight:500; }
+  .drop.over { border-color:var(--acc); color:var(--ink); background:var(--acc-soft); }
+  .link { color:var(--acc); cursor:pointer; text-decoration:underline; display:inline; margin:0; font-size:inherit; font-weight:500; }
 
   .progress { height:6px; background:var(--sunk); border-radius:3px; overflow:hidden; margin:12px 0 6px; }
-  .progress > div { height:100%; width:0; background:var(--jade); transition:width .4s; }
+  .progress > div { height:100%; width:0; background:var(--acc); transition:width .4s; }
   .jobhead { display:flex; justify-content:space-between; gap:10px; align-items:baseline; }
   pre.log { background:var(--sunk); border-radius:var(--r); padding:10px 12px; max-height:260px; overflow:auto; font:12px/1.5 ui-monospace,"Cascadia Mono",Consolas,monospace; white-space:pre-wrap; margin:8px 0 0; color:var(--mut); }
   details > summary { cursor:pointer; color:var(--mut); font-size:12.5px; font-weight:500; list-style:none; }
@@ -107,7 +116,7 @@
   ul.files li { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:7px 2px; border-bottom:1px solid var(--line); }
   ul.files li:last-child { border-bottom:0; }
   ul.files li > span { white-space:nowrap; }
-  ul.files a { text-decoration:none; color:var(--ink); word-break:break-word; } ul.files a:hover { color:var(--jade); }
+  ul.files a { text-decoration:none; color:var(--ink); word-break:break-word; } ul.files a:hover { color:var(--acc); }
 
   /* sağlayıcı ve modeller */
   .prov { border:1px solid var(--line); border-radius:var(--r); margin-top:10px; }
@@ -116,7 +125,7 @@
   .mlist { display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:2px 12px; padding:8px 12px; max-height:220px; overflow:auto; }
   .mlist label { all:unset; display:flex; gap:7px; align-items:center; padding:3px 0; cursor:pointer; font-size:13px; overflow:hidden; }
   .mlist label span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .mlist input { accent-color:var(--jade); margin:0; }
+  .mlist input { accent-color:var(--acc); margin:0; }
   ol.order { margin:6px 0 0; padding-left:22px; } ol.order li { padding:3px 0; } ol.order li small { color:var(--mut); margin-left:6px; }
   ol.order li::marker { color:var(--mut); font-variant-numeric:tabular-nums; }
 
@@ -127,12 +136,14 @@
 
   [hidden] { display:none !important; }
 
+  html { scrollbar-gutter:stable; }
   @media (max-width: 720px) {
     .app { grid-template-columns:1fr; background:none; }
     nav.rail { position:static; height:auto; flex-direction:row; flex-wrap:wrap; padding:10px; border-right:0; border-bottom:1px solid var(--line); gap:4px; }
     .brand { width:100%; padding-bottom:8px; }
-    .rail .foot { display:none; }
-    .nav[aria-selected=true] { box-shadow:inset 0 -2px 0 var(--jade); }
+    .rail .foot { margin:0 0 0 auto; padding:0; flex-direction:row; align-items:center; }
+    .rail .foot > div { display:none; }
+    .nav[aria-selected=true] { box-shadow:inset 0 -2px 0 var(--acc); }
     main { padding:16px 14px 50px; }
     .grid3, .grid2 { grid-template-columns:1fr; }
   }
@@ -151,7 +162,10 @@
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"/></svg>Yapay zekâ</button>
     <button class="nav" role="tab" data-view="tools" aria-selected="false" id="navTools" hidden>
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3.5 3.5"/></svg>Site bul</button>
-    <div class="foot"><span class="dot" id="aiDot"></span><span id="aiFoot">Yapay zekâ bağlı değil</span></div>
+    <div class="foot"><div><span class="dot" id="aiDot"></span><span id="aiFoot">Yapay zekâ bağlı değil</span></div>
+      <select id="uiLang" aria-label="Arayüz dili" class="uilang">
+        <option value="tr">Türkçe</option><option value="en">English</option><option value="de">Deutsch</option>
+        <option value="es">Español</option><option value="ru">Русский</option></select></div>
   </nav>
 
   <main>
@@ -159,6 +173,7 @@
     <div data-pane="run">
       <h1>İndir ve çevir</h1>
       <p class="lede">Bir roman linki ya da dosya ver; bölümler indirilir, istersen çevrilir ve tek EPUB olur.</p>
+      <div class="runcols"><div class="main-col">
 
       <section class="panel">
         <div class="row" style="justify-content:space-between">
@@ -200,6 +215,7 @@
           <button class="ghost" id="stop" type="button" disabled>Durdur</button>
         </div>
       </section>
+      </div><div class="side">
 
       <section class="panel" id="jobCard" hidden aria-live="polite">
         <div class="jobhead"><h2 id="jTitle" style="margin:0"></h2><span class="mut" id="jCount"></span></div>
@@ -215,6 +231,7 @@
         <ul class="files" id="books"></ul>
         <div class="mut" id="phoneInfo" style="margin-top:8px"></div>
       </section>
+      </div></div>
     </div>
 
     <!-- KİTAPLIK -->
@@ -260,7 +277,7 @@
         <div class="row"><input class="grow" id="key" type="password" placeholder="Gemini, OpenAI, Claude, DeepSeek, OpenRouter, Groq, xAI, Mistral… ya da ollama" autocomplete="off" spellcheck="false">
           <button id="addKey" type="button">Ekle</button></div>
         <div class="msg" id="keyMsg"></div>
-        <div class="mut">Ücretsiz başlamak için: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>'dan Gemini anahtarı. Anahtarlar Windows kimlik bilgisi kasasında saklanır.</div>
+        <div class="mut"><span>Ücretsiz Gemini anahtarı için:</span> <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. <span>Anahtarlar Windows kimlik bilgisi kasasında saklanır.</span></div>
         <div id="provs"></div>
       </section>
       <section class="panel">
@@ -288,8 +305,7 @@
       <section class="panel" id="histCard">
         <div class="actions" style="margin-top:0"><button id="histGo" type="button">Bu bilgisayarı tara</button>
           <button id="phoneGo" class="ghost" type="button">Telefondan oku (root, USB)</button><span class="msg" id="histMsg" style="margin:0"></span></div>
-        <p class="mut" id="phoneHelp" hidden>Telefonda Ayarlar, Telefon hakkında, Yapım numarasına 7 kez dokun; Geliştirici seçeneklerinden
-          <b>USB hata ayıklama</b>'yı aç. Kabloyu tak, telefonda çıkan izni ver; süper kullanıcı penceresinde <b>Shell</b>'e izin ver ve tekrar dene.</p>
+        <p class="mut" id="phoneHelp" hidden>Telefonda Ayarlar, Telefon hakkında, Yapım numarasına 7 kez dokun; Geliştirici seçeneklerinden USB hata ayıklamayı aç. Kabloyu tak, telefonda çıkan izni ver; süper kullanıcı penceresinde Shell'e izin ver ve tekrar dene.</p>
         <table class="sites" id="histTable" hidden><thead><tr><th>Site</th><th>Adres / roman</th><th>Destek</th><th></th></tr></thead><tbody></tbody></table>
         <label for="histText" id="histTextLbl" hidden>Desteklenmeyenler: eklenmesi için bu listeyi gönderebilirsin</label>
         <textarea id="histText" rows="5" readonly hidden></textarea>
@@ -297,6 +313,7 @@
     </div>
   </main>
 </div>
+<script>{% include "i18n.js" %}</script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -310,6 +327,17 @@ async function api(path, body, method) {
   if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
   return d;
 }
+
+/* arayüz dili */
+function setLang(l) {
+  LANG = l; document.documentElement.lang = l; $('uiLang').value = l;
+  try { localStorage.setItem('uiLang', l); } catch (e) {}
+  translateDOM(document.body);
+  if (settings) renderSettings(settings);
+  loadBooks().catch(() => {}); loadInfo();
+  if (!document.querySelector('[data-pane=library]').hidden) loadLibrary();
+}
+$('uiLang').onchange = () => setLang($('uiLang').value);
 
 /* gezinme */
 function show(view) {
@@ -329,31 +357,31 @@ function renderSettings(s) {
   const chosen = new Set(s.models || []);
   $('provs').innerHTML = (s.providers || []).map(p => `
     <div class="prov" data-p="${esc(p.id)}"><header><div><b>${esc(p.name)}</b><span class="mut">${esc(p.hint || '')}</span></div>
-      <div><button class="text" data-act="refresh" type="button">Modelleri yenile</button>
-      <button class="text danger" data-act="remove" type="button">Kaldır</button></div></header>
-      <div class="mlist">${(p.available.length ? p.available : [...chosen].filter(m => m.startsWith(p.prefix + "/"))).map(m =>
+      <div><button class="text" data-act="refresh" type="button">${esc(T('Modelleri yenile'))}</button>
+      <button class="text danger" data-act="remove" type="button">${esc(T('Kaldır'))}</button></div></header>
+      <div class="mlist">${(p.available.length ? p.available : [...chosen].filter(m => m.startsWith(p.prefix + '/'))).map(m =>
         `<label title="${esc(m)}"><input type="checkbox" value="${esc(m)}" ${chosen.has(m) ? 'checked' : ''}><span>${esc(short(m))}</span></label>`).join('')
-        || '<span class="mut">Model listesi yok; "Modelleri yenile"ye bas.</span>'}</div></div>`).join('');
+        || `<span class="mut">${esc(T('Model listesi yok; "Modelleri yenile"ye bas.'))}</span>`}</div></div>`).join('');
   $('provs').querySelectorAll('input[type=checkbox]').forEach(cb => cb.onchange = saveModels);
   $('provs').querySelectorAll('button[data-act]').forEach(b => b.onclick = async () => {
     const pid = b.closest('.prov').dataset.p;
     try {
-      if (b.dataset.act === 'remove') { if (!confirm('Bu sağlayıcının anahtarı ve seçili modelleri kaldırılsın mı?')) return; renderSettings(await api('/api/keys/' + pid, undefined, 'DELETE')); }
-      else { $('keyMsg').textContent = 'Modeller yenileniyor…'; renderSettings(await api(`/api/keys/${pid}/refresh`, {})); $('keyMsg').textContent = 'Model listesi güncellendi.'; }
+      if (b.dataset.act === 'remove') { if (!confirm(T('Bu sağlayıcının anahtarı ve seçili modelleri kaldırılsın mı?'))) return; renderSettings(await api('/api/keys/' + pid, undefined, 'DELETE')); }
+      else { $('keyMsg').textContent = T('Modeller yenileniyor…'); renderSettings(await api(`/api/keys/${pid}/refresh`, {})); $('keyMsg').textContent = T('Model listesi güncellendi.'); }
     } catch (e) { $('keyMsg').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
   });
   const ms = s.models || [];
   $('order').innerHTML = ms.length ? ms.map(m => `<li>${esc(short(m))}<small>${esc(m.split('/')[0])}</small></li>`).join('')
-                                  : '<li class="mut" style="list-style:none;margin-left:-22px">Henüz model seçilmedi. Yukarıdan anahtar ekle.</li>';
-  $('modelName').textContent = ms.length ? short(ms[0]) : 'Seçilmedi';
+                                  : `<li class="mut" style="list-style:none;margin-left:-22px">${esc(T('Henüz model seçilmedi. Yukarıdan anahtar ekle.'))}</li>`;
+  $('modelName').textContent = ms.length ? short(ms[0]) : T('Seçilmedi');
   $('modelMore').hidden = ms.length < 2; $('modelMore').textContent = '+' + (ms.length - 1);
   $('aiDot').classList.toggle('on', ms.length > 0);
-  $('aiFoot').textContent = ms.length ? `${ms.length} model hazır` : 'Yapay zekâ bağlı değil';
+  $('aiFoot').textContent = ms.length ? T('{n} model hazır', {n: ms.length}) : T('Yapay zekâ bağlı değil');
 }
 async function loadSettings() {
   const s = await api('/api/settings');
   renderSettings(s);
-  await loadLangs(s.lang);
+  await loadLangs(s.lang_set ? s.lang : null);
   if (!(s.models || []).length) $('translate').checked = false;
 }
 async function saveModels() {
@@ -362,11 +390,11 @@ async function saveModels() {
 }
 $('addKey').onclick = async () => {
   const key = $('key').value.trim(); if (!key) return;
-  $('keyMsg').textContent = 'Anahtar tanınıyor ve modeller listeleniyor…'; $('addKey').disabled = true;
+  $('keyMsg').textContent = T('Anahtar tanınıyor ve modeller listeleniyor…'); $('addKey').disabled = true;
   try {
     const d = await api('/api/keys', {key});
     $('key').value = ''; renderSettings(d); $('translate').checked = true;
-    $('keyMsg').innerHTML = `<span class="ok">${esc(d.name)} eklendi: ${d.models} model erişilebilir. Kullanmak istediklerini işaretle.</span>`;
+    $('keyMsg').innerHTML = `<span class="ok">${esc(T('{name} eklendi: {n} model erişilebilir. Kullanmak istediklerini işaretle.', {name: d.name, n: d.models}))}</span>`;
   } catch (e) { $('keyMsg').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
   finally { $('addKey').disabled = false; }
 };
@@ -374,7 +402,7 @@ $('key').onkeydown = e => { if (e.key === 'Enter') $('addKey').click(); };
 $('saveSet').onclick = async () => {
   try {
     renderSettings(await api('/api/settings', {delay:$('delay').value, workers:$('workers').value, batch:$('batch').value, thinking:$('thinking').value, temperature:$('temp').value}));
-    $('setMsg').textContent = 'Kaydedildi.';
+    $('setMsg').textContent = T('Kaydedildi.');
   } catch (e) { $('setMsg').textContent = e.message; }
 };
 
@@ -389,23 +417,23 @@ $('tabSite').onclick = () => setMode('site');
 $('tabFile').onclick = () => setMode('file');
 $('showSites').onclick = async () => {
   const el = $('siteList');
-  if (el.hidden && !el.textContent) {
+  if (el.hidden) {
     const ss = await api('/api/sources');
-    el.textContent = 'Özel destek: ' + ss.map(x => x.domains.join(', ')).join('; ') + '. Diğer sitelerde genel okuyucu denenir.';
+    el.textContent = T('Özel destek: {list}. Diğer sitelerde genel okuyucu denenir.', {list: ss.map(x => x.domains.join(', ')).join('; ')});
   }
   el.hidden = !el.hidden;
 };
 
 async function uploadFile(f) {
   if (!f) return;
-  fileId = ''; $('fileMsg').textContent = `${f.name} yükleniyor ve okunuyor…`;
+  fileId = ''; $('fileMsg').textContent = T('{name} yükleniyor ve okunuyor…', {name: f.name});
   const fd = new FormData(); fd.append('file', f);
   try {
     const r = await fetch('/api/upload', {method:'POST', body:fd});
     const d = await r.json();
-    if (!r.ok) throw new Error(d.error || 'Yükleme başarısız');
+    if (!r.ok) throw new Error(d.error || T('Yükleme başarısız'));
     fileId = d.id;
-    $('fileMsg').innerHTML = `<span class="ok">${esc(d.title)}: ${d.chapters} bölüm, yaklaşık ${d.words.toLocaleString('tr')} kelime</span>`;
+    $('fileMsg').innerHTML = `<span class="ok">${esc(T('{title}: {n} bölüm, yaklaşık {w} kelime', {title: d.title, n: d.chapters, w: d.words.toLocaleString(LANG)}))}</span>`;
   } catch (e) { $('fileMsg').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
 }
 $('file').onchange = () => uploadFile($('file').files[0]);
@@ -415,32 +443,33 @@ drop.ondragleave = () => drop.classList.remove('over');
 drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); uploadFile(e.dataTransfer.files[0]); };
 
 $('testSite').onclick = async () => {
-  $('siteMsg').textContent = 'Bölüm listesi ve ilk bölüm deneniyor…';
+  $('siteMsg').textContent = T('Bölüm listesi ve ilk bölüm deneniyor…');
   try {
     const d = await api('/api/test-site', {url:$('url').value});
     if (d.error && !d.title) { $('siteMsg').innerHTML = `<span class="err">${esc(d.source)}: ${esc(d.error)}</span>`; return; }
-    const kind = d.source === 'genel' ? 'genel okuyucu' : 'özel destek';
-    let t = `${d.title}: ${d.chapters} bölüm (${kind})`;
-    if (d.follow_next) t += ', "sonraki" bağlantısıyla gezilecek';
-    if (d.sample_chars) t += `. İlk bölüm ${d.sample_paragraphs} paragraf, ${d.sample_chars.toLocaleString('tr')} karakter`;
-    if (d.issues && d.issues.length) t += '. Sorun: ' + d.issues.join(', ');
-    if (d.error) t += '. ' + d.error;
-    $('siteMsg').innerHTML = `<span class="${d.ok ? 'ok' : 'warn'}">${esc(t)}</span>`;
+    const parts = [T('{title}: {n} bölüm ({kind})', {title: d.title, n: d.chapters, kind: T(d.source === 'genel' ? 'genel okuyucu' : 'özel destek')})];
+    if (d.follow_next) parts.push(T('"sonraki" bağlantısıyla gezilecek'));
+    if (d.sample_chars) parts.push(T('İlk bölüm {p} paragraf, {c} karakter', {p: d.sample_paragraphs, c: d.sample_chars.toLocaleString(LANG)}));
+    if (d.issues && d.issues.length) parts.push(T('Sorun: {x}', {x: d.issues.join(', ')}));
+    if (d.error) parts.push(d.error);
+    $('siteMsg').innerHTML = `<span class="${d.ok ? 'ok' : 'warn'}">${esc(parts.join('. '))}</span>`;
   } catch (e) { $('siteMsg').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
 };
 
 async function loadLangs(def) {
   const ls = await api('/api/languages');
   $('lang').innerHTML = ls.map(l => `<option value="${esc(l.code)}">${esc(l.name)}</option>`).join('');
-  $('lang').value = def || 'tr';
+  // Hedef dil seçilmemişse cihaz dili (destekleniyorsa), yoksa Türkçe.
+  const dev = (navigator.languages && navigator.languages[0] || navigator.language || 'tr').slice(0, 2).toLowerCase();
+  $('lang').value = def || (ls.some(l => l.code === dev) ? dev : 'tr');
 }
 $('lang').onchange = () => { api('/api/settings', {lang:$('lang').value}).catch(() => {}); };
 
 /* iş */
 $('go').onclick = async () => {
   try {
-    if (mode === 'file' && !fileId) throw new Error('Önce bir dosya seç ve okunmasını bekle.');
-    if ($('translate').checked && !(settings && settings.models && settings.models.length)) { show('ai'); throw new Error('Çeviri için önce bir API anahtarı ekle ve model seç.'); }
+    if (mode === 'file' && !fileId) throw new Error(T('Önce bir dosya seç ve okunmasını bekle.'));
+    if ($('translate').checked && !(settings && settings.models && settings.models.length)) { show('ai'); throw new Error(T('Çeviri için önce bir API anahtarı ekle ve model seç.')); }
     const d = await api('/api/jobs', {url: mode === 'site' ? $('url').value : '', file_id: mode === 'file' ? fileId : '',
       lang:$('lang').value, start:$('start').value, end:$('end').value, translate:$('translate').checked, edit:$('edit').checked, review:$('review').checked});
     jobId = d.id; $('jobCard').hidden = false; $('jResult').innerHTML = '';
@@ -453,7 +482,7 @@ $('stop').onclick = () => jobId && api(`/api/jobs/${jobId}/cancel`, {});
 async function poll() {
   if (!jobId) return;
   const s = await api(`/api/jobs/${jobId}`);
-  $('jTitle').textContent = s.title || 'Hazırlanıyor';
+  $('jTitle').textContent = s.title || T('Hazırlanıyor');
   $('jPhase').textContent = s.phase.charAt(0).toUpperCase() + s.phase.slice(1);
   const pct = s.total ? Math.round(100 * s.done / s.total) : 0;
   $('jBar').style.width = pct + '%';
@@ -462,8 +491,8 @@ async function poll() {
   log.textContent = s.logs.join('\n'); if (atBottom) log.scrollTop = log.scrollHeight;
   if (!s.running) {
     clearInterval(timer); $('go').disabled = false; $('stop').disabled = true;
-    if (s.result) $('jResult').innerHTML = `<p class="ok">Hazır: <a href="/indir/${encodeURIComponent(s.result)}">${esc(s.result)}</a></p>`;
-    if (s.notice) $('jResult').innerHTML += `<p>${esc(s.notice)}</p>`;
+    if (s.result) $('jResult').innerHTML = `<p class="ok">${esc(T('Hazır:'))} <a href="/indir/${encodeURIComponent(s.result)}">${esc(s.result)}</a></p>`;
+    if (s.notice) $('jResult').innerHTML += `<p class="warn">${esc(s.notice)}</p>`;
     if (s.error) $('jResult').innerHTML += `<p class="err">${esc(s.error)}</p>`;
     loadBooks();
   }
@@ -472,7 +501,7 @@ async function poll() {
 async function loadBooks() {
   const b = await api('/api/books');
   $('books').innerHTML = b.length ? b.map(x => `<li><a href="/indir/${encodeURIComponent(x.name)}">${esc(x.name)}</a><span class="mut">${x.mb} MB</span></li>`).join('')
-                                  : '<li class="mut">Henüz kitap yok. İlk EPUB burada görünecek.</li>';
+                                  : `<li class="mut">${esc(T('Henüz kitap yok. İlk EPUB burada görünecek.'))}</li>`;
 }
 
 /* kitaplık */
@@ -480,54 +509,54 @@ let lib = [];
 async function loadLibrary() {
   lib = await api('/api/library?lang=' + encodeURIComponent($('lang').value || 'tr'));
   const cur = $('libSel').value;
-  $('libSel').innerHTML = lib.map(b => `<option value="${esc(b.id)}">${esc(b.title)}</option>`).join('') || '<option value="">Henüz kitap yok</option>';
+  $('libSel').innerHTML = lib.map(b => `<option value="${esc(b.id)}">${esc(b.title)}</option>`).join('') || `<option value="">${esc(T('Henüz kitap yok'))}</option>`;
   if (cur && lib.some(b => b.id === cur)) $('libSel').value = cur;
   showBook();
 }
 async function showBook() {
   const b = lib.find(x => x.id === $('libSel').value);
   if (!b) { $('libInfo').innerHTML = ''; $('gloss').value = ''; $('notes').value = ''; $('mem').textContent = ''; return; }
-  const c = (n, t) => `<span class="chip ${n ? '' : 'plain'}">${n} ${t}</span>`;
-  $('libInfo').innerHTML = c(b.ham, 'indirildi') + c(b.ceviri, 'çevrildi') + c(b.redakte, 'redakte') + c(b.terms, 'terim') + (b.yedek ? c(b.yedek, 'yedekli') : '');
+  const c = (n, t) => `<span class="chip ${n ? '' : 'plain'}">${esc(T(t, {n}))}</span>`;
+  $('libInfo').innerHTML = c(b.ham, '{n} indirildi') + c(b.ceviri, '{n} çevrildi') + c(b.redakte, '{n} redakte') + c(b.terms, '{n} terim') + (b.yedek ? c(b.yedek, '{n} yedekli') : '');
   const d = await api(`/api/library/${encodeURIComponent(b.id)}/glossary?lang=${$('lang').value}`);
   $('gloss').value = JSON.stringify(d.glossary, null, 1);
   $('notes').value = d.notes || '';
   const chars = Object.entries(d.memory.characters || {}).map(([n, v]) => `• ${n}: ${v}`).join('\n');
   const addr = Object.entries(d.memory.address || {}).map(([k, v]) => `• ${k}: ${v}`).join('\n');
-  $('mem').textContent = (d.memory.summary || 'Henüz özet yok.') + (chars ? '\n\nKarakterler\n' + chars : '') + (addr ? '\n\nHitaplar (sen/siz)\n' + addr : '');
+  $('mem').textContent = (d.memory.summary || T('Henüz özet yok.')) + (chars ? '\n\n' + T('Karakterler') + '\n' + chars : '') + (addr ? '\n\n' + T('Hitaplar (sen/siz)') + '\n' + addr : '');
 }
 $('libSel').onchange = showBook;
 const book = () => encodeURIComponent($('libSel').value), lq = () => `?lang=${$('lang').value}`;
 $('saveGloss').onclick = async () => {
   let g;
-  try { g = JSON.parse($('gloss').value || '{}'); } catch (e) { $('glossMsg').innerHTML = `<span class="err">Sözlük biçimi bozuk: ${esc(e.message)}</span>`; return; }
-  try { const d = await api(`/api/library/${book()}/glossary${lq()}`, {glossary:g}); $('glossMsg').textContent = `Kaydedildi: ${d.terms} terim.`; loadLibrary(); }
+  try { g = JSON.parse($('gloss').value || '{}'); } catch (e) { $('glossMsg').innerHTML = `<span class="err">${esc(T('Sözlük biçimi bozuk: {e}', {e: e.message}))}</span>`; return; }
+  try { const d = await api(`/api/library/${book()}/glossary${lq()}`, {glossary:g}); $('glossMsg').textContent = T('Kaydedildi: {n} terim.', {n: d.terms}); loadLibrary(); }
   catch (e) { $('glossMsg').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
 };
 $('saveNotes').onclick = async () => {
-  try { await api(`/api/library/${book()}/notes${lq()}`, {notes:$('notes').value}); $('glossMsg').textContent = 'Talimat kaydedildi.'; }
+  try { await api(`/api/library/${book()}/notes${lq()}`, {notes:$('notes').value}); $('glossMsg').textContent = T('Talimat kaydedildi.'); }
   catch (e) { $('glossMsg').textContent = e.message; }
 };
 $('reBack').onclick = async () => {
   try { const d = await api(`/api/library/${book()}/restore${lq()}`, {start:$('reA').value, end:$('reB').value});
-        alert(`${d.restored} bölüm en son yedeğine döndü. EPUB için aynı linkle Başlat'a bas.`); loadLibrary(); }
+        alert(T("{n} bölüm en son yedeğine döndü. EPUB için aynı linkle Başlat'a bas.", {n: d.restored})); loadLibrary(); }
   catch (e) { alert(e.message); }
 };
 $('reGo').onclick = async () => {
-  if (!confirm(`${$('reA').value}–${$('reB').value}. bölümlerin çevirisi yedeğe alınacak ve Başlat'a basınca yeniden çevrilecek. Devam edilsin mi?`)) return;
+  if (!confirm(T("{a}–{b}. bölümlerin çevirisi yedeğe alınacak ve Başlat'a basınca yeniden çevrilecek. Devam edilsin mi?", {a: $('reA').value, b: $('reB').value}))) return;
   try { const d = await api(`/api/library/${book()}/retranslate${lq()}`, {start:$('reA').value, end:$('reB').value});
-        alert(`${d.removed} bölümün çevirisi yedeğe alındı. Şimdi aynı linkle Başlat'a bas.`); loadLibrary(); }
+        alert(T("{n} bölümün çevirisi yedeğe alındı. Şimdi aynı linkle Başlat'a bas.", {n: d.removed})); loadLibrary(); }
   catch (e) { alert(e.message); }
 };
 
 /* site bul */
 $('phoneGo').onclick = async () => {
-  $('histMsg').textContent = 'Telefon aranıyor…';
+  $('histMsg').textContent = T('Telefon aranıyor…');
   try {
     let st = await api('/api/phone/status');
     if (!st.adb) {
-      if (!confirm("Telefona bağlanmak için Google'ın resmî aracı adb (platform-tools, yaklaşık 7 MB) gerekiyor. İndirilsin mi?")) { $('histMsg').textContent = ''; return; }
-      $('histMsg').textContent = 'adb indiriliyor…';
+      if (!confirm(T("Telefona bağlanmak için Google'ın resmî aracı adb (platform-tools, yaklaşık 7 MB) gerekiyor. İndirilsin mi?"))) { $('histMsg').textContent = ''; return; }
+      $('histMsg').textContent = T('adb indiriliyor…');
       await api('/api/phone/adb-download', {});
       st = await api('/api/phone/status');
     }
@@ -535,24 +564,24 @@ $('phoneGo').onclick = async () => {
     if (!ok.length) {
       $('phoneHelp').hidden = false;
       $('histMsg').textContent = (st.devices || []).some(d => d.state === 'unauthorized')
-        ? 'Telefon izin bekliyor: telefonda "İzin ver"e dokun ve tekrar dene.' : 'Telefon görünmüyor; aşağıdaki adımları izle.';
+        ? T('Telefon izin bekliyor: telefonda "İzin ver"e dokun ve tekrar dene.') : T('Telefon görünmüyor; aşağıdaki adımları izle.');
       return;
     }
-    $('histMsg').textContent = 'Telefondan kopyalanıyor; root izni istenebilir…';
+    $('histMsg').textContent = T('Telefondan kopyalanıyor; root izni istenebilir…');
     showSiteResults(await api('/api/phone/scan', {}));
   } catch (e) { $('phoneHelp').hidden = false; $('histMsg').textContent = e.message; }
 };
 $('histGo').onclick = async () => {
-  $('histMsg').textContent = 'Taranıyor…';
+  $('histMsg').textContent = T('Taranıyor…');
   try { showSiteResults(await api('/api/history-scan')); } catch (e) { $('histMsg').textContent = e.message; }
 };
 function showSiteResults(d) {
-  $('histMsg').textContent = `${d.sites.length} site bulundu` + (d.browsers.length ? ` (${d.browsers.join(', ')})` : '') + (d.error ? '. ' + d.error : '');
+  $('histMsg').textContent = T('{n} site bulundu', {n: d.sites.length}) + (d.browsers.length ? ` (${d.browsers.join(', ')})` : '') + (d.error ? '. ' + d.error : '');
   const body = $('histTable').querySelector('tbody');
   body.innerHTML = d.sites.map((x, i) => `<tr><td>${esc(x.domain)}<div class="mut">${esc(x.sample_title)}</div></td>`
-    + `<td>${x.urls}${x.bookmarks ? ` (${x.bookmarks} yer işareti)` : ''} / ${x.novels}</td>`
-    + `<td>${x.supported ? `<span class="chip">${esc(x.supported)}</span>` : '<span class="chip plain">genel</span>'}</td>`
-    + `<td><button class="ghost" data-i="${i}" type="button">Dene</button></td></tr>`).join('');
+    + `<td>${x.urls}${x.bookmarks ? ` (${esc(T('{n} yer işareti', {n: x.bookmarks}))})` : ''} / ${x.novels}</td>`
+    + `<td>${x.supported ? `<span class="chip">${esc(x.supported)}</span>` : `<span class="chip plain">${esc(T('genel'))}</span>`}</td>`
+    + `<td><button class="ghost" data-i="${i}" type="button">${esc(T('Dene'))}</button></td></tr>`).join('');
   $('histTable').hidden = !d.sites.length;
   body.querySelectorAll('button[data-i]').forEach(btn => btn.onclick = () => {
     show('run'); setMode('site'); $('url').value = d.sites[+btn.dataset.i].sample_url; $('testSite').click();
@@ -566,12 +595,13 @@ async function loadInfo() {
   try {
     const i = await api('/api/info');
     $('localBtns').hidden = !i.local; $('navTools').hidden = !i.local;
-    if (i.local) $('phoneInfo').textContent = `Telefondan indirmek için aynı Wi‑Fi'de ${i.phone_url} adresini aç. Veriler: ${i.home}`;
+    if (i.local) $('phoneInfo').textContent = T("Telefondan indirmek için aynı Wi‑Fi'de {url} adresini aç. Veriler: {home}", {url: i.phone_url, home: i.home});
   } catch (e) {}
 }
 $('openOut').onclick = () => api('/api/open-folder', {which:'cikti'}).catch(e => alert(e.message));
 $('openHome').onclick = () => api('/api/open-folder', {which:'home'}).catch(e => alert(e.message));
 
+LANG = pickLang(); document.documentElement.lang = LANG; $('uiLang').value = LANG; translateDOM(document.body);
 loadSettings(); loadBooks(); loadInfo();
 </script>
 </body>

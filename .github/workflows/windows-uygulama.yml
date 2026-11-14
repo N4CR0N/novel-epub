@@ -42,7 +42,7 @@ jobs:
           --collect-submodules keyring --copy-metadata keyring
           --exclude-module tkinter --exclude-module unittest --exclude-module test --exclude-module pydoc_data
           --exclude-module setuptools --exclude-module pip --exclude-module lib2to3 --exclude-module idlelib
-          --exclude-module ensurepip --exclude-module distutils
+          --exclude-module ensurepip
           uygulama.py
 
       - name: Exe boyutu

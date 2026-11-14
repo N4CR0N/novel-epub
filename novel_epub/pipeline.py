@@ -252,7 +252,8 @@ class Job:
 
     def _translate(self, chapters: list[Chapter], store: BookStore) -> list[Chapter]:
         from . import translator as _t
-        from .translator import LOOKAHEAD_PARAGRAPHS, FatalError, QuotaExhausted, TranslationError, untranslated_suspects
+        from .translator import (LOOKAHEAD_PARAGRAPHS, FatalError, QuotaExhausted, TranslationError,
+                                 untranslated_paragraphs, untranslated_suspects)
 
         o = self.opts
         keys = dict(o.keys) or ({"gemini": o.api_key} if o.api_key else {})
@@ -316,6 +317,22 @@ class Job:
             self.log(f"  redakte edildi: {n}/{len(drafts)} bölüm")
 
         stop_reason = ""
+        # 0) Önceki çevirilerde kaynak dilde kalmış paragraflar (kesinti, kesik/kopya yanıt): yalnız onları onar.
+        to_repair = [i for i, d in sorted(results.items()) if d is not source[i]
+                     and untranslated_paragraphs(source[i].paragraphs, d.paragraphs, o.lang)]
+        if to_repair:
+            self.log(f"{len(to_repair)} bölümde çevrilmeden kalmış paragraf bulundu, onarılıyor: {to_repair[:20]}")
+        for idx in to_repair:
+            self._check_cancel()
+            try:
+                fixed = tr.repair(source[idx], results[idx], glossary)
+            except QuotaExhausted as e:
+                stop_reason = str(e)
+                break
+            if fixed is not results[idx]:
+                store.save_tr(fixed)
+                results[idx] = fixed
+
         # 1) Önceden çevrilmiş ama redakte edilmemiş bölümler (ör. redaksiyon sonradan açıldıysa).
         j = 0
         while j < len(to_edit) and not stop_reason:
@@ -382,6 +399,34 @@ class Job:
                 wait(300)
                 streak = 0
 
+        # 3) Bu çalıştırmada çevrilemeyen bölümler: kota varken tek tek bir kez daha dene.
+        retry = [n for n in dict.fromkeys(failed) if n not in results]
+        if retry and not stop_reason and not self.p.notice:
+            self.log(f"Çevrilemeyen {len(retry)} bölüm tek tek yeniden deneniyor: {retry[:20]}")
+        for n in (retry if not stop_reason and not self.p.notice else []):
+            self._check_cancel()
+            try:
+                done, new_terms = tr.translate_chapter(source[n], glossary, context_before(n), lookahead_after(n))
+            except QuotaExhausted as e:
+                stop_reason = str(e)
+                break
+            except FatalError:
+                raise
+            except TranslationError as e:
+                self.log(f"  {n}. bölüm yine çevrilemedi ({e})")
+                continue
+            store.save_tr(done)
+            results[n] = done
+            self.p.done += 1
+            save_state(new_terms)
+            self.log(f"  çevrildi (ikinci deneme) {n}: {done.title}")
+            if o.edit:
+                try:
+                    edit([done])
+                except QuotaExhausted as e:
+                    stop_reason = str(e)
+                    break
+
         if stop_reason:
             if not results:
                 raise QuotaExhausted(stop_reason)
@@ -396,6 +441,9 @@ class Job:
         failed = [n for n in failed if n <= last and n not in results]
         if failed:
             self.p.report["cevrilemeyen"] = failed
+            self.p.notice = (self.p.notice + " " if self.p.notice else "") + (
+                f"{len(failed)} bölüm çevrilemedi ve EPUB'da orijinal metniyle duruyor. Aynı linkle tekrar Başlat'a "
+                "basınca yalnız bunlar denenir.")
             self.log(f"{len(failed)} bölüm çevrilemedi, EPUB'da orijinal metniyle duruyor: {failed[:30]}. "
                      "Aynı linkle tekrar başlatınca yalnız bunlar ve kalanlar denenir.")
         if self.p.error:

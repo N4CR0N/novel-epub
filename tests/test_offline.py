@@ -300,12 +300,73 @@ def test_pipeline_skips_failed_group_and_continues(tmp_path: Path, monkeypatch):
                 raise translator.TransientFailure("hep hata")
             return [Chapter(c.index, "TR", c.url, ["tr"]) for c in chs], {}
 
+        def translate_chapter(self, ch, glossary, context, lookahead=None):
+            if ch.index == 2 and self.always_fail:
+                raise translator.TransientFailure("yine hata")
+            return Chapter(ch.index, "TR2", ch.url, ["tr"]), {}
+
+    FakeTr.always_fail = True
     monkeypatch.setattr(translator, "GeminiTranslator", FakeTr)
     job = pipeline.Job(pipeline.Options(url="u", translate=True, edit=False))
     store = BookStore(tmp_path, Novel(url="u", title="k", source="t"))
     out = job._translate([Chapter(i, f"c{i}", "u", ["en"]) for i in range(1, 5)], store)
     assert [c.title for c in out] == ["TR", "[Çevrilemedi] c2", "TR", "TR"]
-    assert job.p.report["cevrilemeyen"] == [2] and not job.p.error
+    assert job.p.report["cevrilemeyen"] == [2] and not job.p.error and "1 bölüm çevrilemedi" in job.p.notice
+    # İkinci denemede olursa EPUB'da boşluk kalmaz
+    FakeTr.always_fail = False
+    job = pipeline.Job(pipeline.Options(url="u", translate=True, edit=False))
+    store = BookStore(tmp_path / "b", Novel(url="u", title="k", source="t"))
+    out = job._translate([Chapter(i, f"c{i}", "u", ["en"]) for i in range(1, 5)], store)
+    assert [c.title for c in out] == ["TR", "TR2", "TR", "TR"] and "cevrilemeyen" not in job.p.report
+
+
+def test_untranslated_paragraphs_are_detected_and_repaired():
+    from novel_epub.translator import untranslated_paragraphs
+
+    src = ["Even the deputy dean said that they would come with him.", "The wind howled through the valley and the trees.",
+           "Kai.", "第一章 风起"]
+    out = ["Dekan yardımcısı bile onların geleceğini söyledi.", "Even the deputy dean said that they would come with him.",
+           "Kai.", "The wind was howling and they could hear it from there."]
+    assert untranslated_paragraphs(src[:3], out, "tr") == [1, 3]
+    assert untranslated_paragraphs(src[:3], out, "en") == []  # hedef İngilizceyse sorun yok
+    assert untranslated_paragraphs(["他说：我们走吧。今天天气很好。"], ["他说：我们走吧。今天天气很好。"], "tr") == [0]
+    # Türkçe metindeki "her/his/in" kelimeleri yanlış alarm vermez
+    assert untranslated_paragraphs(src, ["Her gün onun için bir his vardı ve in cin top oynuyordu orada."], "tr") == []
+
+    tr = _fake_translator()
+    tr.log = lambda m: None
+    sent = []
+
+    def fake(payload, schema=None, bad_retries=None, system=None):
+        sent.append(payload["paragraphs"])
+        return {"title": "", "paragraphs": ["ÇEVRİLDİ " + str(k) for k in range(len(payload["paragraphs"]))], "new_terms": []}
+
+    tr._call_model = fake
+    fixed = tr.repair(Chapter(1, "c", "u", src[:3]), Chapter(1, "B", "u", out, edited=True), {})
+    assert sent == [[out[1], out[3]]]  # yalnız sorunlu paragraflar gider
+    assert fixed.paragraphs == [out[0], "ÇEVRİLDİ 0", "Kai.", "ÇEVRİLDİ 1"] and fixed.edited
+
+
+def test_pipeline_repairs_old_translations_on_start(tmp_path: Path, monkeypatch):
+    from novel_epub import pipeline, translator
+    from novel_epub.store import BookStore
+
+    eng = "He opened the gate and they said that the wind would come from there."
+
+    class FakeTr:
+        def __init__(self, *a, **k):
+            self.model = "sahte"
+
+        def repair(self, src, out, glossary):
+            return Chapter(out.index, out.title, out.url, ["onarıldı"], edited=out.edited)
+
+    monkeypatch.setattr(translator, "GeminiTranslator", FakeTr)
+    store = BookStore(tmp_path, Novel(url="u", title="k", source="t"))
+    store.save_tr(Chapter(1, "B1", "u", ["Kapıyı açtı."], edited=True))
+    store.save_tr(Chapter(2, "B2", "u", [eng], edited=True))  # yarım kalmış çeviri
+    job = pipeline.Job(pipeline.Options(url="u", translate=True, edit=True))
+    out = job._translate([Chapter(1, "c1", "u", [eng.replace("He", "She")]), Chapter(2, "c2", "u", [eng])], store)
+    assert [c.paragraphs for c in out] == [["Kapıyı açtı."], ["onarıldı"]] and store.load_tr(2).paragraphs == ["onarıldı"]
 
 
 def test_cancel_interrupts_wait(tmp_path: Path, monkeypatch):
