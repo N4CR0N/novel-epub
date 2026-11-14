@@ -1,116 +1,123 @@
 # WebNovel Downloader & Translator
 
-Bir web novel linki ya da dosya verirsin: araç bölüm listesinin tamamını alır, bölümleri indirip denetler,
-istersen yapay zekâyla edebi bir dile çevirir (Türkçe ve 17 dil daha) ve hepsini **tek bir EPUB** yapar.
-EPUB'u telefondaki kitap uygulamasıyla (Moon+ Reader, ReadEra, Apple Books, Google Play Kitaplar…) okursun.
+**English** · [Türkçe](README.tr.md)
 
-## Kurulum (Windows uygulaması)
+Give it a web novel link or a file: it fetches the full chapter list, downloads and checks every chapter, optionally
+translates them into literary prose with AI (Turkish and 17 other languages), and packs everything into **one EPUB**
+for any e-book reader (Moon+ Reader, ReadEra, Apple Books, Google Play Books…).
 
-1. GitHub'da bu deponun **Releases** sayfasından ("WebNovel Downloader & Translator — son sürüm")
-   **WebNovelDownloaderTranslator.exe**'yi indir.
-2. Çift tıkla. Kurulum yok; kendi penceresinde açılır.
-   - İmzasız olduğu için Windows ilk seferde "Windows bilgisayarınızı korudu" diyebilir: **Ek bilgi → Yine de çalıştır**.
-   - Güvenlik duvarı izin sorarsa **Özel ağlar**'a izin ver (telefondan indirme için).
-3. **Yapay zekâ** sekmesine API anahtarını yapıştır, **Ekle**. Anahtarın hangi sağlayıcıya ait olduğu ve erişebildiğin
-   modeller kendiliğinden bulunur; kullanmak istediklerini işaretle.
+## Install (Windows)
 
-Veriler (kitaplık, EPUB'lar, ayarlar) **Belgeler\WebNovel Downloader & Translator** klasöründe durur. Eski
-"Novel EPUB" sürümünü kullandıysan **Belgeler\Novel EPUB** klasörü olduğu gibi kullanılır (kitaplık, sözlükler,
-anahtar korunur). Exe'nin yanında `kutuphane` klasörü varsa orası kullanılır (taşınabilir kullanım).
-Uygulama kayıtları: veri klasöründe `uygulama.log`.
+1. From this repository's **Releases** page ("WebNovel Downloader & Translator — son sürüm") download
+   **WebNovelDownloaderTranslator.exe**.
+2. Double-click it. No installation; it opens in its own window.
+   - It is unsigned, so Windows may say "Windows protected your PC": **More info → Run anyway**.
+   - If the firewall asks, allow **Private networks** (for downloading to your phone).
+3. Open the **AI** tab, paste an API key and press **Add**. The provider and the models you can use are detected
+   automatically; tick the ones you want.
 
-Exe, her `main` push'unda GitHub Actions'ta (Windows) derlenir, testlerden ve pencere açmadan bir öz-testten
-geçer, sonra Releases'e konur (`.github/workflows/windows-uygulama.yml`).
+Data (library, EPUBs, settings) lives in **Documents\WebNovel Downloader & Translator** (an existing
+**Documents\Novel EPUB** folder from the old version is used as is). If a `kutuphane` folder sits next to the exe,
+that folder is used instead (portable mode). The log file is `uygulama.log` in the data folder.
 
-### Geliştirici kurulumu (kaynak koddan)
+Every push to `main` builds the exe on GitHub Actions (Windows), runs the tests and a windowless self-test, and
+publishes it to Releases (`.github/workflows/windows-uygulama.yml`).
 
-1. [Python 3.10+](https://www.python.org/downloads/) kur ("Add python.exe to PATH").
-2. `gelistir.bat` (pencerede açar) ya da `baslat.bat` (tarayıcıda açar).
+### From source
 
-## Kullanım
+1. Install [Python 3.10+](https://www.python.org/downloads/) ("Add python.exe to PATH").
+2. Run `gelistir.bat` (opens in a window) or `baslat.bat` (opens in the browser).
 
-- **İndir ve çevir:** linki yapıştır (roman sayfası ya da herhangi bir bölüm), istersen bölüm aralığı ver, **Başlat**.
-  "Siteyi dene" bölüm listesini ve ilk bölümü deneyip sonucu gösterir.
-- İlerleme çubuğu ve kayıt canlı akar. Bitince EPUB "Hazır kitaplar" listesine düşer.
-- **Telefondan:** PC ile telefon aynı Wi‑Fi'deyse, uygulamada yazan `http://192.168.x.x:5000` adresini telefonda aç;
-  EPUB'a dokununca doğrudan telefona iner.
+## Use
 
-Komut satırı:
+- **Download & translate:** paste a link (novel page or any chapter), optionally a chapter range, then **Start**.
+  "Test site" tries the chapter list and the first chapter first.
+- Progress and the log update live; the finished EPUB appears under "Ready books".
+- **Phone:** with the PC and phone on the same Wi‑Fi, open the `http://192.168.x.x:5000` address shown in the app on
+  your phone and tap an EPUB to download it.
+- **Interface:** theme (light / dark / system) and interface language (Türkçe, English, Deutsch, Español, Русский)
+  in the top-right corner; the device language is preselected. The window opens maximized the first time and then
+  remembers its size.
+
+Command line:
 
 ```
-set GEMINI_API_KEY=...            (ya da OPENAI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, OPENROUTER_API_KEY…)
-python -m novel_epub https://freewebnovel.com/novel/stellar-transformations --cevir ^
+set GEMINI_API_KEY=...            (or OPENAI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, OPENROUTER_API_KEY…)
+python -m novel_epub https://freewebnovel.com/novel/stellar-transformations --cevir --dil en ^
        --model "gemini/gemini-3.8-flash, gemini/gemini-3.1-flash-lite"
 ```
 
-Anahtar/model verilmezse uygulamanın kayıtlı ayarları kullanılır.
+Without a key/model the app's saved settings are used.
 
-## Yapay zekâ sağlayıcıları
+## AI providers
 
-Çeviri [LiteLLM](https://github.com/BerriAI/litellm) üzerinden yapılır; şu anahtarlar biçiminden tanınır (tanınmazsa
-sağlayıcıların model listesi uçları sırayla denenir):
+Translation uses the app's own lightweight client (`novel_epub/llm.py`: OpenAI-compatible endpoint + Gemini +
+Claude, no extra packages). Keys are recognised by their format (otherwise the providers' model-list endpoints are
+tried in turn):
 
-| Sağlayıcı | Anahtar | Not |
+| Provider | Key | Note |
 |---|---|---|
-| Google Gemini | `AIza…`, `AQ.…` | Ücretsiz katman var (aistudio.google.com/apikey) |
+| Google Gemini | `AIza…`, `AQ.…` | Free tier available (aistudio.google.com/apikey) |
 | OpenAI | `sk-proj-…`, `sk-…` | |
 | Anthropic Claude | `sk-ant-…` | |
-| DeepSeek | `sk-` + 32 hane | |
-| OpenRouter | `sk-or-…` | Yüzlerce modele tek anahtar |
-| Groq, xAI, Cerebras, Fireworks, Together, Mistral | kendi biçimleri | |
-| Ollama (bu PC) | `ollama` ya da `http://…:11434` | Anahtarsız, yerel modeller |
+| DeepSeek | `sk-` + 32 hex | |
+| OpenRouter | `sk-or-…` | Hundreds of models with one key |
+| Groq, xAI, Cerebras, Fireworks, Together, Mistral | their own formats | |
+| Ollama (this PC) | `ollama` or `http://…:11434` | No key, local models |
 
-Seçilen modeller **en iyiden en kötüye** otomatik sıralanır (model adındaki sürüm ve sınıftan: pro/opus > sonnet/flash >
-mini/lite). Kotası dolan atlanır; **bir saat sonra en iyi modeller yeniden denenir** (gün içinde kota yenilenince kitap
-yine en iyi modelle sürer). Anahtarı geçersiz sağlayıcının modelleri zincirden çıkar; hepsi biterse o ana kadar
-çevrilenlerle kısmi EPUB çıkar, aynı linkle tekrar başlatınca kaldığı yerden sürer.
+Selected models are ordered **best to worst** automatically (from the version and class in the model name:
+pro/opus > sonnet/flash > mini/lite). A model that runs out of quota is skipped; **after an hour the best ones are
+tried again**. A provider whose key is invalid is dropped from the chain. If every model is exhausted, a partial EPUB
+is written with what has been translated; start again with the same link and it continues where it stopped.
 
-## Kaynaklar ve hedef dil
+## Sources and languages
 
-- **Özel destekli siteler:** freewebnovel.com, libread.com, novelbin, NovelFull ailesi (novelfull.com, readnovelfull.com,
-  allnovelfull.net / novgo.net, novelfull.net), Royal Road, FanMTL / ReadWN / WuxiaBox, NovelBuddy (1. bölümden
-  "sonraki" ile gezilir), Wattpad (herkese açık API; ücretli bölümler yalnız ön izleme kadar). Diğer siteler genel
-  okuyucuyla denenir.
-- **Desteklenmeyenler:** bot koruması sert olan ya da metni şifreli/JS ile yükleyen siteler (novelfire, scribblehub,
-  novelupdates, ranobes, wtr-lab, wuxiaworld, webnovel). Bunlar için tarayıcı eklentisi
-  [WebToEpub](https://github.com/dteviot/WebToEpub) ile EPUB alıp **Dosya** sekmesinden çevirebilirsin.
-- **Dosya:** EPUB, PDF (metinli), Word (.docx), TXT/MD, HTML. Bölümler dosyanın kendi yapısından ya da "Chapter/Bölüm/第…章"
-  başlıklarından ayrılır; yoksa ~3000 kelimelik parçalara bölünür. Çıktı her zaman EPUB'dır.
-- **Hedef dil:** Türkçe, English, Deutsch, Français, Español, Italiano, Português, Nederlands, Polski, Русский,
-  Українська, Azərbaycan dili, العربية, فارسی, Bahasa Indonesia, 日本語, 简体中文, 한국어. Türkçeye özel kurallar
-  (-dı'lı anlatım, sen/siz, "Cilt N Bölüm M") yalnız Türkçede uygulanır.
-- **Site bul:** bu PC'deki Brave/Chrome/Edge geçmişi ve yer işaretlerinden novel adreslerini site site sayar (yalnız yerelde
-  okunur). Root'lu Android telefonun geçmişi USB ile de okunabilir.
+- **Dedicated support:** freewebnovel.com, libread.com, novelbin, the NovelFull family (novelfull.com,
+  readnovelfull.com, allnovelfull.net / novgo.net, novelfull.net), Royal Road, FanMTL / ReadWN / WuxiaBox, NovelBuddy
+  (walked from chapter 1 via "next"), Wattpad (public API; paid parts only as far as the preview). Other sites go
+  through the generic reader.
+- **Not supported:** sites with strict bot protection or encrypted/JS-loaded text (novelfire, scribblehub,
+  novelupdates, ranobes, wtr-lab, wuxiaworld, webnovel). For those, save an EPUB with the
+  [WebToEpub](https://github.com/dteviot/WebToEpub) browser extension and translate it from the **File** tab.
+- **Files:** EPUB, PDF (with text), Word (.docx), TXT/MD, HTML. Chapters come from the file's own structure or from
+  "Chapter / Bölüm / 第…章" headings, otherwise ~3000-word parts. Output is always EPUB.
+- **Source language:** any (English, Chinese, Japanese, Korean…); the model detects it.
+- **Target language:** Türkçe, English, Deutsch, Français, Español, Italiano, Português, Nederlands, Polski, Русский,
+  Українська, Azərbaycan dili, العربية, فارسی, Bahasa Indonesia, 日本語, 简体中文, 한국어. Turkish-specific rules
+  (past-tense narration, sen/siz, "Cilt N Bölüm M") apply only to Turkish.
+- **Find sites:** counts novel addresses per site from this PC's Brave/Chrome/Edge history and bookmarks (read
+  locally only); a rooted Android phone's history can be read over USB.
 
-## Neler yapıyor
+## What it does
 
-| Aşama | Ayrıntı |
+| Stage | Details |
 |---|---|
-| Bölüm listesi | Siteye özel uçlar (freewebnovel `?ajax=chapters`, novelbin `/ajax/chapter-archive`, FanMTL `fy.php` sayfaları, Wattpad API); diğerlerinde sayfadaki bağlantılar ya da "Sonraki" ile gezme. |
-| İndirme | Tarayıcı taklidi (`curl_cffi`), istekler arası bekleme + 3 paralel işçi, hatada artan bekleme. |
-| Temizlik | Reklam, filigran (süslü Unicode dahil), "Translated by", "End of …" notları, kopya paragraflar atılır. |
-| Denetim | Boş/kısa bölüm, engel sayfası, aynı içerik, numara boşlukları raporlanır; sorunlular yeniden indirilir. |
-| Çeviri | Bölümler uzunluğa göre paketlenir (tek istekte birden çok bölüm), JSON şemalı yanıt; kitaba özel **terim sözlüğü**, **hikâye hafızası** (özet, karakter notları, kalıcı sen/siz tablosu), sonraki bölümün ilk paragrafları bağlam olarak gider. |
-| Redaksiyon | İsteğe bağlı ikinci tur: editör gözüyle anlam, akıcılık, hitap ve imla düzeltmesi. |
-| Kaldığı yerden | İnen/çevrilen her bölüm `kutuphane/`'de saklanır; tekrar başlatınca yalnız eksikler yapılır. |
-| EPUB | Kapak, künye, içindekiler, okunaklı CSS; `cikti/` klasörüne. |
+| Chapter list | Site-specific endpoints (freewebnovel `?ajax=chapters`, novelbin `/ajax/chapter-archive`, FanMTL `fy.php` pages, Wattpad API); elsewhere the links on the page or following "Next". |
+| Download | Browser impersonation (`curl_cffi`), a delay between requests + 3 parallel workers, retries with back-off. |
+| Cleanup | Ads, watermarks (including fancy Unicode), "Translated by", "End of …" notes and duplicate paragraphs are removed. |
+| Checks | Empty/short chapters, block pages, duplicates and numbering gaps are reported; problem chapters are re-downloaded. |
+| Translation | Chapters are batched by length (several per request) with JSON-schema answers; a per-book **glossary**, **story memory** (summary, character notes, a fixed formal/informal address table) and the start of the next chapter go along as context. |
+| Gap repair | Paragraphs left in the source language (cut-off or copied answers, interruptions) are detected and only those are retranslated; older translations are scanned on every run and failed chapters are retried one by one at the end. If editing makes a chapter worse, the draft is kept. |
+| Editing pass | Optional second pass: meaning, fluency, forms of address and spelling, like an editor. |
+| Resume | Every downloaded/translated chapter is cached in `kutuphane/`; a new run only does what is missing. |
+| EPUB | Cover, colophon, table of contents, readable CSS (EPUB 3 + NCX); written to `cikti/`. |
 
-## İpuçları
+## Tips
 
-- **Terimleri düzeltmek:** Kitaplık → Terim sözlüğü. Yanlış çevrilen bölümleri "Yeniden çevrilecek" ile işaretle
-  (eski çeviri yedeğe alınır; "Eskiye dön" geri getirir), sonra aynı linkle Başlat.
-- **Ücretsiz Gemini kotası** model başına ve istek sayısıyla sayılır, her gün Türkiye saatiyle 11:00'de yenilenir.
-  Birden çok model seçmek ve redaksiyonu açık tutmak kaliteyi korur; hız için redaksiyonu kapatabilirsin (istek sayısı yarıya iner).
-- **Ayrıntılar:** düşünme seviyesi (orta önerilir), sıcaklık (0,6–0,8), bir istekte en çok bölüm (0 = otomatik).
+- **Fix terms:** Library → Glossary. Mark badly translated chapters with "Mark for retranslation" (the old
+  translation is backed up; "Restore previous" brings it back), then press Start with the same link.
+- **Free Gemini quota** is counted per model and per request and resets daily (midnight Pacific time). Selecting
+  several models and keeping the editing pass on keeps quality; turn editing off to halve the requests.
+- **Details:** thinking level (medium recommended), temperature (0.6–0.8), max chapters per request (0 = auto).
 
-Kişisel okuma içindir; sitelerin kullanım koşullarına ve yazar/çevirmen emeğine saygı göster.
+For personal reading; respect the sites' terms and the authors' and translators' work.
 
-## Geliştirme
+## Development
 
 ```
 pip install -r requirements.txt pytest
 python -m pytest -q
 ```
 
-Yeni site için `novel_epub/sources/` altına `Source` alt sınıfı yaz (`novel()` ve `chapter()`), `sources/__init__.py`'deki
-`SOURCES` listesine ekle, `tests/test_sources_sites.py`'ye uydurma HTML ile ağsız test yaz.
+To add a site, write a `Source` subclass in `novel_epub/sources/` (`novel()` and `chapter()`), add it to `SOURCES` in
+`sources/__init__.py`, and add an offline test with made-up HTML to `tests/test_sources_sites.py`.

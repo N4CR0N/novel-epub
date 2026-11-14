@@ -33,6 +33,13 @@ jobs:
       - name: Testler
         run: python -m pytest -q
 
+      - name: UPX indir (DLL sıkıştırma)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-win64.zip -OutFile upx.zip
+          Expand-Archive upx.zip -DestinationPath .
+          "UPX_DIR=$PWD\upx-4.2.4-win64" | Out-File -Append $env:GITHUB_ENV
+
       - name: Exe derle
         run: >
           pyinstaller --noconfirm --onefile --windowed --name WebNovelDownloaderTranslator
@@ -43,6 +50,7 @@ jobs:
           --exclude-module tkinter --exclude-module unittest --exclude-module test --exclude-module pydoc_data
           --exclude-module setuptools --exclude-module pip --exclude-module lib2to3 --exclude-module idlelib
           --exclude-module ensurepip
+          --upx-dir "${{ env.UPX_DIR }}" --upx-exclude vcruntime140.dll --upx-exclude python3.dll
           uygulama.py
 
       - name: Exe boyutu
@@ -50,6 +58,16 @@ jobs:
         run: |
           $mb = [math]::Round((Get-Item dist\WebNovelDownloaderTranslator.exe).Length / 1MB, 2)
           "Exe boyutu: $mb MB" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+
+      - name: Boyut dökümü (en büyük 25 parça)
+        shell: python
+        run: |
+          from PyInstaller.archive.readers import CArchiveReader
+          a = CArchiveReader("dist/WebNovelDownloaderTranslator.exe")
+          rows = sorted(((v[1], v[2], k) for k, v in a.toc.items()), reverse=True)
+          print(f"Toplam {sum(r[0] for r in rows) / 2**20:.2f} MB, {len(rows)} parça")
+          for c, u, k in rows[:25]:
+              print(f"{c / 2**20:7.2f} MB (açık {u / 2**20:6.2f})  {k}")
 
       - name: Öz-test (pencere açmadan)
         shell: pwsh

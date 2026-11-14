@@ -179,6 +179,10 @@ def post_settings():
     data = request.get_json(force=True)
     if data.get("lang") in LANGUAGES:
         s["lang"], s["lang_set"] = data["lang"], True
+    if data.get("theme") in ("light", "dark", "system"):
+        s["theme"] = data["theme"]
+    if data.get("ui_lang") in ("tr", "en", "de", "es", "ru"):
+        s["ui_lang"] = data["ui_lang"]
     if data.get("thinking") in THINKING_LEVELS:
         s["thinking"] = data["thinking"]
     if data.get("temperature") not in (None, ""):

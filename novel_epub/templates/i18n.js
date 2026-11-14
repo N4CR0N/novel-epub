@@ -1,6 +1,7 @@
 // Arayüz dilleri. Anahtar Türkçe metnin kendisidir; çevirisi olmayan metin Türkçe kalır. {x} = değişken.
 const I18N = {
 en: {
+"Tema": "Theme", "Açık tema": "Light theme", "Koyu tema": "Dark theme", "Sistem teması": "System theme",
 "İndir ve çevir": "Download & translate", "Kitaplık": "Library", "Yapay zekâ": "AI", "Site bul": "Find sites",
 "Yapay zekâ bağlı değil": "No AI connected", "{n} model hazır": "{n} models ready", "Arayüz dili": "Interface language",
 "Bir roman linki ya da dosya ver; bölümler indirilir, istersen çevrilir ve tek EPUB olur.": "Give a novel link or a file; chapters are downloaded, translated if you like, and bundled into one EPUB.",
@@ -62,6 +63,7 @@ en: {
 "Telefondan indirmek için aynı Wi‑Fi'de {url} adresini aç. Veriler: {home}": "To download on your phone, open {url} on the same Wi‑Fi. Data: {home}",
 },
 de: {
+"Tema": "Design", "Açık tema": "Helles Design", "Koyu tema": "Dunkles Design", "Sistem teması": "Systemdesign",
 "İndir ve çevir": "Laden & übersetzen", "Kitaplık": "Bibliothek", "Yapay zekâ": "KI", "Site bul": "Seiten finden",
 "Yapay zekâ bağlı değil": "Keine KI verbunden", "{n} model hazır": "{n} Modelle bereit", "Arayüz dili": "Sprache der Oberfläche",
 "Bir roman linki ya da dosya ver; bölümler indirilir, istersen çevrilir ve tek EPUB olur.": "Gib einen Roman-Link oder eine Datei an; die Kapitel werden geladen, auf Wunsch übersetzt und zu einem EPUB gebündelt.",
@@ -123,6 +125,7 @@ de: {
 "Telefondan indirmek için aynı Wi‑Fi'de {url} adresini aç. Veriler: {home}": "Zum Laden aufs Handy {url} im selben WLAN öffnen. Daten: {home}",
 },
 es: {
+"Tema": "Tema", "Açık tema": "Tema claro", "Koyu tema": "Tema oscuro", "Sistem teması": "Tema del sistema",
 "İndir ve çevir": "Descargar y traducir", "Kitaplık": "Biblioteca", "Yapay zekâ": "IA", "Site bul": "Buscar sitios",
 "Yapay zekâ bağlı değil": "Sin IA conectada", "{n} model hazır": "{n} modelos listos", "Arayüz dili": "Idioma de la interfaz",
 "Bir roman linki ya da dosya ver; bölümler indirilir, istersen çevrilir ve tek EPUB olur.": "Indica un enlace de novela o un archivo; los capítulos se descargan, se traducen si quieres y se juntan en un EPUB.",
@@ -184,6 +187,7 @@ es: {
 "Telefondan indirmek için aynı Wi‑Fi'de {url} adresini aç. Veriler: {home}": "Para descargar en el teléfono, abre {url} en la misma Wi‑Fi. Datos: {home}",
 },
 ru: {
+"Tema": "Тема", "Açık tema": "Светлая тема", "Koyu tema": "Тёмная тема", "Sistem teması": "Системная тема",
 "İndir ve çevir": "Скачать и перевести", "Kitaplık": "Библиотека", "Yapay zekâ": "ИИ", "Site bul": "Найти сайты",
 "Yapay zekâ bağlı değil": "ИИ не подключён", "{n} model hazır": "Готово моделей: {n}", "Arayüz dili": "Язык интерфейса",
 "Bir roman linki ya da dosya ver; bölümler indirilir, istersen çevrilir ve tek EPUB olur.": "Укажите ссылку на роман или файл: главы скачаются, при желании переведутся и соберутся в один EPUB.",

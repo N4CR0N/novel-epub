@@ -5,6 +5,7 @@ sunucu çalışır; aynı Wi‑Fi'deki telefon da arayüzü açıp EPUB indirebi
 """
 from __future__ import annotations
 
+import json
 import os
 import socket
 import sys
@@ -129,14 +130,41 @@ def main() -> None:
                      daemon=True).start()
 
     webview.settings["ALLOW_DOWNLOADS"] = True
-    window = webview.create_window(APP_NAME, f"http://127.0.0.1:{port}/", width=900, height=900,
-                                   min_size=(420, 600), text_select=True)
+    # Pencere: ilk açılışta ekranı kaplar (her çözünürlük/ölçekte düzgün); sonra son boyut ve konum hatırlanır.
+    state_path = home / "pencere.json"
+    try:
+        state = json.loads(state_path.read_text("utf-8"))
+    except Exception:
+        state = {}
+    maximized = state.get("max", True)
+    window = webview.create_window(APP_NAME, f"http://127.0.0.1:{port}/", width=int(state.get("w", 1200)),
+                                   height=int(state.get("h", 820)), x=state.get("x"), y=state.get("y"),
+                                   maximized=maximized, min_size=(420, 560), text_select=True)
+
+    def _set_max(flag: bool):
+        state["max"] = flag
+
+    def _remember():
+        try:
+            if not state.get("max"):
+                state.update(w=window.width, h=window.height, x=window.x, y=window.y)
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+        except Exception:
+            pass
+
+    try:
+        window.events.maximized += lambda: _set_max(True)
+        window.events.restored += lambda: _set_max(False)
+    except Exception:
+        pass
+    state["max"] = maximized
 
     def on_closing():
         if web.running_jobs() and not window.create_confirmation_dialog(
                 APP_NAME, "Çeviri hâlâ sürüyor. Kapatırsan durur; tekrar açıp aynı linkle başlatınca "
                           "kaldığı yerden devam eder. Kapatılsın mı?"):
             return False
+        _remember()
         return True
 
     window.events.closing += on_closing

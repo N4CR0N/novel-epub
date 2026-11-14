@@ -13,9 +13,11 @@
     --font:"Segoe UI Variable Text","Segoe UI Variable","Segoe UI",system-ui,-apple-system,"Helvetica Neue",sans-serif;
     --font-disp:"Segoe UI Variable Display","Segoe UI Variable","Segoe UI",system-ui,-apple-system,sans-serif;
   }
+  :root[data-theme=dark] { --paper:#10161d; --surface:#16202a; --sunk:#0d1218; --ink:#e2ebf3; --mut:#8da0b3; --line:#233140;
+            --acc:#6db3f2; --acc-ink:#0b1725; --acc-soft:#1b3248; --err:#e07a6c; --ok:#5fc39a; --warn:#d9a441; color-scheme:dark; }
   @media (prefers-color-scheme: dark) {
-    :root { --paper:#10161d; --surface:#16202a; --sunk:#0d1218; --ink:#e2ebf3; --mut:#8da0b3; --line:#233140;
-            --acc:#6db3f2; --acc-ink:#0b1725; --acc-soft:#1b3248; --err:#e07a6c; --ok:#5fc39a; --warn:#d9a441; }
+    :root:not([data-theme=light]) { --paper:#10161d; --surface:#16202a; --sunk:#0d1218; --ink:#e2ebf3; --mut:#8da0b3; --line:#233140;
+            --acc:#6db3f2; --acc-ink:#0b1725; --acc-soft:#1b3248; --err:#e07a6c; --ok:#5fc39a; --warn:#d9a441; color-scheme:dark; }
   }
   * { box-sizing:border-box; }
   html, body { margin:0; }
@@ -39,7 +41,10 @@
   .nav:hover { color:var(--ink); background:var(--sunk); }
   .nav[aria-selected=true] { color:var(--ink); background:var(--surface); box-shadow:inset 3px 0 0 var(--acc); }
   .rail .foot { margin-top:auto; padding:10px 6px 0; color:var(--mut); font-size:12px; display:flex; flex-direction:column; gap:8px; }
-  select.uilang { height:28px; padding:2px 6px; font-size:12px; background:transparent; }
+  .topbar { display:flex; justify-content:flex-end; align-items:center; gap:8px; margin:-8px 0 6px; }
+  .topbar .seg button { height:26px; width:32px; padding:0; display:grid; place-items:center; }
+  .topbar .seg svg { width:15px; height:15px; }
+  select.uilang { width:auto; height:32px; padding:2px 8px; font-size:12.5px; background:var(--surface); }
   .rail .foot .dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--mut); margin-right:6px; vertical-align:1px; }
   .rail .foot .dot.on { background:var(--acc); }
 
@@ -141,8 +146,7 @@
     .app { grid-template-columns:1fr; background:none; }
     nav.rail { position:static; height:auto; flex-direction:row; flex-wrap:wrap; padding:10px; border-right:0; border-bottom:1px solid var(--line); gap:4px; }
     .brand { width:100%; padding-bottom:8px; }
-    .rail .foot { margin:0 0 0 auto; padding:0; flex-direction:row; align-items:center; }
-    .rail .foot > div { display:none; }
+    .rail .foot { display:none; }
     .nav[aria-selected=true] { box-shadow:inset 0 -2px 0 var(--acc); }
     main { padding:16px 14px 50px; }
     .grid3, .grid2 { grid-template-columns:1fr; }
@@ -163,12 +167,20 @@
     <button class="nav" role="tab" data-view="tools" aria-selected="false" id="navTools" hidden>
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3.5 3.5"/></svg>Site bul</button>
     <div class="foot"><div><span class="dot" id="aiDot"></span><span id="aiFoot">Yapay zekâ bağlı değil</span></div>
-      <select id="uiLang" aria-label="Arayüz dili" class="uilang">
-        <option value="tr">Türkçe</option><option value="en">English</option><option value="de">Deutsch</option>
-        <option value="es">Español</option><option value="ru">Русский</option></select></div>
+</div>
   </nav>
 
   <main>
+    <div class="topbar">
+      <div class="seg themes" role="group" aria-label="Tema">
+        <button type="button" data-theme="light" title="Açık tema" aria-label="Açık tema"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="3"/><path d="M8 1v1.6M8 13.4V15M1 8h1.6M13.4 8H15M3 3l1.1 1.1M11.9 11.9 13 13M3 13l1.1-1.1M11.9 4.1 13 3"/></svg></button>
+        <button type="button" data-theme="dark" title="Koyu tema" aria-label="Koyu tema"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5a5.5 5.5 0 1 0 7 7Z"/></svg></button>
+        <button type="button" data-theme="system" title="Sistem teması" aria-label="Sistem teması"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="9" rx="1.5"/><path d="M5.5 14h5M8 11.5V14"/></svg></button>
+      </div>
+      <select id="uiLang" aria-label="Arayüz dili" class="uilang">
+        <option value="tr">Türkçe</option><option value="en">English</option><option value="de">Deutsch</option>
+        <option value="es">Español</option><option value="ru">Русский</option></select>
+    </div>
     <!-- İNDİR VE ÇEVİR -->
     <div data-pane="run">
       <h1>İndir ve çevir</h1>
@@ -337,7 +349,19 @@ function setLang(l) {
   loadBooks().catch(() => {}); loadInfo();
   if (!document.querySelector('[data-pane=library]').hidden) loadLibrary();
 }
-$('uiLang').onchange = () => setLang($('uiLang').value);
+$('uiLang').onchange = () => { setLang($('uiLang').value); api('/api/settings', {ui_lang: $('uiLang').value}).catch(() => {}); };
+
+/* tema: açık / koyu / sistem (ayarlarda saklanır; pencerede tarayıcı belleği kalıcı olmayabilir) */
+function applyTheme(t) {
+  t = ['light', 'dark'].includes(t) ? t : 'system';
+  if (t === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.dataset.theme = t;
+  document.querySelectorAll('.themes button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.theme === t)));
+  try { localStorage.setItem('theme', t); } catch (e) {}
+  return t;
+}
+document.querySelectorAll('.themes button').forEach(b => b.onclick = () => {
+  api('/api/settings', {theme: applyTheme(b.dataset.theme)}).catch(() => {});
+});
 
 /* gezinme */
 function show(view) {
@@ -380,6 +404,8 @@ function renderSettings(s) {
 }
 async function loadSettings() {
   const s = await api('/api/settings');
+  if (s.theme) applyTheme(s.theme);
+  if (s.ui_lang && s.ui_lang !== LANG) setLang(s.ui_lang);
   renderSettings(s);
   await loadLangs(s.lang_set ? s.lang : null);
   if (!(s.models || []).length) $('translate').checked = false;
@@ -601,6 +627,8 @@ async function loadInfo() {
 $('openOut').onclick = () => api('/api/open-folder', {which:'cikti'}).catch(e => alert(e.message));
 $('openHome').onclick = () => api('/api/open-folder', {which:'home'}).catch(e => alert(e.message));
 
+let _t = null; try { _t = localStorage.getItem('theme'); } catch (e) {}
+applyTheme(_t);
 LANG = pickLang(); document.documentElement.lang = LANG; $('uiLang').value = LANG; translateDOM(document.body);
 loadSettings(); loadBooks(); loadInfo();
 </script>
