@@ -24,12 +24,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           yayinla() {
             local tag=$1 sha=$2 run=$3 art=$4 notes=$5
             if gh release view "$tag" >/dev/null 2>&1; then echo "$tag zaten var, atlandı"; return; fi
             rm -rf d && gh run download "$run" -n "$art" -D d
             ls -la d
-            git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null || git push origin "$sha:refs/tags/$tag"
+            if ! git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+              # GitHub, Actions anahtarıyla workflow dosyası main'den farklı bir commit'e etiket koydurmuyor.
+              # Etiket: eski kaynak + main'in workflow dosyaları; atası gerçek eski commit.
+              git read-tree "$sha"
+              git rm -r -q -f --cached .github/workflows
+              git read-tree --prefix=.github/workflows/ "origin/main:.github/workflows"
+              c=$(git commit-tree "$(git write-tree)" -p "$sha" -m "$tag: $sha derlemesinin kaynağı (workflow dosyaları main'den)")
+              git push origin "$c:refs/tags/$tag"
+            fi
             gh release create "$tag" d/*.exe --verify-tag --title "$tag" --notes "$notes" --latest=false
             echo "$tag yayımlandı" >> "$GITHUB_STEP_SUMMARY"
           }
