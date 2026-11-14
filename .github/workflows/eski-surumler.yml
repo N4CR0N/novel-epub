@@ -1,0 +1,60 @@
+name: Eski sürümleri yayımla
+
+# Tek seferlik: sürüm numarası sistemi gelmeden önceki derlemeleri (Actions çıktılarından) ayrı sürümler olarak
+# Releases'a koyar. Var olan sürüme dokunmaz; yeniden çalıştırmak güvenli.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  yayinla:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Eski derlemeler
+        shell: bash
+        run: |
+          set -euo pipefail
+          yayinla() {
+            local tag=$1 sha=$2 run=$3 art=$4 notes=$5
+            if gh release view "$tag" >/dev/null 2>&1; then echo "$tag zaten var, atlandı"; return; fi
+            rm -rf d && gh run download "$run" -n "$art" -D d
+            ls -la d
+            gh release create "$tag" d/*.exe --target "$sha" --title "$tag" --notes "$notes" --latest=false
+            echo "$tag yayımlandı" >> "$GITHUB_STEP_SUMMARY"
+          }
+          yayinla v0.1.0 812acc6529e87bdc97071de1ea373ce564f14ad4 39526526240 NovelEPUB "İlk masaüstü sürümü (o zamanki adı Novel EPUB), 21 Ekim 2026 derlemesi.
+
+          - Kendi penceresinde açılan Windows uygulaması
+          - freewebnovel, novelbin, novelfull, royalroad ve genel sitelerden indirme, bölüm denetimi
+          - Gemini ile çeviri: model zinciri, kotaya göre bölüm paketleme, redaksiyon turu, hikâye hafızası, sen/siz hitap tablosu, terim sözlüğü
+          - Tek EPUB çıktısı"
+          yayinla v0.2.0 a6e2fb2fb8379883b277c9505a509e76c349ca77 39607448527 NovelEPUB "21 Ekim 2026 derlemesi.
+
+          - Dosyadan kitap: EPUB, PDF, DOCX, TXT, MD, HTML
+          - Hedef dil seçimi
+          - Yeni siteler
+          - Bilgisayardaki tarayıcı geçmişinden novel sitelerini bulma"
+          yayinla v0.2.1 2b270987c6ded7eee51cc1f72acf58774cf07a03 39608159894 NovelEPUB "21 Ekim 2026 derlemesi.
+
+          - Root'lu Android telefondan (USB + adb) tarayıcı geçmişi okuma"
+          yayinla v1.0.0 52164b8c2dbfeffafc688912fdb452bbc97bdcec 43640215096 WebNovelDownloaderTranslator "Yeni ad: WebNovel Downloader & Translator. 14 Kasım 2026 derlemesi (106 MB).
+
+          - Çok sağlayıcılı yapay zekâ: anahtarı yapıştır, sağlayıcı ve modeller otomatik bulunur, en iyiden kötüye sıralanır (Gemini, OpenAI, Claude, DeepSeek, OpenRouter, Groq…)
+          - Yeni siteler: libread, readwn / fanmtl / wuxiabox, novelbuddy, wattpad
+          - Yeni, daha sade arayüz
+          - Eski Novel EPUB kitaplığı ve ayarları olduğu gibi kullanılır"
+          yayinla v1.1.0 d5534c1757f36facf6dcd32448e8661f2f425bc5 43645192387 WebNovelDownloaderTranslator "14 Kasım 2026 derlemesi.
+
+          - Boyut 107 MB → 13,9 MB (aynı işlevler, kendi hafif yapay zekâ istemcisi)
+          - Yarım kalan çevirilerin otomatik onarımı: İngilizce kalmış paragraflar bulunup yalnız onlar yeniden çevrilir
+          - Açık mavi renkler; sağ üstte tema (açık / koyu / sistem) ve arayüz dili (Türkçe, English, Deutsch, Español, Русский)
+          - Pencere büyütülmüş açılır, boyutunu hatırlar; geniş ekranda iki sütun"
+          yayinla v1.1.1 b3497bbb2d765c98f2364d9539cee32d2191f469 43645417986 WebNovelDownloaderTranslator "14 Kasım 2026 derlemesi.
+
+          - Onarım denetimi: kaynakla aynı kalan kısa ad / sayı satırları artık yanlış alarm vermiyor"
