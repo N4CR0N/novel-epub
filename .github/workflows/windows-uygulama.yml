@@ -6,6 +6,8 @@ on:
     paths:
       - "novel_epub/**"
       - "uygulama.py"
+      - "uygulama.spec"
+      - "VERSION"
       - "requirements.txt"
       - "assets/**"
       - "tests/**"
@@ -20,6 +22,28 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # sürüm etiketleri ve değişiklik listesi için
+
+      - name: Sürüm numarası
+        id: surum
+        shell: bash
+        run: |
+          base=$(tr -d '[:space:]' < VERSION)          # ör. 1.1 → v1.1.0, v1.1.1, …
+          last=$(git tag -l "v$base.*" | sed "s/^v$base\.//" | grep -E '^[0-9]+$' | sort -n | tail -1 || true)
+          v="$base.$(( ${last:--1} + 1 ))"
+          [ "$GITHUB_REF" = "refs/heads/main" ] || v="$v-dev"
+          prev=$(git tag -l 'v*' --sort=-v:refname | grep -v -- -dev | head -1 || true)
+          echo "v=$v" >> "$GITHUB_OUTPUT"
+          echo "SURUM = \"$v\"" > novel_epub/_surum.py
+          {
+            echo "Windows uygulaması: **WebNovelDownloaderTranslator.exe**'yi indir ve çift tıkla (kurulum gerekmez)."
+            echo "İmzasız olduğu için Windows uyarırsa: dosyaya sağ tık → Özellikler → Engellemeyi kaldır."
+            echo
+            echo "### Değişiklikler"
+            git log --format='- %s' ${prev:+$prev..}HEAD | { grep -vE '^- (CI|CLAUDE\.md)' || true; } | head -40
+          } > surum-notu.md
+          echo "Sürüm: v$v (önceki: ${prev:-yok})" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/setup-python@v5
         with:
@@ -33,16 +57,21 @@ jobs:
       - name: Testler
         run: python -m pytest -q
 
+      - name: UPX indir (DLL sıkıştırma)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-win64.zip -OutFile upx.zip
+          Expand-Archive upx.zip -DestinationPath .
+          "UPX_DIR=$PWD\upx-4.2.4-win64" | Out-File -Append $env:GITHUB_ENV
+
       - name: Exe derle
-        run: >
-          pyinstaller --noconfirm --onefile --windowed --name WebNovelDownloaderTranslator
-          --icon assets/icon.ico
-          --add-data "novel_epub/templates;novel_epub/templates"
-          --collect-all curl_cffi --collect-all webview --collect-data certifi
-          --collect-submodules keyring --copy-metadata keyring --collect-data docx
-          --collect-data litellm --collect-submodules litellm --copy-metadata litellm
-          --hidden-import tiktoken_ext --hidden-import tiktoken_ext.openai_public --collect-data tiktoken
-          uygulama.py
+        run: pyinstaller --noconfirm --upx-dir "${{ env.UPX_DIR }}" uygulama.spec
+
+      - name: Exe boyutu
+        shell: pwsh
+        run: |
+          $mb = [math]::Round((Get-Item dist\WebNovelDownloaderTranslator.exe).Length / 1MB, 2)
+          "Exe boyutu: $mb MB" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
 
       - name: Öz-test (pencere açmadan)
         shell: pwsh
@@ -53,24 +82,38 @@ jobs:
           Get-Content "$env:NOVEL_EPUB_HOME\oz-test.json"
           if ($p.ExitCode -ne 0) { exit 1 }
 
+      - name: Boyut dökümü (en büyük 25 parça)
+        if: always()
+        shell: python
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          from PyInstaller.archive.readers import CArchiveReader
+          a = CArchiveReader("dist/WebNovelDownloaderTranslator.exe")
+          rows = sorted(((v[1], v[2], k) for k, v in a.toc.items()), reverse=True)
+          print(f"Toplam {sum(r[0] for r in rows) / 2**20:.2f} MB, {len(rows)} parça")
+          for c, u, k in rows[:25]:
+              print(f"{c / 2**20:7.2f} MB (açık {u / 2**20:6.2f})  {k}")
+          z = a.open_embedded_archive("PYZ.pyz")
+          by = {}
+          for name, (_t, _o, n) in z.toc.items():
+              top = name.split(".")[0]
+              by[top] = by.get(top, 0) + n
+          print("\nPYZ içindeki paketler (sıkıştırılmış, en büyük 40):")
+          for top, n in sorted(by.items(), key=lambda x: -x[1])[:40]:
+              print(f"{n / 2**10:8.0f} KB  {top}")
+
       - uses: actions/upload-artifact@v4
         with:
           name: WebNovelDownloaderTranslator
           path: dist/WebNovelDownloaderTranslator.exe
 
-      - name: "Sürüm sayfasına koy (etiket: son)"
-        shell: bash
-        run: |
-          git tag -f son
-          git push -f origin son
-
       - uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
         with:
-          tag_name: son
-          name: WebNovel Downloader & Translator — son sürüm
-          body: |
-            Windows uygulaması. WebNovelDownloaderTranslator.exe'yi indir ve çift tıkla (kurulum gerekmez).
-            Eski "Novel EPUB" sürümünün kitaplığı ve ayarları olduğu gibi kullanılır.
-            Derleme: ${{ github.sha }}
+          tag_name: v${{ steps.surum.outputs.v }}
+          target_commitish: ${{ github.sha }}
+          name: v${{ steps.surum.outputs.v }}
+          body_path: surum-notu.md
           files: dist/WebNovelDownloaderTranslator.exe
           make_latest: true
