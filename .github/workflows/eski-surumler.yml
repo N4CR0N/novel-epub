@@ -16,6 +16,10 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Eski derlemeler
         shell: bash
         run: |
@@ -25,7 +29,8 @@ jobs:
             if gh release view "$tag" >/dev/null 2>&1; then echo "$tag zaten var, atlandı"; return; fi
             rm -rf d && gh run download "$run" -n "$art" -D d
             ls -la d
-            gh release create "$tag" d/*.exe --target "$sha" --title "$tag" --notes "$notes" --latest=false
+            git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null || git push origin "$sha:refs/tags/$tag"
+            gh release create "$tag" d/*.exe --verify-tag --title "$tag" --notes "$notes" --latest=false
             echo "$tag yayımlandı" >> "$GITHUB_STEP_SUMMARY"
           }
           yayinla v0.1.0 812acc6529e87bdc97071de1ea373ce564f14ad4 39526526240 NovelEPUB "İlk masaüstü sürümü (o zamanki adı Novel EPUB), 21 Ekim 2026 derlemesi.

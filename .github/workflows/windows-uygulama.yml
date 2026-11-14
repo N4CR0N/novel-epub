@@ -7,6 +7,7 @@ on:
       - "novel_epub/**"
       - "uygulama.py"
       - "uygulama.spec"
+      - "VERSION"
       - "requirements.txt"
       - "assets/**"
       - "tests/**"
@@ -21,6 +22,28 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # sürüm etiketleri ve değişiklik listesi için
+
+      - name: Sürüm numarası
+        id: surum
+        shell: bash
+        run: |
+          base=$(tr -d '[:space:]' < VERSION)          # ör. 1.1 → v1.1.0, v1.1.1, …
+          last=$(git tag -l "v$base.*" | sed "s/^v$base\.//" | grep -E '^[0-9]+$' | sort -n | tail -1 || true)
+          v="$base.$(( ${last:--1} + 1 ))"
+          [ "$GITHUB_REF" = "refs/heads/main" ] || v="$v-dev"
+          prev=$(git tag -l 'v*' --sort=-v:refname | grep -v -- -dev | head -1 || true)
+          echo "v=$v" >> "$GITHUB_OUTPUT"
+          echo "SURUM = \"$v\"" > novel_epub/_surum.py
+          {
+            echo "Windows uygulaması: **WebNovelDownloaderTranslator.exe**'yi indir ve çift tıkla (kurulum gerekmez)."
+            echo "İmzasız olduğu için Windows uyarırsa: dosyaya sağ tık → Özellikler → Engellemeyi kaldır."
+            echo
+            echo "### Değişiklikler"
+            git log --format='- %s' ${prev:+$prev..}HEAD | { grep -vE '^- (CI|CLAUDE\.md)' || true; } | head -40
+          } > surum-notu.md
+          echo "Sürüm: v$v (önceki: ${prev:-yok})" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/setup-python@v5
         with:
@@ -85,21 +108,12 @@ jobs:
           name: WebNovelDownloaderTranslator
           path: dist/WebNovelDownloaderTranslator.exe
 
-      - name: "Sürüm sayfasına koy (etiket: son)"
-        if: github.ref == 'refs/heads/main'
-        shell: bash
-        run: |
-          git tag -f son
-          git push -f origin son
-
       - uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: son
-          name: WebNovel Downloader & Translator — son sürüm
-          body: |
-            Windows uygulaması. WebNovelDownloaderTranslator.exe'yi indir ve çift tıkla (kurulum gerekmez).
-            Eski "Novel EPUB" sürümünün kitaplığı ve ayarları olduğu gibi kullanılır.
-            Derleme: ${{ github.sha }}
+          tag_name: v${{ steps.surum.outputs.v }}
+          target_commitish: ${{ github.sha }}
+          name: v${{ steps.surum.outputs.v }}
+          body_path: surum-notu.md
           files: dist/WebNovelDownloaderTranslator.exe
           make_latest: true

@@ -11,6 +11,7 @@ import threading
 import uuid
 from pathlib import Path
 
+from . import __version__
 from flask import Flask, abort, jsonify, render_template, request, send_from_directory
 
 from .pipeline import Job, Options
@@ -148,7 +149,7 @@ def save_settings(s: dict, new_keys: dict | None = None, removed: tuple = ()) ->
 
 @app.get("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", version=__version__)
 
 
 def _public_settings(s: dict) -> dict:
@@ -540,7 +541,7 @@ def _is_local() -> bool:
 @app.get("/api/info")
 def info():
     port = APP_MODE.get("port") or request.host.rsplit(":", 1)[-1]
-    return jsonify({"app": bool(APP_MODE), "local": _is_local(), "phone_url": f"http://{lan_ip()}:{port}",
+    return jsonify({"app": bool(APP_MODE), "local": _is_local(), "version": __version__, "phone_url": f"http://{lan_ip()}:{port}",
                     "home": str(BASE) if _is_local() else ""})
 
 

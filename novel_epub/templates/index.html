@@ -36,6 +36,7 @@
           box-shadow:inset 0 0 0 2px color-mix(in srgb, var(--acc-ink) 22%, transparent); }
   .brand b { font:600 13.5px/1.15 var(--font-disp); letter-spacing:-.01em; }
   .brand small { display:block; color:var(--mut); font-weight:400; font-size:12px; }
+  .brand small.ver { font-size:11px; opacity:.75; margin-top:2px; font-variant-numeric:tabular-nums; }
   .nav { all:unset; cursor:pointer; padding:7px 10px; border-radius:var(--r); color:var(--mut); font-weight:500; display:flex; gap:9px; align-items:center; }
   .nav svg { width:16px; height:16px; flex:0 0 16px; }
   .nav:hover { color:var(--ink); background:var(--sunk); }
@@ -157,7 +158,7 @@
 <div class="app">
   <nav class="rail" role="tablist" aria-label="Bölümler">
     <div class="brand"><div class="seal" aria-hidden="true">译</div>
-      <b>WebNovel<small>Downloader &amp; Translator</small></b></div>
+      <b>WebNovel<small>Downloader &amp; Translator</small><small class="ver">{{ "v" + version if version != "dev" else "dev" }}</small></b></div>
     <button class="nav" role="tab" data-view="run" aria-selected="true">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 2v8m0 0 3-3m-3 3L5 7M3 12.5h10"/></svg>İndir ve çevir</button>
     <button class="nav" role="tab" data-view="library" aria-selected="false">
