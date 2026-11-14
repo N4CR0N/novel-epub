@@ -41,7 +41,12 @@ jobs:
             echo "İmzasız olduğu için Windows uyarırsa: dosyaya sağ tık → Özellikler → Engellemeyi kaldır."
             echo
             echo "### Değişiklikler"
-            git log --format='- %s' ${prev:+$prev..}HEAD | { grep -vE '^- (CI|CLAUDE\.md)' || true; } | head -40
+            # yalnız uygulamayı değiştiren commit'ler (.github/, CLAUDE.md ve README'ye dokunanlar listelenmez)
+            for c in $(git rev-list ${prev:+$prev..}HEAD); do
+              if git diff-tree --no-commit-id --name-only -r "$c" | grep -qvE '^(\.github/|CLAUDE\.md|README)'; then
+                git log -1 --format='- %s' "$c"
+              fi
+            done | head -40
           } > surum-notu.md
           echo "Sürüm: v$v (önceki: ${prev:-yok})" >> "$GITHUB_STEP_SUMMARY"
 
