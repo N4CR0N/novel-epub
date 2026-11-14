@@ -332,6 +332,9 @@ def test_untranslated_paragraphs_are_detected_and_repaired():
     assert untranslated_paragraphs(["他说：我们走吧。今天天气很好。"], ["他说：我们走吧。今天天气很好。"], "tr") == [0]
     # Türkçe metindeki "her/his/in" kelimeleri yanlış alarm vermez
     assert untranslated_paragraphs(src, ["Her gün onun için bir his vardı ve in cin top oynuyordu orada."], "tr") == []
+    # Kaynakla aynı kısa ad/sayı satırları çevrilmeden kalabilir; kısa ama cümle olanlar yakalanır
+    short = ["Lorem Ipsum Dolor Sit", "[Bonus: +1,020 Credits]", "He was not there."]
+    assert untranslated_paragraphs(short, ["Lorem Ipsum Dolor Sit", "[Bonus: +1,020 Credits]", "He was not there."], "tr") == [2]
 
     tr = _fake_translator()
     tr.log = lambda m: None
