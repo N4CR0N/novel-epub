@@ -80,6 +80,14 @@ jobs:
           print(f"Toplam {sum(r[0] for r in rows) / 2**20:.2f} MB, {len(rows)} parça")
           for c, u, k in rows[:25]:
               print(f"{c / 2**20:7.2f} MB (açık {u / 2**20:6.2f})  {k}")
+          z = a.open_embedded_archive("PYZ.pyz")
+          by = {}
+          for name, (_t, _o, n) in z.toc.items():
+              top = name.split(".")[0]
+              by[top] = by.get(top, 0) + n
+          print("\nPYZ içindeki paketler (sıkıştırılmış, en büyük 40):")
+          for top, n in sorted(by.items(), key=lambda x: -x[1])[:40]:
+              print(f"{n / 2**10:8.0f} KB  {top}")
 
       - uses: actions/upload-artifact@v4
         with:
