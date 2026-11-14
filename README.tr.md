@@ -111,6 +111,16 @@ yine en iyi modelle sürer). Anahtarı geçersiz sağlayıcının modelleri zinc
 
 Kişisel okuma içindir; sitelerin kullanım koşullarına ve yazar/çevirmen emeğine saygı göster.
 
+## Gizlilik ve güvenlik
+
+- API anahtarları Windows Kimlik Bilgisi Yöneticisi'nde saklanır (o kullanılamazsa veri klasöründeki `ayarlar.json`'da).
+  Kayda ya da EPUB'a yazılmaz; arayüz yalnız son dört karakteri gösterir.
+- Yerel sunucu, telefonun hazır kitapları indirebilmesi için Wi‑Fi'den erişilebilir. Diğer cihazlar **yalnız** kitap
+  listesini görüp EPUB indirebilir; ayarlar, anahtarlar, kitaplık ve çeviri başlatma yalnız bu bilgisayardan çalışır.
+  Başka sitelerden gelen istekler (CSRF) ve DNS yeniden bağlama istekleri reddedilir.
+- Açtığın novel siteleri ve seçtiğin yapay zekâ sağlayıcısı dışında hiçbir yere veri gönderilmez.
+- Güvenlik açığı bulursan lütfen [gizli güvenlik bildirimi](https://github.com/N4CR0N/novel-epub/security/advisories/new) aç.
+
 ## Geliştirme
 
 ```
@@ -120,3 +130,7 @@ python -m pytest -q
 
 Yeni site için `novel_epub/sources/` altına `Source` alt sınıfı yaz (`novel()` ve `chapter()`), `sources/__init__.py`'deki
 `SOURCES` listesine ekle, `tests/test_sources_sites.py`'ye uydurma HTML ile ağsız test yaz.
+
+## Lisans
+
+[MIT](LICENSE)

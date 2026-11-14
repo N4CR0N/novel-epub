@@ -37,10 +37,10 @@ jobs:
           echo "v=$v" >> "$GITHUB_OUTPUT"
           echo "SURUM = \"$v\"" > novel_epub/_surum.py
           {
-            echo "Windows uygulaması: **WebNovelDownloaderTranslator.exe**'yi indir ve çift tıkla (kurulum gerekmez)."
-            echo "İmzasız olduğu için Windows uyarırsa: dosyaya sağ tık → Özellikler → Engellemeyi kaldır."
+            echo "Windows app: download **WebNovelDownloaderTranslator.exe** and double-click it (no installation needed)."
+            echo "The exe is unsigned. If Windows warns you, choose **More info → Run anyway**, or right-click the file → Properties → Unblock."
             echo
-            echo "### Değişiklikler"
+            echo "### Changes"
             # yalnız uygulamayı değiştiren commit'ler (.github/, CLAUDE.md ve README'ye dokunanlar listelenmez)
             for c in $(git rev-list ${prev:+$prev..}HEAD); do
               if git diff-tree --no-commit-id --name-only -r "$c" | grep -qvE '^(\.github/|CLAUDE\.md|README)'; then

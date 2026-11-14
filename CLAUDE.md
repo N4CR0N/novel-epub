@@ -6,13 +6,14 @@ istediği değişikliği sen yap, sına, commit'le, `main`'e push et; exe'yi Git
 ## Ne yapar
 Web novel linki ya da dosya (EPUB/PDF/DOCX/TXT/MD/HTML) → bölümleri ayır/indir → denetle → (isteğe bağlı) kendi hafif istemcimizle
 (`llm.py`; Gemini, OpenAI, Claude, DeepSeek, OpenRouter, Groq, xAI, Mistral, Ollama…) seçilen dile çevir (+ redaksiyon) → tek EPUB. Arayüz yerel Flask sunucusu; masaüstünde pywebview penceresinde açılır
-(tarayıcı/konsol yok). Aynı Wi‑Fi'deki telefon da arayüzü açıp EPUB indirebilir.
+(tarayıcı/konsol yok). Aynı Wi‑Fi'deki telefon arayüzü açıp **yalnız** hazır EPUB'ları görüp indirebilir.
+Depo herkese açık (MIT lisansı): gizli bilgi, kişisel bilgi, sunucu adresi asla commit'lenmez (testlerde uydurma anahtar).
 
 ## Çalıştırma (geliştirici)
 - `gelistir.bat` (Windows): .venv kurar, uygulamayı **kaynak koddan** pencerede açar. Kod değişince pencereyi kapat-aç.
 - Elle: `python -m venv .venv && .venv\Scripts\pip install -r requirements.txt pywebview pytest`, sonra
   `.venv\Scripts\python uygulama.py` (pencere) ya da `python -m novel_epub` (tarayıcıda, 127.0.0.1:5000).
-- Testler: `.venv\Scripts\python -m pytest -q` (ağsız; şu an 62 test). Her değişiklikte çalıştır, kırmızıyla push etme.
+- Testler: `.venv\Scripts\python -m pytest -q` (ağsız; şu an 63 test). Her değişiklikte çalıştır, kırmızıyla push etme.
 - Veri klasörü: exe/kaynak klasöründe `kutuphane/` varsa orası; yoksa `Belgeler\Novel EPUB` (eski sürüm) varsa o, yoksa
   `Belgeler\WebNovel Downloader & Translator` (`NOVEL_EPUB_HOME` ile değişir).
   İçinde: `kutuphane/<kaynak>-<kitap>/` (ham/, ceviri[-dil]/, ceviri_eski/, sozluk[-dil].json, hafiza[-dil].json,
@@ -22,12 +23,14 @@ Web novel linki ya da dosya (EPUB/PDF/DOCX/TXT/MD/HTML) → bölümleri ayır/in
 `main`'e push → `.github/workflows/windows-uygulama.yml` (windows-latest): pytest → UPX → PyInstaller `uygulama.spec`
 (tek dosya, pencereli, simge `assets/icon.ico`; kullanılmayan paketler, UCRT ve x64 dışı WebView2Loader dışlanır) →
 `--oz-test` (pencere açmadan arayüz/sunucu/kasa + `llm` sahte yanıt denetimi) → boyut dökümü (PYZ paket paket) →
-her main yayını ayrı sürüm: `VERSION` dosyası (ör. `1.1`) + sıradaki yama no → `v1.1.2` etiketi, değişiklik listesi
-commit başlıklarından (CI/CLAUDE.md hariç), exe içine `novel_epub/_surum.py` yazılır (arayüzde adın altında görünür).
+her main yayını ayrı sürüm: `VERSION` dosyası (ör. `1.2`) + sıradaki yama no → `v1.2.0` etiketi, İngilizce sürüm notu;
+değişiklik listesi commit başlıklarından (yalnız .github/, CLAUDE.md, README'ye dokunan commit'ler hariç) → **commit
+başlıklarını İngilizce ve kullanıcıya dönük yaz**; yalnız CI değişikliğinde `[skip ci]`; exe içine `novel_epub/_surum.py` yazılır (arayüzde adın altında görünür).
 Yeni özellikte `VERSION`'ı artır (1.2 → v1.2.0), büyük değişiklikte 2.0. Push'tan sonra Actions sonucunu kontrol et;
 kullanıcıya sürüm linkini ver (https://github.com/N4CR0N/novel-epub/releases/latest). Eski derlemeler
-`eski-surumler.yml` ile v0.1.0–v1.1.1 olarak yayımlandı (etiket commit'leri eski kaynak + main'in workflow'ları:
-GitHub, Actions anahtarına workflow'u farklı commit'e etiket koydurmuyor; oturumdan etiket push'u da kapalı). Exe imzasız: kullanıcı "Özellikler → Engellemeyi kaldır" yapar.
+(silinen) `eski-surumler.yml` ile v0.1.0–v1.1.1 olarak yayımlandı (etiket commit'leri eski kaynak + main'in workflow'ları:
+GitHub, Actions anahtarına workflow'u farklı commit'e etiket koydurmuyor; oturumdan etiket push'u ve sürüm
+oluşturma/düzenleme kapalı — sürüm işleri yalnız Actions workflow'larıyla). Exe imzasız: kullanıcı "Özellikler → Engellemeyi kaldır" yapar.
 Yeni bir Python paketi eklersen `requirements.txt`'e ve gerekiyorsa `uygulama.spec`'e ekle. Boyut önemli (107 MB → ~18 MB;
 hedef ≤10 MB): ağır paket ekleme (LiteLLM, lxml, EbookLib, python-docx bu yüzden çıkarıldı). Dal push'ları Actions'ı
 tetiklemez: `gh workflow run windows-uygulama.yml --ref <dal>` (sürüm yalnız main'den yayımlanır).
@@ -62,7 +65,9 @@ tetiklemez: `gh workflow run windows-uygulama.yml --ref <dal>` (sürüm yalnız 
 - `store.py` kitap önbelleği (dil başına ayrı; Türkçe eski adları korur), yedekle/geri dön.
 - `web.py` Flask uçları + ayarlar: anahtarlar kasada `<sağlayıcı>_api_key` (Gemini'nin eski adı aynı), `ayarlar.json`'da
   `models` (`sağlayıcı/model` adları, sıralı), `theme` (light/dark/system), `ui_lang` ve `providers.<id>.models` (erişilen liste); `/api/keys` (ekle/sil/yenile),
-  `/api/models`, `/api/sources`. `templates/index.html`: sol menülü tek sayfa (İndir ve çevir, Kitaplık, Yapay zekâ,
+  `/api/models`, `/api/sources`. `_guard` (before_request): Host yalnız IP/localhost (DNS rebinding), GET dışı istekte
+Origin aynı host olmalı (CSRF), 127.0.0.1 dışından yalnız `/`, `/api/info|books|languages|settings` (ipucusuz) ve
+`/indir/*` GET; yeni uç eklerken bunu koru. `templates/index.html`: sol menülü tek sayfa (İndir ve çevir, Kitaplık, Yapay zekâ,
   Site bul); açık mavi palet, sağ üstte tema (açık/koyu/sistem) ve arayüz dili (tr/en/de/es/ru; varsayılan cihaz dili;
   `templates/i18n.js`, `T()` ile; anahtarlar Türkçe metinler), geniş ekranda iki sütun, mobil uyumlu. Pencere açılışta
   büyütülür, boyutu `pencere.json`'da hatırlanır. README.md İngilizce (ana), README.tr.md Türkçe. `app.py` masaüstü penceresi + `--oz-test`. `history.py` PC tarayıcı geçmişi/yer işaretlerinden

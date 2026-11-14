@@ -112,6 +112,16 @@ is written with what has been translated; start again with the same link and it 
 
 For personal reading; respect the sites' terms and the authors' and translators' work.
 
+## Privacy and security
+
+- API keys are stored in the Windows Credential Manager (only if that is unavailable, in `ayarlar.json` inside your
+  data folder). They never go into logs or EPUBs, and the interface only ever shows the last four characters.
+- The local server is reachable from your Wi-Fi so that your phone can download finished books. Other devices can
+  **only** see the book list and download EPUBs; settings, keys, the library and starting jobs work from this
+  computer only. Requests from other websites (CSRF) and DNS-rebinding requests are rejected.
+- Nothing is sent anywhere except the novel sites you open and the AI provider you choose.
+- Found a security problem? Please open a [private security advisory](https://github.com/N4CR0N/novel-epub/security/advisories/new).
+
 ## Development
 
 ```
@@ -119,5 +129,9 @@ pip install -r requirements.txt pytest
 python -m pytest -q
 ```
 
-To add a site, write a `Source` subclass in `novel_epub/sources/` (`novel()` and `chapter()`), add it to `SOURCES` in
+Contributions are welcome. To add a site, write a `Source` subclass in `novel_epub/sources/` (`novel()` and `chapter()`), add it to `SOURCES` in
 `sources/__init__.py`, and add an offline test with made-up HTML to `tests/test_sources_sites.py`.
+
+## License
+
+[MIT](LICENSE)
