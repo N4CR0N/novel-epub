@@ -35,6 +35,7 @@ def start(home: str) -> int:
     srv = make_server("127.0.0.1", port, web.app, threaded=True)
     threading.Thread(target=srv.serve_forever, name="novel-epub-sunucu", daemon=True).start()
     _started.update(port=port, server=srv)
+    print(f"WEBNOVEL_PORT={port}", flush=True)  # emülatör testi bu satırdan portu bulur
     return port
 
 
