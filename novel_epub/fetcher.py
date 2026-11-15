@@ -1,4 +1,5 @@
-"""Tarayıcı taklidiyle (curl_cffi) sayfa çeker; Cloudflare'in basit kontrolünü geçer."""
+"""Sayfa çeker: masaüstünde tarayıcı taklidiyle (curl_cffi; Cloudflare'in basit kontrolünü geçer), Android'de
+sistemin bağlantısıyla (net.py)."""
 from __future__ import annotations
 
 import random
@@ -6,7 +7,7 @@ import threading
 import time
 
 from bs4 import BeautifulSoup
-from curl_cffi import requests
+from . import net
 
 
 class BlockedError(RuntimeError):
@@ -29,7 +30,7 @@ class Fetcher:
         self.delay = delay
         self.retries = retries
         self.timeout = timeout
-        self.session = requests.Session(impersonate=impersonate)
+        self.session = net.Session(impersonate=impersonate)
         self._lock = threading.Lock()
         self._last = 0.0
 

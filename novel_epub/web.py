@@ -30,6 +30,7 @@ MAX_UPLOAD_MB = 300
 app = Flask(__name__)
 JOBS: dict[str, Job] = {}
 APP_MODE: dict = {}  # masaüstü uygulaması doldurur: {"port": ...}
+ANDROID = os.environ.get("NOVEL_EPUB_ANDROID") == "1"  # telefon uygulaması (android_main.py)
 DONE_PHASES = ("bitti", "hata", "iptal edildi")
 
 
@@ -590,7 +591,8 @@ def _guard():
 @app.get("/api/info")
 def info():
     port = APP_MODE.get("port") or request.host.rsplit(":", 1)[-1]
-    return jsonify({"app": bool(APP_MODE), "local": _is_local(), "version": __version__, "phone_url": f"http://{lan_ip()}:{port}",
+    return jsonify({"app": bool(APP_MODE), "local": _is_local(), "android": ANDROID, "version": __version__,
+                    "phone_url": f"http://{lan_ip()}:{port}",
                     "home": str(BASE) if _is_local() else ""})
 
 
