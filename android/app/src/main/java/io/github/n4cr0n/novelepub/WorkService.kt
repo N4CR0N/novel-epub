@@ -23,6 +23,7 @@ import com.chaquo.python.Python
 class WorkService : Service() {
     companion object {
         @Volatile var port: Int = 0
+        @Volatile var token: String = ""
         @Volatile var error: String? = null
         @Volatile var activityVisible: Boolean = false
         private const val CHANNEL = "work"
@@ -57,7 +58,9 @@ class WorkService : Service() {
     private fun serve() {
         val module = try {
             val m = Python.getInstance().getModule("novel_epub.android_main")
-            port = m.callAttr("start", filesDir.absolutePath).toInt()
+            val p = m.callAttr("start", filesDir.absolutePath).toInt()  // önce sunucu (veri klasörü ayarlanır)
+            token = m.callAttr("token").toString()
+            port = p  // arayüz port görününce açılır: anahtar ondan önce hazır olmalı
             m
         } catch (e: Throwable) {
             error = e.toString()

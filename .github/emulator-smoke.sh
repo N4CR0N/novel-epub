@@ -29,10 +29,11 @@ echo "=== çıkış nedenleri ==="
 adb shell dumpsys activity exit-info $PKG | grep -E "reason|description|status|importance" | head -20
 echo "=== gerçek iş: siteden 3 bölüm indir, kitap yap (çevirisiz) ==="
 PORT=$(adb logcat -d | grep -o "WEBNOVEL_PORT=[0-9]*" | tail -1 | cut -d= -f2)
+TOKEN=$(adb logcat -d | grep -o "WEBNOVEL_TOKEN=[A-Za-z0-9_-]*" | tail -1 | cut -d= -f2)
 job_ok=0
 if [ -n "$PORT" ]; then
   adb forward tcp:18765 tcp:$PORT
-  JOB=$(curl -s -X POST http://127.0.0.1:18765/api/jobs -H "Content-Type: application/json" \
+  JOB=$(curl -s -X POST http://127.0.0.1:18765/api/jobs -H "Content-Type: application/json" -H "X-Token: $TOKEN" \
     -d '{"url":"https://freewebnovel.com/novel/cosmic-professional-gladiator","start":1,"end":3,"translate":false,"format":"epub"}')
   echo "iş: $JOB"
   ID=$(echo "$JOB" | python3 -c "import sys,json;print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
@@ -40,7 +41,7 @@ if [ -n "$PORT" ]; then
   for i in $(seq 1 60); do
     [ -z "$ID" ] && break
     sleep 5
-    ST=$(curl -s http://127.0.0.1:18765/api/jobs/$ID)
+    ST=$(curl -s -H "X-Token: $TOKEN" http://127.0.0.1:18765/api/jobs/$ID)
     PH=$(echo "$ST" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('phase'),d.get('done'),'/',d.get('total'))")
     echo "  $PH"
     case "$PH" in bitti*|hata*|iptal*) break;; esac

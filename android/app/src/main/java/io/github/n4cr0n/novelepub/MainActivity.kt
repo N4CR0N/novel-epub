@@ -128,7 +128,8 @@ class MainActivity : AppCompatActivity() {
         val err = WorkService.error
         when {
             port > 0 -> {
-                val hash = sharedLink?.let { "#url=" + URLEncoder.encode(it, "UTF-8") } ?: ""
+                // erişim anahtarı adresin # kısmında: telefondaki başka uygulamalar sunucuyu kullanamaz
+                val hash = "#t=" + WorkService.token + (sharedLink?.let { "&url=" + URLEncoder.encode(it, "UTF-8") } ?: "")
                 sharedLink = null
                 web.loadUrl("http://127.0.0.1:$port/$hash")
                 loaded = true

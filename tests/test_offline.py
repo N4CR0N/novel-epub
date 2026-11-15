@@ -736,6 +736,7 @@ def test_open_folder_only_from_this_pc(monkeypatch):
     c = web.app.test_client()
     assert c.post("/api/open-folder", json={}, environ_base={"REMOTE_ADDR": "192.168.1.50"}).status_code == 403
     assert c.post("/api/open-folder", json={}).status_code == 200 and opened
+    monkeypatch.setitem(web.SERVER, "lan", True)
     info = c.get("/api/info", environ_base={"REMOTE_ADDR": "192.168.1.50"}).get_json()
     assert info["local"] is False and info["home"] == ""
 
@@ -969,9 +970,13 @@ def test_lan_devices_can_only_download_and_cross_site_requests_are_blocked(tmp_p
     web.save_settings({"models": ["gemini/m"], "key_store": "dosya", "keys": {"gemini": "AIzaUYDURMA1234"}})
     c = web.app.test_client()
 
-    # telefon (aynı Wi-Fi): sayfa, kitap listesi ve indirme açık; anahtar ipucu bile gitmez
+    # telefon (aynı Wi-Fi): paylaşım kapalıyken (varsayılan) hiçbir şey açılmaz
     phone = {"REMOTE_ADDR": "192.168.1.20"}
     lan = dict(base_url="http://192.168.1.10:5000", environ_base=phone)
+    monkeypatch.setitem(web.SERVER, "lan", False)
+    assert c.get("/", **lan).status_code == 403 and c.get("/indir/kitap.epub", **lan).status_code == 403
+    # açıkken sayfa, kitap listesi ve indirme açık; anahtar ipucu bile gitmez
+    monkeypatch.setitem(web.SERVER, "lan", True)
     assert c.get("/", **lan).status_code == 200
     assert c.get("/api/books", **lan).get_json()[0]["name"] == "kitap.epub"
     assert c.get("/indir/kitap.epub", **lan).status_code == 200
@@ -989,6 +994,16 @@ def test_lan_devices_can_only_download_and_cross_site_requests_are_blocked(tmp_p
     # DNS yeniden bağlama: alan adıyla gelen istek reddedilir
     assert c.get("/api/settings", base_url="http://kotu.example:5000").status_code == 403
     assert c.get("/api/settings", base_url="http://127.0.0.1:5000").get_json()["providers"][0]["hint"] == "…1234"
+    # bu bilgisayardaki başka bir program (pencerenin erişim anahtarı yok): yalnız okuma, ipucu yok
+    other = dict(base_url="http://127.0.0.1:5000", headers={"X-Token": ""})
+    assert c.get("/", **other).status_code == 200
+    assert c.get("/api/settings", **other).get_json()["providers"][0]["hint"] == ""
+    assert c.get("/api/info", **other).get_json()["local"] is False
+    for path in ("/api/library", "/api/history-scan", "/api/phone/status"):
+        assert c.get(path, **other).status_code == 403
+    assert c.post("/api/settings", json={"theme": "dark"}, **other).status_code == 403
+    assert c.post("/api/jobs", json={"url": "https://example.com/novel/x"}, **other).status_code == 403
+    assert c.get("/api/library", headers={"X-Token": "yanlis"}).status_code == 403
 
 
 def test_exporters_write_every_format_readably(tmp_path: Path):

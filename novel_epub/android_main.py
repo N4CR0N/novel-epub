@@ -36,7 +36,15 @@ def start(home: str) -> int:
     threading.Thread(target=srv.serve_forever, name="novel-epub-sunucu", daemon=True).start()
     _started.update(port=port, server=srv)
     print(f"WEBNOVEL_PORT={port}", flush=True)  # emülatör testi bu satırdan portu bulur
+    print(f"WEBNOVEL_TOKEN={web.API_TOKEN}", flush=True)  # (uygulama kayıtlarını yalnız adb okuyabilir)
     return port
+
+
+def token() -> str:
+    """Arayüzün erişim anahtarı: telefondaki başka uygulamalar 127.0.0.1'deki sunucuyu kullanamasın."""
+    from . import web
+
+    return web.API_TOKEN
 
 
 def busy() -> bool:

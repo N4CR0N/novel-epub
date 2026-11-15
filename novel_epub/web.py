@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import re
+import secrets
 import socket
 import subprocess
 import sys
@@ -33,6 +35,10 @@ app = Flask(__name__)
 JOBS: dict[str, Job] = {}
 APP_MODE: dict = {}  # masaüstü uygulaması doldurur: {"port": ...}
 ANDROID = os.environ.get("NOVEL_EPUB_ANDROID") == "1"  # telefon uygulaması (android_main.py)
+# Her açılışta yeni bir erişim anahtarı: yalnız uygulamanın kendi penceresi bilir (adresin #t= kısmı, sunucuya
+# gitmez). Bilgisayardaki/telefondaki başka bir program 127.0.0.1'e bağlansa da ayarlara ve işlere dokunamaz.
+API_TOKEN = os.environ.get("NOVEL_EPUB_TOKEN") or secrets.token_urlsafe(24)
+SERVER: dict = {"srv": None, "port": 0, "lan": False}  # çalışan sunucu; lan: aynı Wi‑Fi'deki cihazlara açık mı
 DONE_PHASES = ("bitti", "hata", "iptal edildi")
 
 
@@ -191,7 +197,7 @@ def _public_settings(s: dict) -> dict:
 @app.get("/api/settings")
 def get_settings():
     data = _public_settings(load_settings())
-    if not _is_local():
+    if not _trusted():
         data["providers"] = [{**p, "hint": "", "available": []} for p in data["providers"]]
     return jsonify(data)
 
@@ -382,7 +388,7 @@ def test_site():
 @app.get("/api/history-scan")
 def history_scan():
     """Bu PC'deki Brave/Chrome/Edge geçmişi + yer işaretlerinden novel siteleri (yalnız yerel)."""
-    if not _is_local():
+    if not _trusted():
         abort(403)
     from .history import scan
 
@@ -398,7 +404,7 @@ def _supported(u: str):
 @app.get("/api/phone/status")
 def phone_status():
     """Root'lu Android telefon: adb var mı, bağlı cihaz ve izin durumu (yalnız yerel)."""
-    if not _is_local():
+    if not _trusted():
         abort(403)
     from .history import find_adb, phone_devices
 
@@ -413,7 +419,7 @@ def phone_status():
 
 @app.post("/api/phone/adb-download")
 def phone_adb_download():
-    if not _is_local():
+    if not _trusted():
         abort(403)
     from .history import download_adb
 
@@ -426,7 +432,7 @@ def phone_adb_download():
 @app.post("/api/phone/scan")
 def phone_scan():
     """Telefondan (root, USB) tarayıcı geçmişi + yer işaretlerini PC'ye kopyalar ve tarar."""
-    if not _is_local():
+    if not _trusted():
         abort(403)
     from .history import PhoneError, find_adb, pull_android, scan
 
@@ -590,6 +596,11 @@ def _is_local() -> bool:
     return request.remote_addr in ("127.0.0.1", "::1")
 
 
+def _trusted() -> bool:
+    """Uygulamanın kendi penceresi: bu cihazdan ve erişim anahtarıyla gelen istek."""
+    return _is_local() and hmac.compare_digest(request.headers.get("X-Token", ""), API_TOKEN)
+
+
 # Ağdaki başka cihazlar (telefon) yalnız bunları okuyabilir: sayfa, kitap listesi, kitap indirme.
 _LAN_READ = {"/", "/api/info", "/api/books", "/api/languages", "/api/settings"}
 
@@ -618,25 +629,43 @@ def _guard():
         # başka bir sitenin sayfası, kullanıcının tarayıcısından buraya istek gönderemesin (CSRF)
         if origin is not None and urlsplit(origin).netloc != request.host:
             abort(403)
-    if not _is_local():
-        if request.method in ("GET", "HEAD") and (request.path in _LAN_READ or request.path.startswith("/indir/")):
+    if _trusted():
+        return None
+    if request.method in ("GET", "HEAD") and (request.path in _LAN_READ or request.path.startswith("/indir/")):
+        if _is_local() or SERVER["lan"]:  # paylaşım kapalıyken ağdan gelen istek hiç kabul edilmez
             return None
-        abort(403)
-    return None
+    abort(403)
 
 
 @app.get("/api/info")
 def info():
     port = APP_MODE.get("port") or request.host.rsplit(":", 1)[-1]
-    return jsonify({"app": bool(APP_MODE), "local": _is_local(), "android": ANDROID, "version": __version__,
-                    "phone_url": f"http://{lan_ip()}:{port}",
-                    "home": str(BASE) if _is_local() else ""})
+    trusted = _trusted()
+    return jsonify({"app": bool(APP_MODE), "local": trusted, "loopback": _is_local(), "android": ANDROID,
+                    "version": __version__, "lan": SERVER["lan"], "lan_possible": bool(SERVER["srv"]) and not ANDROID,
+                    "phone_url": f"http://{lan_ip()}:{port}" if trusted else "",
+                    "home": str(BASE) if trusted else ""})
+
+
+@app.post("/api/lan")
+def set_lan():
+    """Aynı Wi‑Fi'deki cihazların hazır kitapları indirmesine izin ver/verme (sunucu yeni adrese yeniden bağlanır)."""
+    if ANDROID or not SERVER["srv"]:
+        return jsonify({"error": "Bu kurulumda kullanılamaz"}), 400
+    on = bool((request.get_json(silent=True) or {}).get("on"))
+    s = load_settings()
+    s["lan_share"] = on
+    save_settings(s)
+    if on != SERVER["lan"]:  # yanıt gittikten sonra yeniden başlat (bu istek o sunucuda çalışıyor)
+        threading.Timer(0.3, lambda: start_server(SERVER["port"], on)).start()
+    port = SERVER["port"]
+    return jsonify({"lan": on, "phone_url": f"http://{lan_ip()}:{port}"})
 
 
 @app.post("/api/open-folder")
 def open_folder():
     """Çıktı (ya da veri) klasörünü Dosya Gezgini'nde açar; yalnızca bu PC'den çağrılabilir."""
-    if not _is_local():
+    if not _trusted():
         abort(403)
     target = OUTPUT if (request.get_json(silent=True) or {}).get("which") != "home" else BASE
     target.mkdir(parents=True, exist_ok=True)
@@ -656,10 +685,44 @@ def lan_ip() -> str:
         return "127.0.0.1"
 
 
-def serve(host: str = "0.0.0.0", port: int = 5000) -> None:
+_srv_lock = threading.Lock()
+
+
+def start_server(port: int, lan: bool = False):
+    """Sunucuyu başlatır ya da (paylaşım değişince) yeniden başlatır: kapalıyken yalnız 127.0.0.1 dinlenir."""
+    from werkzeug.serving import make_server
+
+    with _srv_lock:
+        old = SERVER["srv"]
+        if old is not None:
+            old.shutdown()
+            old.server_close()
+        try:
+            srv = make_server("0.0.0.0" if lan else "127.0.0.1", port, app, threaded=True)
+        except OSError:
+            if not lan:
+                raise
+            print("Ağ paylaşımı açılamadı (port kullanımda); yalnız bu bilgisayar.")
+            srv, lan = make_server("127.0.0.1", port, app, threaded=True), False
+        SERVER.update(srv=srv, port=port, lan=lan)
+        threading.Thread(target=srv.serve_forever, name="novel-epub-sunucu", daemon=True).start()
+    return srv
+
+
+def local_url(port: int) -> str:
+    """Uygulama penceresinin açacağı adres (erişim anahtarı # kısmında: sunucu kayıtlarına düşmez)."""
+    return f"http://127.0.0.1:{port}/#t={API_TOKEN}"
+
+
+def serve(host: str | None = None, port: int = 5000) -> None:
     OUTPUT.mkdir(exist_ok=True)
     LIBRARY.mkdir(exist_ok=True)
-    print(f"\n  WebNovel Downloader & Translator hazır.\n  Bu PC'de:      http://127.0.0.1:{port}")
-    if host == "0.0.0.0":
-        print(f"  Telefonda (aynı Wi‑Fi): http://{lan_ip()}:{port}\n")
-    app.run(host=host, port=port, threaded=True)
+    lan = host == "0.0.0.0" if host else bool(load_settings().get("lan_share"))
+    start_server(port, lan)
+    print(f"\n  WebNovel Downloader & Translator hazır.\n  Bu PC'de: {local_url(port)}")
+    if SERVER["lan"]:
+        print(f"  Telefonda (aynı Wi‑Fi, yalnız hazır kitaplar): http://{lan_ip()}:{port}\n")
+    try:
+        threading.Event().wait()
+    except KeyboardInterrupt:
+        pass

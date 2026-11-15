@@ -248,6 +248,7 @@
           <span id="localBtns" hidden><button class="ghost" id="openOut" type="button">Klasörü aç</button> <button class="ghost" id="openHome" type="button">Veri klasörü</button></span></div>
         <ul class="files" id="books"></ul>
         <div class="mut" id="phoneInfo" style="margin-top:8px"></div>
+        <label class="mut" id="lanBox" hidden style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" id="lanShare"> <span>Aynı Wi‑Fi'deki telefon hazır kitapları indirebilsin</span></label>
       </section>
       </div></div>
     </div>
@@ -339,8 +340,14 @@ const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':
 const short = m => m.split('/').slice(1).join('/') || m;
 let jobId = null, timer = null, settings = null;
 
+/* Erişim anahtarı: uygulama penceresi adresin #t= kısmıyla açılır; sekmede saklanır, adres çubuğundan silinir. */
+const HASH = new URLSearchParams(location.hash.slice(1));
+let TOKEN = HASH.get('t') || '';
+try { if (TOKEN) sessionStorage.setItem('tok', TOKEN); else TOKEN = sessionStorage.getItem('tok') || ''; } catch (e) {}
+if (location.hash) history.replaceState(null, '', location.pathname);
 async function api(path, body, method) {
-  const opt = body === undefined ? (method ? {method} : {}) : {method: method || 'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)};
+  const opt = body === undefined ? {method: method || 'GET'} : {method: method || 'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)};
+  opt.headers = {...(opt.headers || {}), 'X-Token': TOKEN};
   const r = await fetch(path, opt);
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw Object.assign(new Error(d.error || ('HTTP ' + r.status)), {data: d});
@@ -487,7 +494,7 @@ async function uploadFile(f) {
   fileId = ''; $('fileMsg').textContent = T('{name} yükleniyor ve okunuyor…', {name: f.name});
   const fd = new FormData(); fd.append('file', f);
   try {
-    const r = await fetch('/api/upload', {method:'POST', body:fd});
+    const r = await fetch('/api/upload', {method:'POST', body:fd, headers:{'X-Token': TOKEN}});
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || T('Yükleme başarısız'));
     fileId = d.id;
@@ -523,7 +530,7 @@ async function loadLangs(def) {
 }
 /* telefonda tarayıcıdan "Paylaş → WebNovel" ile gelen link */
 function useSharedLink(link) { setMode('site'); show('run'); $('url').value = link; $('url').focus(); }
-if (location.hash.startsWith('#url=')) { useSharedLink(decodeURIComponent(location.hash.slice(5))); history.replaceState(null, '', location.pathname); }
+if (HASH.get('url')) useSharedLink(HASH.get('url'));
 $('lang').onchange = () => { api('/api/settings', {lang:$('lang').value}).catch(() => {}); };
 
 /* iş */
@@ -652,17 +659,32 @@ function showSiteResults(d) {
   $('histText').hidden = $('histTextLbl').hidden = !un.length;
 }
 
+let INFO = {};
 async function loadInfo() {
   try {
-    const i = await api('/api/info');
+    const i = INFO = await api('/api/info');
     $('localBtns').hidden = !i.local || i.android; $('navTools').hidden = !i.local || i.android;
     document.body.classList.toggle('android', !!i.android);
     document.body.classList.toggle('remote', !i.local);
     if (!i.local) { show('run'); $('phoneInfo').textContent = T('Bu cihazdan yalnız hazır kitaplar indirilebilir; çeviri ve ayarlar bilgisayardaki uygulamada.'); }
-    if (i.local && !i.android) $('phoneInfo').textContent = T("Telefondan indirmek için aynı Wi‑Fi'de {url} adresini aç. Veriler: {home}", {url: i.phone_url, home: i.home});
+    if (i.local && !i.android) showLan(i);
+    if (!i.local && i.loopback) $('phoneInfo').textContent = T('Bu sayfayı uygulamanın kendi penceresinden aç; tarayıcıdan yalnız hazır kitaplar görünür.');
     if (i.android) $('phoneInfo').textContent = T('Kitaba dokun: İndirilenler klasörüne kaydedilir ve okuma uygulamanla açılır.');
   } catch (e) {}
 }
+function showLan(i) {
+  $('lanBox').hidden = !i.lan_possible; $('lanShare').checked = !!i.lan;
+  $('phoneInfo').textContent = i.lan
+    ? T("Telefondan indirmek için aynı Wi‑Fi'de {url} adresini aç. Veriler: {home}", {url: i.phone_url, home: i.home})
+    : T('Veriler: {home}', {home: i.home});
+}
+$('lanShare').onchange = async () => {
+  try {
+    const d = await api('/api/lan', {on: $('lanShare').checked});
+    setTimeout(loadInfo, 800);  // sunucu yeni adrese geçerken kısa bir ara
+    showLan({...INFO, lan: d.lan, phone_url: d.phone_url});
+  } catch (e) { $('lanShare').checked = !$('lanShare').checked; alert(e.message); }
+};
 $('openOut').onclick = () => api('/api/open-folder', {which:'cikti'}).catch(e => alert(e.message));
 $('openHome').onclick = () => api('/api/open-folder', {which:'home'}).catch(e => alert(e.message));
 

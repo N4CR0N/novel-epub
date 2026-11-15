@@ -1,7 +1,7 @@
 """Masaüstü uygulaması: arayüz kendi penceresinde açılır (tarayıcı ya da konsol yok).
 
 Pencere Windows'un WebView2 motorunu kullanır (Windows 10/11'de hazır gelir). Arka planda yerel
-sunucu çalışır; aynı Wi‑Fi'deki telefon da arayüzü açıp EPUB indirebilir.
+sunucu çalışır; ayarlardan açılırsa aynı Wi‑Fi'deki telefon da hazır kitapları indirebilir.
 """
 from __future__ import annotations
 
@@ -97,17 +97,16 @@ def self_test(home: Path) -> int:
         from . import web
 
         port = _free_port(5099)
-        threading.Thread(target=lambda: web.app.run(host="127.0.0.1", port=port, use_reloader=False), daemon=True).start()
-        for _ in range(50):
-            try:
-                html = urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=2).read().decode()
-                break
-            except Exception:
-                import time
-
-                time.sleep(0.2)
+        web.start_server(port, lan=False)
+        html = urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=5).read().decode()
         report["arayuz"] = "WebNovel Downloader" in html
-        report["info"] = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/api/info").read())["local"]
+
+        def info(token: str) -> bool:
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/api/info", headers={"X-Token": token})
+            return json.loads(urllib.request.urlopen(req, timeout=5).read())["local"]
+
+        # pencere (anahtarla) her şeye erişir; anahtarsız yerel program yalnız okuma görür
+        report["info"] = info(web.API_TOKEN) and not info("")
         kr = web._keyring()
         report["kasa"] = type(kr.get_keyring()).__name__ if kr else "yok"
         report["pencere"] = _window_backend_ok()
@@ -139,8 +138,8 @@ def main() -> None:
     web.LIBRARY.mkdir(exist_ok=True)
     web.OUTPUT.mkdir(exist_ok=True)
     web.APP_MODE["port"] = port
-    threading.Thread(target=lambda: web.app.run(host="0.0.0.0", port=port, threaded=True, use_reloader=False),
-                     daemon=True).start()
+    # Aynı Wi‑Fi'den indirme ayarı kapalıysa (varsayılan) sunucu yalnız bu bilgisayardan erişilebilir.
+    web.start_server(port, lan=bool(web.load_settings().get("lan_share")))
 
     webview.settings["ALLOW_DOWNLOADS"] = True
     # Pencere: ilk açılışta ekranı kaplar (her çözünürlük/ölçekte düzgün); sonra son boyut ve konum hatırlanır.
@@ -150,7 +149,7 @@ def main() -> None:
     except Exception:
         state = {}
     maximized = state.get("max", True)
-    window = webview.create_window(APP_NAME, f"http://127.0.0.1:{port}/", width=int(state.get("w", 1200)),
+    window = webview.create_window(APP_NAME, web.local_url(port), width=int(state.get("w", 1200)),
                                    height=int(state.get("h", 820)), x=state.get("x"), y=state.get("y"),
                                    maximized=maximized, min_size=(420, 560), text_select=True)
 

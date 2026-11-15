@@ -26,7 +26,8 @@ def main() -> None:
     ap.add_argument("--bekleme", type=float, default=0.7, help="İstekler arası saniye")
     ap.add_argument("--isci", type=int, default=3, help="Paralel indirme sayısı")
     ap.add_argument("--toplu", type=int, default=0, help="Tek Gemini isteğinde en fazla kaç bölüm (0 = otomatik)")
-    ap.add_argument("--host", default="0.0.0.0")
+    ap.add_argument("--host", default=None,
+                    help="0.0.0.0: aynı Wi‑Fi'deki cihazlar hazır kitapları indirebilir (varsayılan: ayardaki, o da yoksa yalnız bu PC)")
     ap.add_argument("--port", type=int, default=5000)
     a = ap.parse_args()
 
