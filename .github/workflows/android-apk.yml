@@ -28,6 +28,17 @@ jobs:
         with:
           gradle-version: "8.11.1"
 
+      - name: Google istemci kimliği (Drive girişi; depoda yok)
+        shell: bash
+        env:
+          GCID: ${{ secrets.GOOGLE_DESKTOP_CLIENT_ID }}
+          GCSEC: ${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }}
+        run: |
+          if [ -z "$GCID" ]; then echo "Google istemci kimliği yok: Drive bu derlemede kapalı"; exit 0; fi
+          python3 -c "import os, json; open('novel_epub/_google.py', 'w').write('CLIENT_ID = %s\nCLIENT_SECRET = %s\n' % (json.dumps(os.environ['GCID'].strip()), json.dumps(os.environ['GCSEC'].strip())))" || \
+          python -c "import os, json; open('novel_epub/_google.py', 'w').write('CLIENT_ID = %s\nCLIENT_SECRET = %s\n' % (json.dumps(os.environ['GCID'].strip()), json.dumps(os.environ['GCSEC'].strip())))"
+          echo "Google istemci kimliği eklendi"
+
       - name: Python kaynağını uygulamaya koy
         run: |
           rm -rf android/app/src/main/python && mkdir -p android/app/src/main/python

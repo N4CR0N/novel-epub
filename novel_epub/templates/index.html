@@ -251,6 +251,23 @@
         <ul class="files" id="books"></ul>
         <div class="mut" id="phoneInfo" style="margin-top:8px"></div>
       </section>
+
+      <section class="panel" id="drivePanel" hidden>
+        <div class="row" style="justify-content:space-between"><h2 style="margin:0">Google Drive</h2>
+          <span id="driveWho" class="mut"></span></div>
+        <div id="driveOut">
+          <p class="mut" style="margin:8px 0 10px">Google hesabınla giriş yap: biten kitaplar Drive'ındaki "WebNovel Downloader &amp; Translator" klasörüne yüklenir, telefonda ve bilgisayarda aynı kitapları görürsün. Uygulama Drive'ında yalnız kendi oluşturduğu dosyaları görebilir.</p>
+          <button type="button" id="driveLogin">Google ile giriş yap</button>
+        </div>
+        <div id="driveIn" hidden>
+          <label class="mut" style="display:flex;gap:6px;align-items:center;margin:8px 0"><input type="checkbox" id="driveAuto"> <span>Biten kitapları Drive'a otomatik yükle</span></label>
+          <div class="row" style="gap:8px;flex-wrap:wrap"><button type="button" class="ghost" id="driveRefresh">Drive'daki kitaplar</button>
+            <button type="button" class="ghost" id="driveBackup">Kitaplığı yedekle</button>
+            <button type="button" class="ghost" id="driveLogout">Çıkış yap</button></div>
+          <ul class="files" id="driveFiles"></ul>
+        </div>
+        <div class="msg" id="driveMsg"></div>
+      </section>
       </div></div>
     </div>
 
@@ -588,11 +605,18 @@ async function poll() {
 }
 
 $('jResult').addEventListener('click', e => { const b = e.target.closest('[data-read]'); if (b) openReader(b.dataset.read); });
-$('books').addEventListener('click', e => { const b = e.target.closest('[data-read]'); if (b) openReader(b.dataset.read); });
+$('books').addEventListener('click', async e => {
+  const b = e.target.closest('[data-read]'); if (b) { openReader(b.dataset.read); return; }
+  const u = e.target.closest('[data-up]'); if (!u) return;
+  u.disabled = true; u.textContent = T('Yükleniyor…');
+  try { await api('/api/drive/upload', {name: u.dataset.up}); u.textContent = T('Drive ✓'); }
+  catch (err) { u.disabled = false; u.textContent = 'Drive ↑'; alert(err.message); }
+});
 async function loadBooks() {
   const b = await api('/api/books');
   $('books').innerHTML = b.length ? b.map(x => `<li><a href="/indir/${encodeURIComponent(x.name)}">${esc(x.name)}</a><span class="mut">${x.mb} MB</span>${x.format === 'epub'
-      ? `<button type="button" class="ghost read" data-read="${esc(x.name)}">${esc(x.read ? T('Oku · %{p}', {p: x.read}) : T('Oku'))}</button>` : ''}</li>`).join('')
+      ? `<button type="button" class="ghost read" data-read="${esc(x.name)}">${esc(x.read ? T('Oku · %{p}', {p: x.read}) : T('Oku'))}</button>` : ''}${DRIVE.signed_in
+      ? `<button type="button" class="ghost read" data-up="${esc(x.name)}" title="${esc(T("Drive'a yükle"))}">Drive ↑</button>` : ''}</li>`).join('')
                                   : `<li class="mut">${esc(T('Henüz kitap yok. İlk kitap burada görünecek.'))}</li>`;
 }
 
@@ -693,9 +717,54 @@ async function loadInfo() {
     if (!i.local) { show('run'); $('phoneInfo').textContent = T('Bu cihazdan yalnız hazır kitaplar indirilebilir; çeviri ve ayarlar bilgisayardaki uygulamada.'); }
     if (i.local && !i.android) showLan(i);
     if (!i.local && i.loopback) $('phoneInfo').textContent = T('Bu sayfayı uygulamanın kendi penceresinden aç; tarayıcıdan yalnız hazır kitaplar görünür.');
+    if (i.local) loadDrive();
     if (i.android) $('phoneInfo').textContent = T('Kitaba dokun: İndirilenler klasörüne kaydedilir ve okuma uygulamanla açılır.');
   } catch (e) {}
 }
+/* Google Drive */
+let DRIVE = {}, driveWait = null;
+async function loadDrive() {
+  try { DRIVE = await api('/api/drive'); } catch (e) { return; }
+  $('drivePanel').hidden = !DRIVE.available;
+  $('driveOut').hidden = DRIVE.signed_in; $('driveIn').hidden = !DRIVE.signed_in;
+  $('driveWho').textContent = DRIVE.signed_in ? DRIVE.email : '';
+  $('driveAuto').checked = DRIVE.auto !== false;
+  $('driveBackup').disabled = !!DRIVE.busy;
+  const m = DRIVE.busy || DRIVE.error || DRIVE.last || '';
+  if (m || !$('driveMsg').dataset.keep) { $('driveMsg').textContent = T(m); $('driveMsg').className = 'msg' + (DRIVE.error ? ' err' : ''); }
+  if (DRIVE.busy) setTimeout(loadDrive, 2000);
+  if (DRIVE.signed_in && driveWait) { clearInterval(driveWait); driveWait = null; driveList(); loadBooks(); }
+}
+async function driveList() {
+  $('driveFiles').innerHTML = `<li class="mut">${esc(T('Yükleniyor…'))}</li>`;
+  try {
+    const f = await api('/api/drive/files');
+    $('driveFiles').innerHTML = f.length ? f.map(x => `<li><span>${esc(x.name)}</span><span class="mut">${(x.size / 1e6).toFixed(2)} MB</span>${x.here
+        ? `<span class="mut">${esc(T('bu cihazda'))}</span>` : `<button type="button" class="ghost read" data-dl="${esc(x.id)}" data-name="${esc(x.name)}">${esc(T('İndir'))}</button>`}</li>`).join('')
+      : `<li class="mut">${esc(T("Drive'da henüz kitap yok."))}</li>`;
+  } catch (e) { $('driveFiles').innerHTML = `<li class="err">${esc(e.message)}</li>`; }
+}
+$('driveLogin').onclick = async () => {
+  try {
+    const d = await api('/api/drive/login', {});
+    if (!d.opened) location.href = d.url;  // telefonda: Google girişi tarayıcıda açılır
+    $('driveMsg').textContent = T('Tarayıcıda Google hesabını seç ve izin ver; sonra buraya dön.');
+    clearInterval(driveWait); let n = 0;
+    driveWait = setInterval(() => { if (++n > 150) { clearInterval(driveWait); driveWait = null; } loadDrive(); }, 2000);
+  } catch (e) { $('driveMsg').textContent = e.message; }
+};
+$('driveLogout').onclick = async () => { await api('/api/drive/logout', {}); $('driveFiles').innerHTML = ''; loadDrive(); loadBooks(); };
+$('driveAuto').onchange = () => api('/api/drive/settings', {auto: $('driveAuto').checked}).catch(() => {});
+$('driveRefresh').onclick = driveList;
+$('driveBackup').onclick = async () => { try { await api('/api/drive/backup', {}); loadDrive(); } catch (e) { $('driveMsg').textContent = e.message; } };
+$('driveFiles').addEventListener('click', async e => {
+  const b = e.target.closest('[data-dl]'); if (!b) return;
+  b.disabled = true; b.textContent = T('İniyor…');
+  try { await api('/api/drive/download', {id: b.dataset.dl, name: b.dataset.name}); loadBooks(); driveList(); }
+  catch (err) { b.disabled = false; b.textContent = T('İndir'); $('driveMsg').textContent = err.message; }
+});
+document.addEventListener('visibilitychange', () => { if (!document.hidden && driveWait) loadDrive(); });
+
 function showLan(i) {
   $('phoneInfo').textContent = i.lan
     ? T("Telefondan indirmek için aynı Wi‑Fi'de {url} adresini aç. Veriler: {home}", {url: i.phone_url, home: i.home})

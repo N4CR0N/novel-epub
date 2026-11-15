@@ -110,6 +110,9 @@ def self_test(home: Path) -> int:
         kr = web._keyring()
         report["kasa"] = type(kr.get_keyring()).__name__ if kr else "yok"
         report["pencere"] = _window_backend_ok()
+        from .drive import client
+
+        report["google"] = bool(client())  # bilgi: Drive girişi bu derlemede var mı
         report["ok"] = report["arayuz"] and report["info"] and report["llm"] and report["pencere"] is not False
     except Exception as e:  # rapora yaz, çıkış kodu 1
         report["hata"] = repr(e)

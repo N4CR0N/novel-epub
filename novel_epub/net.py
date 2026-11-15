@@ -203,3 +203,12 @@ def post(url: str, headers: dict | None = None, data: bytes | None = None, timeo
 
         return requests.post(url, headers=headers, data=data, timeout=timeout)
     return _request("POST", url, headers, data, timeout)
+
+
+def request(method: str, url: str, headers: dict | None = None, data: bytes | None = None, timeout: float = 60):
+    """Herhangi bir yöntemle düz istek (Google Drive gibi API'ler için: PUT, DELETE; PATCH yerine üst bilgiyle POST)."""
+    if backend() == "curl_cffi":
+        from curl_cffi import requests
+
+        return requests.request(method, url, headers=headers, data=data, timeout=timeout)
+    return _request(method, url, headers, data, timeout)

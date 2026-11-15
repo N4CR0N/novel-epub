@@ -183,7 +183,7 @@ def _public_settings(s: dict) -> dict:
         provs.append({"id": pid, "name": p.name, "prefix": p.prefix, "has_key": bool(key) or p.auth == "none",
                       "hint": (f"…{key[-4:]}" if key and not key.startswith("http") else key),
                       "available": info.get("models") or [], "key_url": p.key_url})
-    hidden = ("api_key", "keys", "providers")
+    hidden = ("api_key", "keys", "providers", "drive")  # drive: Google oturumu (yenileme anahtarı) asla arayüze gitmez
     where = s.get("key_store")
     if where == "kasa" and sys.platform == "win32":
         where = "windows"
@@ -507,8 +507,21 @@ def start_job():
     job.source_key = (source, lang)
     job.started = time.time()
     JOBS[job_id] = job
-    threading.Thread(target=job.run, daemon=True).start()
+    threading.Thread(target=_run_job, args=(job,), daemon=True).start()
     return jsonify({"id": job_id})
+
+
+def _run_job(job: Job) -> None:
+    """İşi çalıştırır; Google Drive'a bağlıysa ve otomatik yükleme açıksa biten kitabı Drive'a yükler."""
+    out = job.run()
+    if not out or not _drive_state().get("auto", True) or not _drive().signed_in():
+        return
+    try:
+        job.log("Google Drive'a yükleniyor…")
+        _drive().upload(Path(out), mime=_mime(Path(out)))
+        job.log(f"Google Drive'a yüklendi: {Path(out).name}")
+    except Exception as e:  # yükleme olmasa da kitap hazır
+        job.log(f"Google Drive'a yüklenemedi: {e}")
 
 
 MAX_FINISHED_JOBS = 10
@@ -697,6 +710,218 @@ def read_progress(name: str):
         return jsonify({"error": "Geçersiz konum"}), 400
 
 
+# --- Google Drive ---------------------------------------------------------------------------------------------
+_DRIVE: dict = {}
+_DRIVE_TASK: dict = {"busy": "", "last": "", "error": ""}
+_DRIVE_KR = "google_drive_refresh"
+
+
+def _drive_state() -> dict:
+    return dict(_read_file().get("drive") or {})
+
+
+def _drive_load() -> dict:
+    st = _drive_state()
+    kr = _keyring()
+    if kr and not st.get("refresh"):
+        try:
+            st["refresh"] = kr.get_password(KEYRING_SERVICE, _DRIVE_KR) or ""
+        except Exception:
+            pass
+    return st
+
+
+def _drive_save(new: dict) -> None:
+    """Yenileme anahtarı kasaya (yoksa ayarlar dosyasına); e-posta, klasör ve otomatik yükleme ayarı dosyaya."""
+    file = _read_file()
+    old = dict(file.get("drive") or {})
+    st = {"auto": old.get("auto", True), **{k: v for k, v in new.items() if k != "refresh"}}
+    refresh = new.get("refresh", "")
+    kr = _keyring()
+    stored = False
+    if kr:
+        try:
+            if refresh:
+                kr.set_password(KEYRING_SERVICE, _DRIVE_KR, refresh)
+            elif "refresh" not in new or not refresh:
+                try:
+                    kr.delete_password(KEYRING_SERVICE, _DRIVE_KR)
+                except Exception:
+                    pass
+            stored = True
+        except Exception:
+            stored = False
+    if refresh and not stored:
+        st["refresh"] = refresh
+    file["drive"] = st
+    _write_file(file)
+
+
+def _drive():
+    from .drive import Drive
+
+    if "d" not in _DRIVE:
+        _DRIVE["d"] = Drive(_drive_load, _drive_save)
+    return _DRIVE["d"]
+
+
+def _mime(path: Path) -> str:
+    fmt = EXTENSIONS.get(path.suffix[1:].lower())
+    return FORMATS[fmt][2] if fmt else "application/zip"
+
+
+def _drive_bg(label: str, fn) -> None:
+    """Uzun Drive işlerini (yedek) arka planda yürüt; durum /api/drive'da görünür."""
+    if _DRIVE_TASK["busy"]:
+        raise RuntimeError("Drive'da başka bir iş sürüyor")
+    _DRIVE_TASK.update(busy=label, error="")
+
+    def run():
+        try:
+            _DRIVE_TASK["last"] = fn() or ""
+        except Exception as e:
+            _DRIVE_TASK["error"] = str(e)
+        finally:
+            _DRIVE_TASK["busy"] = ""
+    threading.Thread(target=run, daemon=True).start()
+
+
+@app.get("/api/drive")
+def drive_status():
+    from .drive import client
+
+    d = _drive()
+    return jsonify({"available": bool(client()), "signed_in": d.signed_in(), "email": d.email(),
+                    "auto": _drive_state().get("auto", True), **_DRIVE_TASK})
+
+
+@app.post("/api/drive/login")
+def drive_login():
+    from .drive import DriveError
+
+    port = request.host.rsplit(":", 1)[-1] if ":" in request.host else "80"
+    try:
+        url = _drive().auth_url(f"http://127.0.0.1:{port}/oauth2cb")
+    except DriveError as e:
+        return jsonify({"error": str(e)}), 400
+    opened = False
+    if not ANDROID:  # Google gömülü pencerede girişe izin vermez: bilgisayarın tarayıcısında aç
+        import webbrowser
+
+        try:
+            opened = webbrowser.open(url)
+        except Exception:
+            opened = False
+    return jsonify({"url": url, "opened": opened})
+
+
+@app.get("/oauth2cb")
+def drive_callback():
+    from .drive import DriveError
+
+    msg, ok = "", False
+    if request.args.get("error"):
+        msg = "Giriş iptal edildi."
+    else:
+        try:
+            email = _drive().finish(request.args.get("state", ""), request.args.get("code", ""))
+            msg, ok = f"Google Drive bağlandı: {email}", True
+        except DriveError as e:
+            msg = str(e)
+    color = "#2a7d5f" if ok else "#b4483c"
+    from html import escape
+
+    return (f"<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+            f"<title>WebNovel Downloader &amp; Translator</title><body style='font:16px/1.5 system-ui,sans-serif;"
+            f"max-width:32em;margin:15vh auto;padding:0 20px;text-align:center'><h2 style='color:{color}'>{escape(msg)}</h2>"
+            f"<p>Bu sekmeyi kapatıp uygulamaya dönebilirsin.</p></body>")
+
+
+@app.post("/api/drive/logout")
+def drive_logout():
+    _drive().logout()
+    return drive_status()
+
+
+@app.post("/api/drive/settings")
+def drive_settings():
+    data = request.get_json(force=True)
+    file = _read_file()
+    st = dict(file.get("drive") or {})
+    if "auto" in data:
+        st["auto"] = bool(data["auto"])
+    file["drive"] = st
+    _write_file(file)
+    return drive_status()
+
+
+@app.post("/api/drive/upload")
+def drive_upload():
+    from .drive import DriveError
+
+    name = (request.get_json(force=True).get("name") or "")
+    path = (OUTPUT / Path(name).name).resolve()
+    if path.parent != OUTPUT.resolve() or not path.is_file() or path.suffix[1:].lower() not in EXTENSIONS:
+        abort(404)
+    try:
+        fid = _drive().upload(path, mime=_mime(path))
+    except DriveError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"ok": True, "id": fid})
+
+
+@app.post("/api/drive/backup")
+def drive_backup():
+    """Kitaplık (indirilen ve çevrilen bölümler, sözlükler, hafıza) + okuma yerleri tek zip olarak Drive'a."""
+    def work():
+        tmp = BASE / "kitaplik-yedek.zip"
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
+            for f in sorted(LIBRARY.rglob("*")) if LIBRARY.exists() else []:
+                if f.is_file():
+                    z.write(f, Path("kutuphane") / f.relative_to(LIBRARY))
+            if (BASE / "okuma.json").exists():
+                z.write(BASE / "okuma.json", "okuma.json")
+        try:
+            _drive().upload(tmp, "kitaplik-yedek.zip", "application/zip")
+        finally:
+            tmp.unlink(missing_ok=True)
+        return f"Kitaplık yedeklendi ({time.strftime('%d.%m.%Y %H:%M')})"
+    try:
+        _drive_bg("Kitaplık yedekleniyor…", work)
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 409
+    return drive_status()
+
+
+@app.get("/api/drive/files")
+def drive_files():
+    from .drive import DriveError
+
+    try:
+        files = _drive().files()
+    except DriveError as e:
+        return jsonify({"error": str(e)}), 400
+    have = {f.name for f in OUTPUT.iterdir()} if OUTPUT.exists() else set()
+    return jsonify([{**f, "here": f["name"] in have} for f in files
+                    if f["name"].rsplit(".", 1)[-1].lower() in EXTENSIONS])
+
+
+@app.post("/api/drive/download")
+def drive_download():
+    from .drive import DriveError
+
+    data = request.get_json(force=True)
+    name = Path(str(data.get("name") or "")).name
+    if not name or name.rsplit(".", 1)[-1].lower() not in EXTENSIONS or not data.get("id"):
+        return jsonify({"error": "Geçersiz dosya"}), 400
+    OUTPUT.mkdir(parents=True, exist_ok=True)
+    try:
+        _drive().download(str(data["id"]), OUTPUT / name)
+    except DriveError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"ok": True, "name": name})
+
+
 @app.get("/indir/<path:name>")
 def download(name: str):
     fmt = EXTENSIONS.get(Path(name).suffix[1:].lower())
@@ -743,6 +968,8 @@ def _guard():
         if origin is not None and urlsplit(origin).netloc != request.host:
             abort(403)
     if _trusted():
+        return None
+    if request.path == "/oauth2cb" and request.method == "GET" and _is_local():  # Google girişinin dönüşü (state ile doğrulanır)
         return None
     if request.method in ("GET", "HEAD") and (request.path in _LAN_READ or request.path.startswith(("/indir/", "/api/read/"))):
         if _is_local() or SERVER["lan"]:  # paylaşım kapalıyken ağdan gelen istek hiç kabul edilmez
