@@ -16,8 +16,15 @@ for i in $(seq 1 30); do
 done
 echo "=== arayüz metinleri ==="
 grep -o 'text="[^"]\+"' ui.xml | sort -u | head -40
-echo "=== hata kayıtları ==="
-adb logcat -d | grep -E "FATAL|AndroidRuntime|python.stderr|Traceback|Error" | head -60
+echo "=== uygulama kayıtları ==="
+APID=$(adb shell pidof $PKG | tr -d '\r')
+echo "pid: ${APID:-yok}"
+adb logcat -d -v brief | grep -vE "uiautomator|RoleController|Icing|CorpusConfig|BluetoothShim|ChimeraConfig|BaseSearchIndex|Cronet|^D/AndroidRuntime|^I/AndroidRuntime" \
+  | grep -iE "novelepub|python|chromium|FATAL|ANR|has died|crash|Exception|ErrorId|Force finishing|Killing|WebView|console" | head -120
+echo "=== etkin pencere ==="
+adb shell dumpsys activity activities | grep -E "topResumedActivity|mResumedActivity|ResumedActivity" | head -5
 echo "=== hizmet ==="
-adb shell dumpsys activity services $PKG | grep -E "ServiceRecord|isForeground" | head -5
+adb shell dumpsys activity services $PKG | grep -E "ServiceRecord|isForeground|foregroundId" | head -5
+echo "=== çıkış nedenleri ==="
+adb shell dumpsys activity exit-info $PKG | grep -E "reason|description|status|importance" | head -20
 if [ $ok = 1 ]; then echo "SONUC: arayuz acildi" | tee -a "$GITHUB_STEP_SUMMARY"; else echo "SONUC: arayuz GELMEDI" | tee -a "$GITHUB_STEP_SUMMARY"; exit 1; fi
