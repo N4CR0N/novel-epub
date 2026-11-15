@@ -1,4 +1,4 @@
-"""Hafif yapay zekâ istemcisi (LiteLLM'in kullandığımız küçük kısmı; ek paket yok, HTTP için curl_cffi).
+"""Hafif yapay zekâ istemcisi (LiteLLM'in kullandığımız küçük kısmı; ek paket yok, HTTP için net.py).
 
 - OpenAI uyumlu sohbet ucu: OpenAI, DeepSeek, OpenRouter, Groq, xAI, Cerebras, Fireworks, Together, Mistral, Ollama.
 - Gemini: generateContent (JSON şeması, düşünme seviyesi).
@@ -186,9 +186,9 @@ def _parse(pid: str, data: dict):
 
 
 def _post(url: str, headers: dict, body: dict, timeout: float):
-    from curl_cffi import requests
+    from . import net
 
-    return requests.post(url, headers=headers, data=json.dumps(body, ensure_ascii=False).encode("utf-8"), timeout=timeout)
+    return net.post(url, headers=headers, data=json.dumps(body, ensure_ascii=False).encode("utf-8"), timeout=timeout)
 
 
 def completion(model: str, messages: list[dict], api_key: str | None = None, api_base: str | None = None,

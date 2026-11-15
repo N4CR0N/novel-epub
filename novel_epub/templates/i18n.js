@@ -1,6 +1,7 @@
 // Arayüz dilleri. Anahtar Türkçe metnin kendisidir; çevirisi olmayan metin Türkçe kalır. {x} = değişken.
 const I18N = {
 en: {
+"Kitaba dokun: İndirilenler klasörüne kaydedilir ve okuma uygulamanla açılır.": "Tap a book: it is saved to Downloads and opened in your reading app.",
 "Biçim": "Format", "EPUB (önerilen)": "EPUB (recommended)",
 "Ayarlar": "Settings", 
 "Tema": "Theme", "Açık tema": "Light theme", "Koyu tema": "Dark theme", "Sistem teması": "System theme",
@@ -66,6 +67,7 @@ en: {
 "Bu cihazdan yalnız hazır kitaplar indirilebilir; çeviri ve ayarlar bilgisayardaki uygulamada.": "Only finished books can be downloaded from this device; translation and settings are in the app on the computer.",
 },
 de: {
+"Kitaba dokun: İndirilenler klasörüne kaydedilir ve okuma uygulamanla açılır.": "Tippe auf ein Buch: Es wird unter Downloads gespeichert und in deiner Lese-App geöffnet.",
 "Biçim": "Format", "EPUB (önerilen)": "EPUB (empfohlen)",
 "Ayarlar": "Einstellungen", 
 "Tema": "Design", "Açık tema": "Helles Design", "Koyu tema": "Dunkles Design", "Sistem teması": "Systemdesign",
@@ -131,6 +133,7 @@ de: {
 "Bu cihazdan yalnız hazır kitaplar indirilebilir; çeviri ve ayarlar bilgisayardaki uygulamada.": "Von diesem Gerät können nur fertige Bücher geladen werden; Übersetzung und Einstellungen gibt es in der App auf dem Computer.",
 },
 es: {
+"Kitaba dokun: İndirilenler klasörüne kaydedilir ve okuma uygulamanla açılır.": "Toca un libro: se guarda en Descargas y se abre en tu app de lectura.",
 "Biçim": "Formato", "EPUB (önerilen)": "EPUB (recomendado)",
 "Ayarlar": "Ajustes", 
 "Tema": "Tema", "Açık tema": "Tema claro", "Koyu tema": "Tema oscuro", "Sistem teması": "Tema del sistema",
@@ -196,6 +199,7 @@ es: {
 "Bu cihazdan yalnız hazır kitaplar indirilebilir; çeviri ve ayarlar bilgisayardaki uygulamada.": "Desde este dispositivo solo se pueden descargar los libros terminados; la traducción y los ajustes están en la app del ordenador.",
 },
 ru: {
+"Kitaba dokun: İndirilenler klasörüne kaydedilir ve okuma uygulamanla açılır.": "Нажмите на книгу: она сохранится в «Загрузки» и откроется в приложении для чтения.",
 "Biçim": "Формат", "EPUB (önerilen)": "EPUB (рекомендуется)",
 "Ayarlar": "Настройки", 
 "Tema": "Тема", "Açık tema": "Светлая тема", "Koyu tema": "Тёмная тема", "Sistem teması": "Системная тема",

@@ -1063,3 +1063,50 @@ def test_output_format_setting_drives_jobs_and_book_list(tmp_path: Path, monkeyp
     r = c.get("/indir/" + books[0]["name"])
     assert r.status_code == 200 and r.mimetype.endswith("wordprocessingml.document")
     assert c.get("/indir/not.exe").status_code == 404
+
+
+def test_net_without_curl_cffi_works_like_the_desktop_client():
+    """Android'de curl_cffi yok: yedek istemci aynı arayüzü vermeli (durum kodu, başlık, metin, json, POST gövdesi)."""
+    import http.server
+    import threading
+
+    from novel_epub import net
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            code = 404 if self.path == "/yok" else 200
+            body = "Şğüöçı lorem".encode("iso-8859-9") if self.path == "/latin" else \
+                f"ua={self.headers.get('User-Agent', '')[:11]}|ref={self.headers.get('Referer', '')}".encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "text/plain; charset=iso-8859-9" if self.path == "/latin" else "text/plain")
+            self.send_header("X-Deneme", "evet")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_POST(self):
+            data = self.rfile.read(int(self.headers["Content-Length"]))
+            self.send_response(429 if b"kota" in data else 200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"geri": json.loads(data), "ct": self.headers.get("Content-Type")}).encode())
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    try:
+        net.set_backend("urllib")
+        s = net.Session()
+        r = s.get(base + "/x", headers={"Referer": "https://ornek.test/"})
+        assert r.status_code == 200 and r.headers.get("x-deneme") == "evet" and r.headers.get("X-DENEME") == "evet"
+        assert r.text == "ua=Mozilla/5.0|ref=https://ornek.test/"
+        assert s.get(base + "/latin").text == "Şğüöçı lorem"
+        assert s.get(base + "/yok").status_code == 404  # hata kodu istisna değil, yanıt olarak döner
+        r = net.post(base + "/api", headers={"Content-Type": "application/json"}, data=json.dumps({"a": "ş"}).encode())
+        assert r.status_code == 200 and r.json() == {"geri": {"a": "ş"}, "ct": "application/json"}
+        assert net.post(base + "/api", data=b'{"kota": 1}').status_code == 429
+    finally:
+        net.set_backend(None)
+        srv.shutdown()

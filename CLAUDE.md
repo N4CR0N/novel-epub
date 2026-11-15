@@ -80,6 +80,22 @@ Origin aynı host olmalı (CSRF), 127.0.0.1 dışından yalnız `/`, `/api/info|
   büyütülür, boyutu `pencere.json`'da hatırlanır. README.md İngilizce (ana), README.tr.md Türkçe. `app.py` masaüstü penceresi + `--oz-test`. `history.py` PC tarayıcı geçmişi/yer işaretlerinden
   ve root'lu Android'den (adb + su) novel sitelerini bulma (yalnız yerel).
 
+## Android uygulaması (android/, dal: `android` → main'e alınınca sürümlere APK eklenir)
+- Chaquopy 17 (Python 3.12) + WebView: aynı Flask arayüzü telefonda 127.0.0.1'de (`novel_epub/android_main.py`
+  `start/busy/status/output_path`), `WorkService.kt` ön plan hizmeti (specialUse; bildirimde ilerleme, iş sürerken
+  uyanık kalma kilidi, boşta 10 dk sonra kapanır), `MainActivity.kt` (dosya seçme, kitabı İndirilenler/WebNovel'e kaydedip
+  açma, tarayıcıdan "Paylaş" ile link → `#url=`). `web.ANDROID` (NOVEL_EPUB_ANDROID=1): klasör aç/Site bul gizli.
+- Ağ: `net.py` — masaüstünde curl_cffi, Android'de HttpURLConnection, yoksa urllib. **Siteyi reddeden bağlantıyı
+  telefonun tarayıcı motoruyla (WebView) yeniden denemek engellendi (erişim engelini aşmak sayılıyor); yapma.**
+  Düz bağlantıyı reddeden siteler (ör. Royal Road 403) telefonda çalışmaz, bilgisayar uygulamasında kullanılır.
+- CI: `android-apk.yml` (elle; denemeler mail atmasın diye `continue-on-error`) APK + emülatör testi
+  (`.github/emulator-smoke.sh`: arayüz açılıyor mu; GitHub IP'sinden siteler Cloudflare engeline takılır, bilgi amaçlı).
+  Sürüm hattındaki `android` işi APK'yı yalnız `ANDROID_KEYSTORE_B64` + `ANDROID_KEYSTORE_PASSWORD` gizli değerleri
+  varsa imzalayıp yayımlar (yoksa atlar). Anahtarı kullanıcı GitHub'a ekler; oturum gizli değerlere yazamaz, anahtarı
+  ekrana basma. Uygulama kimliği `io.github.n4cr0n.novelepub`, yalnız arm64.
+- Sırada: Google Drive (giriş, uygulama klasörü, otomatik yükleme, kitaplık yedeği; `drive.file` kapsamı, Google
+  projesi "In production" olmalı yoksa giriş 7 günde düşer). Kullanıcının Google Cloud projesi gerekiyor.
+
 ## Yeni site eklerken
 1. `novel_epub/sources/<site>.py`: `name`, `domains`; novel sayfası **ve** bölüm linkinden çalışsın; bölüm listesinin
    TAMAMI sırayla (sayfalı/ajax uçlarını bul); içerik seçicisi; `self.build_chapter(...)`.

@@ -99,9 +99,9 @@ HttpGet = Callable[[str, dict], tuple[int, dict]]
 
 
 def _http_get(url: str, headers: dict) -> tuple[int, dict]:
-    from curl_cffi import requests
+    from . import net
 
-    r = requests.get(url, headers=headers, timeout=20)
+    r = net.get(url, headers=headers, timeout=20)
     try:
         return r.status_code, r.json()
     except ValueError:

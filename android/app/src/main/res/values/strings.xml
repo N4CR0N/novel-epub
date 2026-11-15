@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">WebNovel</string>
+    <string name="channel_name">Downloads and translations</string>
+    <string name="notif_idle">Ready</string>
+    <string name="notif_starting">Starting…</string>
+    <string name="saved_to_downloads">Saved to Downloads: %1$s</string>
+    <string name="no_reader">No app found to open this file. It is in Downloads.</string>
+</resources>

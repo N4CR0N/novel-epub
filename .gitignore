@@ -7,3 +7,8 @@ ayarlar.json
 kutuphane/
 cikti/
 novel_epub/_surum.py
+android/app/src/main/python/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
