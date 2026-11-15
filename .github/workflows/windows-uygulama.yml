@@ -40,14 +40,17 @@ jobs:
           echo "v=$v" >> "$GITHUB_OUTPUT"
           echo "SURUM = \"$v\"" > novel_epub/_surum.py
           {
-            echo "Windows app: download **WebNovelDownloaderTranslator.exe** and double-click it (no installation needed)."
-            echo "The exe is unsigned. If Windows warns you, choose **More info → Run anyway**, or right-click the file → Properties → Unblock."
+            echo "**Windows:** download **WebNovelDownloaderTranslator.exe** and double-click it (no installation needed). The exe is unsigned: if Windows warns you, choose **More info → Run anyway**, or right-click the file → Properties → Unblock."
+            echo
+            echo "**Android:** on the phone, download **WebNovelDownloaderTranslator.apk** and open it (Android 7.0+, 64-bit). Allow installing from your browser once; updates install over the previous version and keep your library."
             echo
             echo "### Changes"
             # yalnız uygulamayı değiştiren commit'ler (.github/, CLAUDE.md ve README'ye dokunanlar listelenmez)
             for c in $(git rev-list ${prev:+$prev..}HEAD); do
               if git diff-tree --no-commit-id --name-only -r "$c" | grep -qvE '^(\.github/|CLAUDE\.md|README)'; then
-                git log -1 --format='- %s' "$c"
+                subj=$(git log -1 --format='%s' "$c")
+                case "$subj" in CI:*|Notes:*|Merge*) continue ;; esac
+                echo "- ${subj% \[skip ci\]}"
               fi
             done | head -40
           } > surum-notu.md

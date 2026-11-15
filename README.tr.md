@@ -30,6 +30,20 @@ geçer, sonra Releases'e konur (`.github/workflows/windows-uygulama.yml`).
 1. [Python 3.10+](https://www.python.org/downloads/) kur ("Add python.exe to PATH").
 2. `gelistir.bat` (pencerede açar) ya da `baslat.bat` (tarayıcıda açar).
 
+## Android uygulaması
+
+Aynı uygulama Android telefonlarda da çalışır (Android 7.0 ve üstü, 64 bit): indirme, yapay zekâ çevirisi ve kitaplık
+telefonun kendisinde; ekran kapalıyken bildirim ilerlemeyi gösterir.
+
+1. Telefonda **[WebNovelDownloaderTranslator.apk](https://github.com/N4CR0N/novel-epub/releases/latest/download/WebNovelDownloaderTranslator.apk)**'yı indirip aç. Android bir kez tarayıcından uygulama
+   kurmaya izin ister; izin ver. Güncellemeler eski sürümün üzerine kurulur, kitaplığın kalır.
+2. **Yapay zekâ** bölümüne bilgisayardaki gibi anahtarını yapıştır.
+3. Biten kitaba dokun: **İndirilenler/WebNovel**'e kaydedilir ve okuma uygulamanla açılır. Tarayıcında bir roman
+   sayfasını **Paylaş → WebNovel** ile göndererek linki de doldurabilirsin.
+
+Telefonda sayfalar Android'in kendi bağlantısıyla açılır; bunu reddeden siteler (ör. Royal Road) yalnız Windows
+uygulamasında çalışır.
+
 ## Kullanım
 
 - **Arayüz:** sağ üstten tema (açık / koyu / sistem) ve arayüz dili (Türkçe, English, Deutsch, Español, Русский);

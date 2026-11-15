@@ -29,6 +29,20 @@ publishes it to Releases (`.github/workflows/windows-uygulama.yml`).
 1. Install [Python 3.10+](https://www.python.org/downloads/) ("Add python.exe to PATH").
 2. Run `gelistir.bat` (opens in a window) or `baslat.bat` (opens in the browser).
 
+## Android app
+
+The same app runs on Android phones (Android 7.0 or newer, 64-bit): downloading, AI translation and the library all
+happen on the phone, and a notification shows progress while the screen is off.
+
+1. On the phone, download **[WebNovelDownloaderTranslator.apk](https://github.com/N4CR0N/novel-epub/releases/latest/download/WebNovelDownloaderTranslator.apk)** and open it. Android asks to allow installing
+   apps from your browser once; allow it. Updates install over the previous version and keep your library.
+2. Paste your AI key under **AI** as on the computer.
+3. Tap a finished book to save it to **Downloads/WebNovel** and open it in your reading app. In your browser you can also
+   **Share → WebNovel** a novel page to fill in the link.
+
+On the phone, pages are opened with Android's own connection. Sites that refuse it (for example Royal Road) work only in
+the Windows app.
+
 ## Use
 
 - **Download & translate:** paste a link (novel page or any chapter), optionally a chapter range, then **Start**.
