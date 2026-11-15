@@ -31,20 +31,22 @@ echo "=== gerçek iş: siteden 3 bölüm indir, kitap yap (çevirisiz) ==="
 PORT=$(adb logcat -d | grep -o "WEBNOVEL_PORT=[0-9]*" | tail -1 | cut -d= -f2)
 job_ok=0
 if [ -n "$PORT" ]; then
-  adb forward tcp:5555 tcp:$PORT
-  JOB=$(curl -s -X POST http://127.0.0.1:5555/api/jobs -H "Content-Type: application/json" \
+  adb forward tcp:18765 tcp:$PORT
+  JOB=$(curl -s -X POST http://127.0.0.1:18765/api/jobs -H "Content-Type: application/json" \
     -d '{"url":"https://freewebnovel.com/novel/cosmic-professional-gladiator","start":1,"end":3,"translate":false,"format":"epub"}')
   echo "iş: $JOB"
-  ID=$(echo "$JOB" | python3 -c "import sys,json;print(json.load(sys.stdin).get('id',''))")
+  ID=$(echo "$JOB" | python3 -c "import sys,json;print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
+  [ -z "$ID" ] && echo "iş başlatılamadı"
   for i in $(seq 1 60); do
+    [ -z "$ID" ] && break
     sleep 5
-    ST=$(curl -s http://127.0.0.1:5555/api/jobs/$ID)
+    ST=$(curl -s http://127.0.0.1:18765/api/jobs/$ID)
     PH=$(echo "$ST" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('phase'),d.get('done'),'/',d.get('total'))")
     echo "  $PH"
     case "$PH" in bitti*|hata*|iptal*) break;; esac
   done
   echo "$ST" | python3 -c "import sys,json;d=json.load(sys.stdin);print('sonuç:',d.get('result'),'hata:',d.get('error'));[print('  ',l[:160]) for l in d.get('logs',[])[-12:]]"
-  BOOKS=$(curl -s http://127.0.0.1:5555/api/books)
+  BOOKS=$(curl -s http://127.0.0.1:18765/api/books)
   echo "kitaplar: $BOOKS"
   echo "$BOOKS" | grep -q '\.epub' && job_ok=1
 fi

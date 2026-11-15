@@ -35,11 +35,18 @@ jobs:
           find android/app/src/main/python -name "__pycache__" -prune -exec rm -rf {} +
           echo 'SURUM = "dev"' > android/app/src/main/python/novel_epub/_surum.py
 
-      - name: APK derle
+      - name: APK derle (deneme için üretilip atılan anahtarla, kalıcı imza yolunu sınar)
         env:
           APP_VERSION_NAME: dev
           APP_VERSION_CODE: ${{ github.run_number }}
-        run: gradle -p android assembleRelease --stacktrace
+        run: |
+          export ANDROID_KEYSTORE_PASSWORD=$(openssl rand -hex 16)
+          export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/deneme.jks"
+          keytool -genkeypair -keystore "$ANDROID_KEYSTORE_PATH" -storetype PKCS12 -alias webnovel -keyalg RSA -keysize 2048 \
+            -validity 3650 -storepass "$ANDROID_KEYSTORE_PASSWORD" -keypass "$ANDROID_KEYSTORE_PASSWORD" -dname "CN=deneme" >/dev/null
+          gradle -p android assembleRelease --stacktrace
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --print-certs android/app/build/outputs/apk/release/*.apk | grep -E "Signer #1 certificate DN" | tee -a "$GITHUB_STEP_SUMMARY" || true
 
       - name: Sonuç
         if: always()
