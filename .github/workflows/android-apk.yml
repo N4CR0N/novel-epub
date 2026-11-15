@@ -56,7 +56,20 @@ jobs:
           APP_VERSION_CODE: ${{ github.run_number }}
         run: |
           if [ -z "$KS_B64" ]; then echo "Kalıcı anahtar: gizli değer YOK" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
-          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/k.jks"
+          # yapıştırırken karışan boşluk/satır sonu temizlenir
+          export KS_B64=$(printf '%s' "$KS_B64" | tr -d ' \r\n\t')
+          export ANDROID_KEYSTORE_PASSWORD=$(printf '%s' "$ANDROID_KEYSTORE_PASSWORD" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          python3 - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import base64, hashlib, os
+          pw, b = os.environ["ANDROID_KEYSTORE_PASSWORD"], os.environ["KS_B64"]
+          raw = os.environ.get("KS_RAW_LEN", "")
+          try:
+              md5 = hashlib.md5(base64.b64decode(b)).hexdigest()[:8]
+          except Exception as e:
+              md5 = f"çözülemedi ({type(e).__name__})"
+          print(f"Kalıcı anahtar kontrolü: parola {len(pw)} karakter, sha256 {hashlib.sha256(pw.encode()).hexdigest()[:8]}; anahtar metni {len(b)} karakter, dosya md5 {md5}")
+          PY
+          printf '%s' "$KS_B64" | base64 -d > "$RUNNER_TEMP/k.jks" || true
           if ! keytool -list -keystore "$RUNNER_TEMP/k.jks" -storepass "$ANDROID_KEYSTORE_PASSWORD" >/dev/null 2>&1; then
             echo "Kalıcı anahtar: parola UYUŞMUYOR" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
           export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/k.jks"

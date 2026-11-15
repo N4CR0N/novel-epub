@@ -173,7 +173,8 @@ jobs:
           cp -r novel_epub android/app/src/main/python/
           find android/app/src/main/python -name "__pycache__" -prune -exec rm -rf {} +
           echo "SURUM = \"$APP_VERSION_NAME\"" > android/app/src/main/python/novel_epub/_surum.py
-          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/webnovel.jks"
+          printf '%s' "$KS_B64" | tr -d ' \r\n\t' | base64 -d > "$RUNNER_TEMP/webnovel.jks"
+          export ANDROID_KEYSTORE_PASSWORD=$(printf '%s' "$ANDROID_KEYSTORE_PASSWORD" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
           export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/webnovel.jks"
           gradle -p android assembleRelease
           cp android/app/build/outputs/apk/release/*.apk WebNovelDownloaderTranslator.apk
