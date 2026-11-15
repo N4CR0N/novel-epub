@@ -989,3 +989,62 @@ def test_lan_devices_can_only_download_and_cross_site_requests_are_blocked(tmp_p
     # DNS yeniden bağlama: alan adıyla gelen istek reddedilir
     assert c.get("/api/settings", base_url="http://kotu.example:5000").status_code == 403
     assert c.get("/api/settings", base_url="http://127.0.0.1:5000").get_json()["providers"][0]["hint"] == "…1234"
+
+
+def test_exporters_write_every_format_readably(tmp_path: Path):
+    import zipfile as zf
+
+    from novel_epub.exporters import FORMATS, export, normalize
+    from novel_epub.files import read_docx, read_epub
+    from novel_epub.models import Chapter, Novel
+
+    novel = Novel(url="https://example.com/novel/lorem", title="Lorem & Ipsum", source="test", author="Dolor Sit")
+    filler = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore."
+    chs = [Chapter(i, f"Bölüm {i}: Lorem", f"u{i}", [f"Lorem ipsum {i} <dolor> şğüöçı.", "# Sit amet\x0b", "* consectetur", filler])
+           for i in (1, 2, 3)]
+    assert normalize(None) == "epub" and normalize(".DOCX") == "docx" and normalize("pdf") == "epub"
+    out = {f: export(f, novel, chs, tmp_path / "kitap", language="tr", cover=b"\x89PNG\r\n\x1a\n0000") for f in FORMATS}
+    assert {p.suffix for p in out.values()} == {".epub", ".docx", ".html", ".txt", ".md"}
+
+    # EPUB ve DOCX uygulamanın kendi okuyucularıyla geri okunur (bölümler ve başlıklar korunur)
+    n, back, _ = read_epub(out["epub"])
+    assert [c.title for c in back] == [c.title for c in chs]
+    n, back, _ = read_docx(out["docx"])
+    assert n.title == "Lorem & Ipsum" and [c.title for c in back] == [c.title for c in chs]
+    assert back[0].paragraphs[0] == "Lorem ipsum 1 <dolor> şğüöçı." and back[0].paragraphs[1] == "# Sit amet"
+    with zf.ZipFile(out["docx"]) as z:
+        assert z.testzip() is None and "pageBreakBefore" in z.read("word/styles.xml").decode()
+
+    h = out["html"].read_text("utf-8")
+    assert h.startswith("<!DOCTYPE html>") and 'lang="tr"' in h and "&lt;dolor&gt;" in h and "data:image/png;base64," in h
+    assert h.count('<section id="b') == 3 and 'href="#b3"' in h
+    t = out["txt"].read_text("utf-8")
+    assert t.startswith("Lorem & Ipsum") and "Bölüm 2: Lorem\n" in t and "<dolor>" in t
+    m = out["md"].read_text("utf-8")
+    assert m.startswith("# Lorem & Ipsum") and "## Bölüm 3: Lorem" in m and "\n\\# Sit amet" in m and "\n\\* consectetur" in m
+
+
+def test_output_format_setting_drives_jobs_and_book_list(tmp_path: Path, monkeypatch):
+    from novel_epub import pipeline, web
+
+    monkeypatch.setattr(web, "SETTINGS_PATH", tmp_path / "ayarlar.json")
+    monkeypatch.setattr(web, "_keyring", lambda: None)
+    monkeypatch.setattr(web, "OUTPUT", tmp_path / "cikti")
+    c = web.app.test_client()
+    s = c.get("/api/settings").get_json()
+    assert s["output_format"] == "epub" and [f["id"] for f in s["formats"]] == ["epub", "docx", "html", "txt", "md"]
+    assert c.post("/api/settings", json={"output_format": "docx"}).get_json()["output_format"] == "docx"
+    assert c.post("/api/settings", json={"output_format": "exe"}).get_json()["output_format"] == "docx"  # bilinmeyen yok sayılır
+
+    # dosyadan dönüştürme: ayardaki biçimde yazılır
+    src = tmp_path / "lorem.txt"
+    src.write_text("Bölüm 1\n\nLorem ipsum dolor.\n\nBölüm 2\n\nSit amet.\n", "utf-8")
+    out = pipeline.Job(pipeline.Options(url="", file=str(src), fmt=web.load_settings()["output_format"],
+                                        library=tmp_path / "kutuphane", output=tmp_path / "cikti")).run()
+    assert out and Path(out).suffix == ".docx"
+    (tmp_path / "cikti" / "not.exe").write_bytes(b"MZ")
+    books = c.get("/api/books").get_json()
+    assert [b["format"] for b in books] == ["docx"]  # yalnız kitap biçimleri listelenir
+    r = c.get("/indir/" + books[0]["name"])
+    assert r.status_code == 200 and r.mimetype.endswith("wordprocessingml.document")
+    assert c.get("/indir/not.exe").status_code == 404

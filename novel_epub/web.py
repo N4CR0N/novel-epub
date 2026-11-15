@@ -1,4 +1,4 @@
-"""PC'de çalışan yerel web arayüzü. Aynı Wi‑Fi'deki telefondan da açılır, EPUB oradan indirilir."""
+"""PC'de çalışan yerel web arayüzü. Aynı Wi‑Fi'deki telefondan da açılır, hazır kitaplar oradan indirilir."""
 from __future__ import annotations
 
 import json
@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 from flask import Flask, abort, jsonify, render_template, request, send_from_directory
 
 from . import __version__
+from .exporters import DEFAULT_FORMAT, EXTENSIONS, FORMATS, normalize
 from .pipeline import Job, Options
 from .store import BookStore
 from .translator import DEFAULT_MODELS, DEFAULT_TEMPERATURE, LANGUAGES, MAX_AUTO_CHAPTERS, THINKING_LEVELS
@@ -76,7 +77,7 @@ def load_settings() -> dict:
     from .providers import ENV_KEYS, parse_or_empty, provider_of
 
     s = {"delay": 0.7, "workers": 3, "batch": 0, "thinking": "medium", "temperature": DEFAULT_TEMPERATURE,
-         "lang": "tr", "providers": {}, "models": []}
+         "lang": "tr", "providers": {}, "models": [], "output_format": DEFAULT_FORMAT}
     file = _read_file()
     s.update(file)
     s["lang_set"] = bool(file.get("lang_set") or "lang" in file)  # kullanıcı hedef dili seçmiş mi
@@ -167,7 +168,8 @@ def _public_settings(s: dict) -> dict:
                       "available": info.get("models") or [], "key_url": p.key_url})
     hidden = ("api_key", "keys", "providers")
     return {**{k: v for k, v in s.items() if k not in hidden}, "providers": provs,
-            "has_key": any(x["has_key"] for x in provs)}
+            "has_key": any(x["has_key"] for x in provs),
+            "formats": [{"id": k, "name": v[0]} for k, v in FORMATS.items()]}
 
 
 @app.get("/api/settings")
@@ -188,6 +190,8 @@ def post_settings():
         s["theme"] = data["theme"]
     if data.get("ui_lang") in ("tr", "en", "de", "es", "ru"):
         s["ui_lang"] = data["ui_lang"]
+    if data.get("output_format") in FORMATS:
+        s["output_format"] = data["output_format"]
     if data.get("thinking") in THINKING_LEVELS:
         s["thinking"] = data["thinking"]
     if data.get("temperature") not in (None, ""):
@@ -428,6 +432,7 @@ def start_job():
         review_after=20 if data.get("review") else 0,
         library=LIBRARY,
         output=OUTPUT,
+        fmt=normalize(s.get("output_format")),
     )
     if opts.translate and (not opts.model or (not opts.keys and not opts.model.startswith("ollama_chat/"))):
         return jsonify({"error": "Çeviri için önce Ayarlar'dan bir API anahtarı ekle ve en az bir model seç"}), 400
@@ -529,20 +534,25 @@ def restore(name: str):
 @app.get("/api/books")
 def books():
     OUTPUT.mkdir(exist_ok=True)
-    files = sorted(OUTPUT.glob("*.epub"), key=lambda p: p.stat().st_mtime, reverse=True)
-    return jsonify([{"name": f.name, "mb": round(f.stat().st_size / 1e6, 2)} for f in files])
+    files = sorted((f for f in OUTPUT.iterdir() if f.is_file() and f.suffix[1:].lower() in EXTENSIONS),
+                   key=lambda p: p.stat().st_mtime, reverse=True)
+    return jsonify([{"name": f.name, "mb": round(f.stat().st_size / 1e6, 2), "format": EXTENSIONS[f.suffix[1:].lower()]}
+                    for f in files])
 
 
 @app.get("/indir/<path:name>")
 def download(name: str):
-    return send_from_directory(OUTPUT.resolve(), name, as_attachment=True, mimetype="application/epub+zip")
+    fmt = EXTENSIONS.get(Path(name).suffix[1:].lower())
+    if not fmt:
+        abort(404)
+    return send_from_directory(OUTPUT.resolve(), name, as_attachment=True, mimetype=FORMATS[fmt][2])
 
 
 def _is_local() -> bool:
     return request.remote_addr in ("127.0.0.1", "::1")
 
 
-# Ağdaki başka cihazlar (telefon) yalnız bunları okuyabilir: sayfa, kitap listesi, EPUB indirme.
+# Ağdaki başka cihazlar (telefon) yalnız bunları okuyabilir: sayfa, kitap listesi, kitap indirme.
 _LAN_READ = {"/", "/api/info", "/api/books", "/api/languages", "/api/settings"}
 
 

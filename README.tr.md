@@ -3,7 +3,8 @@
 [English](README.md) · **Türkçe**
 
 Bir web novel linki ya da dosya verirsin: araç bölüm listesinin tamamını alır, bölümleri indirip denetler,
-istersen yapay zekâyla edebi bir dile çevirir (Türkçe ve 17 dil daha) ve hepsini **tek bir EPUB** yapar.
+istersen yapay zekâyla edebi bir dile çevirir (Türkçe ve 17 dil daha) ve hepsini **tek bir EPUB** yapar (Ayarlar'dan
+Word, HTML, TXT ya da Markdown da seçilebilir).
 EPUB'u telefondaki kitap uygulamasıyla (Moon+ Reader, ReadEra, Apple Books, Google Play Kitaplar…) okursun.
 
 ## Kurulum (Windows uygulaması)
@@ -99,7 +100,7 @@ yine en iyi modelle sürer). Anahtarı geçersiz sağlayıcının modelleri zinc
 | Çeviri | Bölümler uzunluğa göre paketlenir (tek istekte birden çok bölüm), JSON şemalı yanıt; kitaba özel **terim sözlüğü**, **hikâye hafızası** (özet, karakter notları, kalıcı sen/siz tablosu), sonraki bölümün ilk paragrafları bağlam olarak gider. |
 | Redaksiyon | İsteğe bağlı ikinci tur: editör gözüyle anlam, akıcılık, hitap ve imla düzeltmesi. |
 | Kaldığı yerden | İnen/çevrilen her bölüm `kutuphane/`'de saklanır; tekrar başlatınca yalnız eksikler yapılır. |
-| EPUB | Kapak, künye, içindekiler, okunaklı CSS; `cikti/` klasörüne. |
+| Çıktı | Varsayılan EPUB (kapak, künye, içindekiler, okunaklı CSS). **Ayarlar**'dan Word (DOCX), tek dosya HTML, TXT ya da Markdown seçilebilir. `cikti/` klasörüne yazılır. |
 
 ## İpuçları
 

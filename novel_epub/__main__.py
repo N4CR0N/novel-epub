@@ -1,6 +1,6 @@
 """Kullanım:
   python -m novel_epub                      # web arayüzünü başlatır
-  python -m novel_epub <link> [--bas 1 --son 50] [--cevir]
+  python -m novel_epub <link> [--bas 1 --son 50] [--cevir] [--bicim epub|docx|html|txt|md]
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from .pipeline import Job, Options
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(prog="novel_epub", description="Web novel linkinden tek EPUB (isteğe bağlı Türkçe çeviri)")
+    ap = argparse.ArgumentParser(prog="novel_epub", description="Web novel linkinden tek kitap: EPUB ya da DOCX/HTML/TXT/MD (isteğe bağlı çeviri)")
     ap.add_argument("url", nargs="?", help="Novel ana sayfası veya bölüm linki (boşsa web arayüzü açılır)")
     ap.add_argument("--bas", type=int, help="İlk bölüm sırası (1'den başlar)")
     ap.add_argument("--son", type=int, help="Son bölüm sırası (dahil)")
@@ -21,6 +21,8 @@ def main() -> None:
     ap.add_argument("--model", default=os.environ.get("NOVEL_MODELS", os.environ.get("GEMINI_MODEL", "")),
                     help="Modeller en iyiden kötüye, virgülle; LiteLLM adı (gemini/…, openai/…, anthropic/…). "
                          "Önek yoksa Gemini. Kota dolunca sıradakine geçer, saatte bir en iyiler yeniden denenir.")
+    ap.add_argument("--bicim", choices=["epub", "docx", "html", "txt", "md"], default=None,
+                    help="Çıktı biçimi (varsayılan: ayarlardaki, o da yoksa epub)")
     ap.add_argument("--bekleme", type=float, default=0.7, help="İstekler arası saniye")
     ap.add_argument("--isci", type=int, default=3, help="Paralel indirme sayısı")
     ap.add_argument("--toplu", type=int, default=0, help="Tek Gemini isteğinde en fazla kaç bölüm (0 = otomatik)")
@@ -44,8 +46,13 @@ def main() -> None:
         s = load_settings()
         keys = keys or s.get("keys", {})
         model = model or ", ".join(s.get("models") or [])
+    if a.bicim is None:
+        from .web import load_settings
+
+        a.bicim = load_settings().get("output_format", "epub")
     opts = Options(url=a.url, start=a.bas, end=a.son, translate=a.cevir, keys=keys, model=model, lang=a.dil,
-                   delay=a.bekleme, workers=a.isci, batch=a.toplu, library=Path("kutuphane"), output=Path("cikti"))
+                   delay=a.bekleme, workers=a.isci, batch=a.toplu, library=Path("kutuphane"), output=Path("cikti"),
+                   fmt=a.bicim)
     job = Job(opts, on_log=print)
     out = job.run()
     raise SystemExit(0 if out else 1)

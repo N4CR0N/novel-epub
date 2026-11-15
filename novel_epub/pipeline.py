@@ -1,4 +1,4 @@
-"""Link → bölüm listesi → indirme + denetim → (isteğe bağlı) çeviri → tek EPUB."""
+"""Link → bölüm listesi → indirme + denetim → (isteğe bağlı) çeviri → tek kitap (varsayılan EPUB)."""
 from __future__ import annotations
 
 import threading
@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Callable
 
 from .cleaner import check_book, check_chapter, clean_output_paragraphs, clean_paragraphs
-from .epub_builder import build_epub
+from .exporters import FORMATS, export, normalize
 from .fetcher import Fetcher
 from .models import Chapter, ChapterRef, Novel
 from .sources import source_for
@@ -41,6 +41,7 @@ class Options:
     max_follow: int = 3000  # genel kaynakta "Sonraki" ile en fazla kaç bölüm gezilsin
     library: Path = Path("kutuphane")
     output: Path = Path("cikti")
+    fmt: str = "epub"  # çıktı biçimi: epub / docx / html / txt / md (exporters.FORMATS)
 
 
 @dataclass
@@ -140,7 +141,8 @@ class Job:
             chapters = self._translate(chapters, store)
 
         self._check_cancel()
-        self.p.phase = "EPUB yazılıyor"
+        fmt = normalize(o.fmt)
+        self.p.phase = f"{FORMATS[fmt][0]} yazılıyor"
         for ch in chapters:  # çeviride kalmış "… sonu" notları, tek nokta satırları, filigranlar
             ch.paragraphs = clean_output_paragraphs(ch.paragraphs)
         if cover is None and novel.cover_url:
@@ -151,10 +153,10 @@ class Job:
         first, last = chapters[0].index, chapters[-1].index
         rng = f"{first}-{last}"
         suffix = o.lang if o.translate else "orijinal"
-        out = Path(o.output) / f"{slugify(novel.title)}_{rng}_{suffix}.epub"
+        base = Path(o.output) / f"{slugify(novel.title)}_{rng}_{suffix}"
         lang_label = LANGUAGES.get(o.lang, LANGUAGES["tr"])[1]
-        build_epub(novel, chapters, out, language=o.lang if o.translate else "en", cover=cover,
-                   subtitle=f"Bölüm {rng}" + (f" · {lang_label}" if o.translate else ""))
+        out = export(fmt, novel, chapters, base, language=o.lang if o.translate else "en", cover=cover,
+                     subtitle=f"Bölüm {rng}" + (f" · {lang_label}" if o.translate else ""))
         self.p.result = str(out)
         self.log(f"Hazır: {out}")
         return out
@@ -212,7 +214,7 @@ class Job:
                 todo = failed
             else:
                 for ref in failed:
-                    self.log(f"  ! {ref.index}. bölüm alınamadı, EPUB'da boş sayfa olarak kalacak")
+                    self.log(f"  ! {ref.index}. bölüm alınamadı, kitapta boş sayfa olarak kalacak")
                     result[ref.index] = Chapter(ref.index, ref.title, ref.url, [])
         return [result[r.index] for r in refs]
 
@@ -430,11 +432,11 @@ class Job:
         if stop_reason:
             if not results:
                 raise QuotaExhausted(stop_reason)
-            # Tüm modellerin kotası bitti: çevrilenlerle kısmi EPUB çıkar; tekrar başlatınca kaldığı yerden sürer.
+            # Tüm modellerin kotası bitti: çevrilenlerle kısmi kitap çıkar; tekrar başlatınca kaldığı yerden sürer.
             self.log(f"Çeviri durdu: {stop_reason}")
             self.p.error = f"Kısmi: {len(results)} bölüm çevrili ({stop_reason})"
 
-        # EPUB, çevrilmiş son bölüme kadar gider; arada çevrilemeyenler orijinal metniyle kalır.
+        # Kitap, çevrilmiş son bölüme kadar gider; arada çevrilemeyenler orijinal metniyle kalır.
         last = max(results, default=0)
         out = [results.get(ch.index) or Chapter(ch.index, f"[Çevrilemedi] {ch.title}", ch.url, ch.paragraphs)
                for ch in chapters if ch.index <= last]
@@ -442,11 +444,11 @@ class Job:
         if failed:
             self.p.report["cevrilemeyen"] = failed
             self.p.notice = (self.p.notice + " " if self.p.notice else "") + (
-                f"{len(failed)} bölüm çevrilemedi ve EPUB'da orijinal metniyle duruyor. Aynı linkle tekrar Başlat'a "
+                f"{len(failed)} bölüm çevrilemedi ve kitapta orijinal metniyle duruyor. Aynı linkle tekrar Başlat'a "
                 "basınca yalnız bunlar denenir.")
-            self.log(f"{len(failed)} bölüm çevrilemedi, EPUB'da orijinal metniyle duruyor: {failed[:30]}. "
+            self.log(f"{len(failed)} bölüm çevrilemedi, kitapta orijinal metniyle duruyor: {failed[:30]}. "
                      "Aynı linkle tekrar başlatınca yalnız bunlar ve kalanlar denenir.")
         if self.p.error:
-            self.log(f"{len(out)} bölümlük kısmi EPUB hazırlanıyor. Kota yenilenince aynı linkle başlat, kaldığı yerden sürer.")
+            self.log(f"{len(out)} bölümlük kısmi kitap hazırlanıyor. Kota yenilenince aynı linkle başlat, kaldığı yerden sürer.")
         self.log(f"Terim sözlüğü: {store.glossary_path} · hikâye hafızası: {store.memory_path}")
         return out

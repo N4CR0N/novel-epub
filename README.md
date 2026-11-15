@@ -4,7 +4,8 @@
 
 Give it a web novel link or a file: it fetches the full chapter list, downloads and checks every chapter, optionally
 translates them into literary prose with AI (Turkish and 17 other languages), and packs everything into **one EPUB**
-for any e-book reader (Moon+ Reader, ReadEra, Apple Books, Google Play Books…).
+for any e-book reader (Moon+ Reader, ReadEra, Apple Books, Google Play Books…). Word, HTML, TXT or Markdown
+output can be chosen in Settings.
 
 ## Install (Windows)
 
@@ -100,7 +101,7 @@ is written with what has been translated; start again with the same link and it 
 | Gap repair | Paragraphs left in the source language (cut-off or copied answers, interruptions) are detected and only those are retranslated; older translations are scanned on every run and failed chapters are retried one by one at the end. If editing makes a chapter worse, the draft is kept. |
 | Editing pass | Optional second pass: meaning, fluency, forms of address and spelling, like an editor. |
 | Resume | Every downloaded/translated chapter is cached in `kutuphane/`; a new run only does what is missing. |
-| EPUB | Cover, colophon, table of contents, readable CSS (EPUB 3 + NCX); written to `cikti/`. |
+| Output | EPUB by default (cover, colophon, table of contents, readable CSS; EPUB 3 + NCX). In **Settings** you can switch to Word (DOCX), a single HTML file, TXT or Markdown. Written to `cikti/`. |
 
 ## Tips
 
