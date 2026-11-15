@@ -12,8 +12,8 @@ output can be chosen next to the target language.
 1. Download **[WebNovelDownloaderTranslator.exe](https://github.com/N4CR0N/novel-epub/releases/latest/download/WebNovelDownloaderTranslator.exe)** (latest release). Every version is listed on the
    [Releases](https://github.com/N4CR0N/novel-epub/releases) page; the version number is shown under the app name.
 2. Double-click it. No installation; it opens in its own window.
-   - It is unsigned, so Windows may say "Windows protected your PC": **More info → Run anyway**.
-   - If the firewall asks, allow **Private networks** (for downloading to your phone).
+   - It is unsigned, so Windows may say "Windows protected your PC": **More info → Run anyway**. Each release note
+     lists the file's SHA-256; you can compare it with `Get-FileHash WebNovelDownloaderTranslator.exe` in PowerShell.
 3. Open the **AI** tab, paste an API key and press **Add**. The provider and the models you can use are detected
    automatically; tick the ones you want.
 
@@ -48,8 +48,9 @@ the Windows app.
 - **Download & translate:** paste a link (novel page or any chapter), optionally a chapter range, then **Start**.
   "Test site" tries the chapter list and the first chapter first.
 - Progress and the log update live; the finished EPUB appears under "Ready books".
-- **Phone:** with the PC and phone on the same Wi‑Fi, open the `http://192.168.x.x:5000` address shown in the app on
-  your phone and tap an EPUB to download it.
+- **Phone:** tick "Let a phone on the same Wi‑Fi download finished books" under Ready books, open the
+  `http://192.168.x.x:5000` address shown there on your phone and tap an EPUB to download it. If the firewall asks,
+  allow **Private networks**. The switch is off by default.
 - **Interface:** theme (light / dark / system) and interface language (Türkçe, English, Deutsch, Español, Русский)
   in the top-right corner; the device language is preselected. The window opens maximized the first time and then
   remembers its size.
@@ -130,10 +131,15 @@ For personal reading; respect the sites' terms and the authors' and translators'
 ## Privacy and security
 
 - API keys are stored in the Windows Credential Manager (only if that is unavailable, in `ayarlar.json` inside your
-  data folder). They never go into logs or EPUBs, and the interface only ever shows the last four characters.
-- The local server is reachable from your Wi-Fi so that your phone can download finished books. Other devices can
-  **only** see the book list and download EPUBs; settings, keys, the library and starting jobs work from this
-  computer only. Requests from other websites (CSRF) and DNS-rebinding requests are rejected.
+  data folder; on Android in the app's private storage). The AI tab says where they are. They never go into logs or
+  EPUBs, and the interface only ever shows the last four characters. A key whose format isn't recognised is not tried
+  on every provider: you choose which one it belongs to.
+- The local server listens only on this computer unless you turn on phone downloads. Even then other devices can
+  **only** see the book list and download EPUBs. Settings, keys, the library and starting jobs need a per-launch
+  access key that only the app's own window has, so other programs on the same computer or phone can't use them
+  either. Requests from other websites (CSRF) and DNS-rebinding requests are rejected.
+- Links found on novel pages (next chapter, cover image) are opened only if they are ordinary internet addresses:
+  `file://`, `localhost` and local-network addresses are refused.
 - Nothing is sent anywhere except the novel sites you open and the AI provider you choose.
 - Found a security problem? Please open a [private security advisory](https://github.com/N4CR0N/novel-epub/security/advisories/new).
 

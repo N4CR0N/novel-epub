@@ -13,7 +13,7 @@ EPUB'u telefondaki kitap uygulamasıyla (Moon+ Reader, ReadEra, Apple Books, Goo
    [Releases](https://github.com/N4CR0N/novel-epub/releases) sayfasında; sürüm numarası uygulamada adın altında yazar.
 2. Çift tıkla. Kurulum yok; kendi penceresinde açılır.
    - İmzasız olduğu için Windows ilk seferde "Windows bilgisayarınızı korudu" diyebilir: **Ek bilgi → Yine de çalıştır**.
-   - Güvenlik duvarı izin sorarsa **Özel ağlar**'a izin ver (telefondan indirme için).
+     Her sürüm notunda dosyanın SHA-256 özeti var; PowerShell'de `Get-FileHash WebNovelDownloaderTranslator.exe` ile karşılaştırabilirsin.
 3. **Yapay zekâ** sekmesine API anahtarını yapıştır, **Ekle**. Anahtarın hangi sağlayıcıya ait olduğu ve erişebildiğin
    modeller kendiliğinden bulunur; kullanmak istediklerini işaretle.
 
@@ -52,8 +52,9 @@ uygulamasında çalışır.
 - **İndir ve çevir:** linki yapıştır (roman sayfası ya da herhangi bir bölüm), istersen bölüm aralığı ver, **Başlat**.
   "Siteyi dene" bölüm listesini ve ilk bölümü deneyip sonucu gösterir.
 - İlerleme çubuğu ve kayıt canlı akar. Bitince EPUB "Hazır kitaplar" listesine düşer.
-- **Telefondan:** PC ile telefon aynı Wi‑Fi'deyse, uygulamada yazan `http://192.168.x.x:5000` adresini telefonda aç;
-  EPUB'a dokununca doğrudan telefona iner.
+- **Telefondan:** "Hazır kitaplar"ın altındaki "Aynı Wi‑Fi'deki telefon hazır kitapları indirebilsin" kutusunu işaretle,
+  orada yazan `http://192.168.x.x:5000` adresini telefonda aç; EPUB'a dokununca telefona iner. Güvenlik duvarı sorarsa
+  **Özel ağlar**'a izin ver. Kutu varsayılan olarak kapalı.
 
 Komut satırı:
 
@@ -128,11 +129,15 @@ Kişisel okuma içindir; sitelerin kullanım koşullarına ve yazar/çevirmen em
 
 ## Gizlilik ve güvenlik
 
-- API anahtarları Windows Kimlik Bilgisi Yöneticisi'nde saklanır (o kullanılamazsa veri klasöründeki `ayarlar.json`'da).
-  Kayda ya da EPUB'a yazılmaz; arayüz yalnız son dört karakteri gösterir.
-- Yerel sunucu, telefonun hazır kitapları indirebilmesi için Wi‑Fi'den erişilebilir. Diğer cihazlar **yalnız** kitap
-  listesini görüp EPUB indirebilir; ayarlar, anahtarlar, kitaplık ve çeviri başlatma yalnız bu bilgisayardan çalışır.
-  Başka sitelerden gelen istekler (CSRF) ve DNS yeniden bağlama istekleri reddedilir.
+- API anahtarları Windows Kimlik Bilgisi Yöneticisi'nde saklanır (o kullanılamazsa veri klasöründeki `ayarlar.json`'da;
+  Android'de uygulamanın özel alanında). Nerede durduğu Yapay zekâ sekmesinde yazar. Kayda ya da EPUB'a yazılmaz; arayüz
+  yalnız son dört karakteri gösterir. Biçimi tanınmayan anahtar her sağlayıcıda denenmez; hangisine ait olduğunu sen seçersin.
+- Telefondan indirme açılmadıkça yerel sunucu yalnız bu bilgisayardan erişilebilir. Açıkken de diğer cihazlar **yalnız**
+  kitap listesini görüp EPUB indirebilir. Ayarlar, anahtarlar, kitaplık ve iş başlatma her açılışta değişen, yalnız
+  uygulamanın kendi penceresinin bildiği bir erişim anahtarı ister; aynı bilgisayardaki ya da telefondaki başka
+  programlar da bunlara dokunamaz. Başka sitelerden gelen istekler (CSRF) ve DNS yeniden bağlama istekleri reddedilir.
+- Novel sayfalarındaki bağlantılar (sonraki bölüm, kapak resmi) yalnız internet adresiyse açılır: `file://`, `localhost`
+  ve yerel ağ adresleri reddedilir.
 - Açtığın novel siteleri ve seçtiğin yapay zekâ sağlayıcısı dışında hiçbir yere veri gönderilmez.
 - Güvenlik açığı bulursan lütfen [gizli güvenlik bildirimi](https://github.com/N4CR0N/novel-epub/security/advisories/new) aç.
 

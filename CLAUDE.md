@@ -13,16 +13,16 @@ Depo herkese açık (MIT lisansı): gizli bilgi, kişisel bilgi, sunucu adresi a
 - `gelistir.bat` (Windows): .venv kurar, uygulamayı **kaynak koddan** pencerede açar. Kod değişince pencereyi kapat-aç.
 - Elle: `python -m venv .venv && .venv\Scripts\pip install -r requirements.txt pywebview pytest`, sonra
   `.venv\Scripts\python uygulama.py` (pencere) ya da `python -m novel_epub` (tarayıcıda, 127.0.0.1:5000).
-- Testler: `.venv\Scripts\python -m pytest -q` (ağsız; şu an 65 test). Her değişiklikte çalıştır, kırmızıyla push etme.
+- Testler: `.venv\Scripts\python -m pytest -q` (ağsız; şu an 80 test; `tests/conftest.py` istemciye erişim anahtarını ekler). Her değişiklikte çalıştır, kırmızıyla push etme.
 - Veri klasörü: exe/kaynak klasöründe `kutuphane/` varsa orası; yoksa `Belgeler\Novel EPUB` (eski sürüm) varsa o, yoksa
   `Belgeler\WebNovel Downloader & Translator` (`NOVEL_EPUB_HOME` ile değişir).
   İçinde: `kutuphane/<kaynak>-<kitap>/` (ham/, ceviri[-dil]/, ceviri_eski/, sozluk[-dil].json, hafiza[-dil].json,
   talimat[-dil].txt), `cikti/*.epub`, `ayarlar.json`, `uygulama.log`, `yuklenen/`, `telefon-gecmis/`.
 
 ## Yayın
-`main`'e push → `.github/workflows/windows-uygulama.yml` (windows-latest): pytest → UPX → PyInstaller `uygulama.spec`
+`main`'e push → `.github/workflows/windows-uygulama.yml` (windows-latest): `requirements-ci.txt` (hash kilitli) → pytest → PyInstaller `uygulama.spec` (UPX yok: antivirüs yanlış alarmı)
 (tek dosya, pencereli, simge `assets/icon.ico`; kullanılmayan paketler, UCRT ve x64 dışı WebView2Loader dışlanır) →
-`--oz-test` (pencere açmadan arayüz/sunucu/kasa + `llm` sahte yanıt denetimi) → boyut dökümü (PYZ paket paket) →
+`--oz-test` (pencere açmadan arayüz/sunucu/kasa/erişim anahtarı + `llm` sahte yanıt denetimi) → boyut dökümü (PYZ paket paket) + SHA-256 sürüm notuna →
 her main yayını ayrı sürüm: `VERSION` dosyası (ör. `1.2`) + sıradaki yama no → `v1.2.0` etiketi, İngilizce sürüm notu;
 değişiklik listesi commit başlıklarından (yalnız .github/, CLAUDE.md, README'ye dokunan commit'ler hariç) → **commit
 başlıklarını İngilizce ve kullanıcıya dönük yaz**; yalnız CI değişikliğinde `[skip ci]`; exe içine `novel_epub/_surum.py` yazılır (arayüzde adın altında görünür).
@@ -34,7 +34,7 @@ oluşturma/düzenleme kapalı — sürüm işleri yalnız Actions workflow'ları
 **Her başarısız Actions çalıştırması kullanıcıya mail atar** (istemiyor): bilerek başarısız derleme tetikleme,
 workflow betiklerini önce yerelde dene, emin olmadığın şeyi dal + `workflow run` ile tek seferde doğrula. Öz-test
 (`--oz-test`) pencerenin WinForms/WebView2 tarafını da yükler (WebView2Loader'ın 3 mimari kopyası da pakette kalmalı).
-Yeni bir Python paketi eklersen `requirements.txt`'e ve gerekiyorsa `uygulama.spec`'e ekle. Boyut önemli (107 MB → ~18 MB;
+Action'lar commit SHA'sına sabit (yorumda sürüm), izinler iş başına. Yeni bir Python paketi eklersen `requirements.txt`'e, gerekiyorsa `uygulama.spec`'e ekle ve kilidi yenile: `(cat requirements.txt; printf 'pywebview\npyinstaller\npytest\n') > /tmp/ci.in && uv pip compile /tmp/ci.in --python-platform windows --python-version 3.12 --generate-hashes -o requirements-ci.txt` (CI `--require-hashes --no-deps` ile kurar). Android pip sürümleri `android/app/build.gradle.kts`'te sabit. Boyut önemli (107 MB → ~18 MB;
 hedef ≤10 MB): ağır paket ekleme (LiteLLM, lxml, EbookLib, python-docx bu yüzden çıkarıldı). Dal push'ları Actions'ı
 tetiklemez: `gh workflow run windows-uygulama.yml --ref <dal>` (sürüm yalnız main'den yayımlanır).
 
@@ -73,8 +73,16 @@ tetiklemez: `gh workflow run windows-uygulama.yml --ref <dal>` (sürüm yalnız 
 - `web.py` Flask uçları + ayarlar: anahtarlar kasada `<sağlayıcı>_api_key` (Gemini'nin eski adı aynı), `ayarlar.json`'da
   `models` (`sağlayıcı/model` adları, sıralı), `theme` (light/dark/system), `ui_lang` ve `providers.<id>.models` (erişilen liste); `/api/keys` (ekle/sil/yenile),
   `/api/models`, `/api/sources`. `_guard` (before_request): Host yalnız IP/localhost (DNS rebinding), GET dışı istekte
-Origin aynı host olmalı (CSRF), 127.0.0.1 dışından yalnız `/`, `/api/info|books|languages|settings` (ipucusuz) ve
-`/indir/*` GET; yeni uç eklerken bunu koru. `templates/index.html`: sol menülü tek sayfa (İndir ve çevir, Kitaplık, Yapay zekâ,
+Origin aynı host olmalı (CSRF); tam erişim yalnız `_trusted()` = 127.0.0.1 + `X-Token: API_TOKEN` (her açılışta yeni;
+pencere `local_url()` = `#t=` ile açılır, JS sessionStorage'a alıp her isteğe ekler; Android'de `android_main.token()`).
+Anahtarsız istek (başka yerel program, ağdaki telefon) yalnız `/`, `/api/info|books|languages|settings` (ipucusuz) ve
+`/indir/*` GET; ağdan gelen ancak "telefondan indirme" (`lan_share`, varsayılan kapalı; `/api/lan`) açıkken.
+`start_server(port, lan)` kapalıyken 127.0.0.1'e, açıkken 0.0.0.0'a bağlar (değişince yeniden başlar). Yeni uçta
+endpoint içi kontrol `_trusted()` olsun. `Fetcher` yalnız http/https ve yerel ağ dışı adresleri açar (`check_url`;
+198.18/15 fake-ip serbest), Retry-After ≤120 sn, Durdur beklemeyi keser. `/api/keys`: biçimi tanınmayan anahtar
+hiçbir sağlayıcıya gönderilmez (`UnknownFormat` → arayüz sağlayıcı seçtirir). Kitap klasörü `store.book_dirname`
+(eski ad korunur; çakışma/kesik/Latin dışı başlıkta URL özeti eki). Yüklemeler içerik özetiyle adlanır, 7 günde silinir.
+Aynı kitaba ikinci iş açılmaz (409 + süren işin id'si; `pipeline._ACTIVE_BOOKS`); sayfa yenilenince `/api/jobs` ile bağlanır. `templates/index.html`: sol menülü tek sayfa (İndir ve çevir, Kitaplık, Yapay zekâ,
   Site bul); açık mavi palet, sağ üstte tema (açık/koyu/sistem) ve arayüz dili (tr/en/de/es/ru; varsayılan cihaz dili;
   `templates/i18n.js`, `T()` ile; anahtarlar Türkçe metinler), geniş ekranda iki sütun, mobil uyumlu. Pencere açılışta
   büyütülür, boyutu `pencere.json`'da hatırlanır. README.md İngilizce (ana), README.tr.md Türkçe. `app.py` masaüstü penceresi + `--oz-test`. `history.py` PC tarayıcı geçmişi/yer işaretlerinden
@@ -91,7 +99,9 @@ Origin aynı host olmalı (CSRF), 127.0.0.1 dışından yalnız `/`, `/api/info|
 - CI: `android-apk.yml` (elle; denemeler mail atmasın diye `continue-on-error`) APK + emülatör testi
   (`.github/emulator-smoke.sh`: arayüz açılıyor mu; GitHub IP'sinden siteler Cloudflare engeline takılır, bilgi amaçlı).
   Sürüm hattındaki `android` işi APK'yı yalnız `ANDROID_KEYSTORE_B64` + `ANDROID_KEYSTORE_PASSWORD` gizli değerleri
-  varsa imzalayıp yayımlar (yoksa atlar). Anahtarı kullanıcı GitHub'a ekler; oturum gizli değerlere yazamaz, anahtarı
+  varsa yayımlar (yoksa atlar): Gradle imzasız derler (`ANDROID_UNSIGNED=1`), gizli değerler yalnız ayrı "İmzala"
+  adımına (zipalign + apksigner, parola dosyadan) verilir; APK'nın SHA-256'sı sürüm notuna eklenir. Gizli değerlerden
+  türeyen hiçbir şeyi (özet öneki, uzunluk) loga basma: depo herkese açık. Anahtarı kullanıcı GitHub'a ekler; oturum gizli değerlere yazamaz, anahtarı
   ekrana basma. Uygulama kimliği `io.github.n4cr0n.novelepub`, yalnız arm64.
 - Sırada: Google Drive (giriş, uygulama klasörü, otomatik yükleme, kitaplık yedeği; `drive.file` kapsamı, Google
   projesi "In production" olmalı yoksa giriş 7 günde düşer). Kullanıcının Google Cloud projesi gerekiyor.
