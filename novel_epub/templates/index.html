@@ -295,7 +295,7 @@
         <div class="row"><input class="grow" id="key" type="password" placeholder="Gemini, OpenAI, Claude, DeepSeek, OpenRouter, Groq, xAI, Mistral… ya da ollama" autocomplete="off" spellcheck="false">
           <button id="addKey" type="button">Ekle</button></div>
         <div class="msg" id="keyMsg"></div>
-        <div class="mut"><span>Ücretsiz Gemini anahtarı için:</span> <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. <span>Anahtarlar Windows kimlik bilgisi kasasında saklanır.</span></div>
+        <div class="mut"><span>Ücretsiz Gemini anahtarı için:</span> <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. <span id="keyStore"></span></div>
         <div id="provs"></div>
       </section>
       <section class="panel">
@@ -387,8 +387,17 @@ function renderFormats(s) {
   $('fmt').value = s.output_format || cur;
 }
 $('fmt').onchange = () => { api('/api/settings', {output_format: $('fmt').value}).catch(() => {}); };
+const KEY_STORE = {
+  windows: 'Anahtarlar Windows kimlik bilgisi kasasında saklanır.',
+  kasa: 'Anahtarlar sistemin parola kasasında saklanır.',
+  android: 'Anahtarlar telefonda yalnız bu uygulamanın erişebildiği alanda saklanır.',
+  dosya: 'Anahtarlar veri klasöründeki ayarlar.json dosyasında şifresiz saklanır.',
+  ortam: 'Anahtar ortam değişkeninden okunuyor.',
+};
 function renderSettings(s) {
   settings = s; renderFormats(s);
+  const ks = $('keyStore');
+  ks.textContent = KEY_STORE[s.key_store] || ''; translateDOM(ks);
   $('delay').value = s.delay; $('workers').value = s.workers; $('batch').value = s.batch ?? 0;
   $('thinking').value = s.thinking || 'medium'; $('temp').value = s.temperature ?? 0.7;
   const chosen = new Set(s.models || []);

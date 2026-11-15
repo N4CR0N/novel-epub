@@ -128,7 +128,14 @@ def load_settings() -> dict:
 def save_settings(s: dict, new_keys: dict | None = None, removed: tuple = ()) -> None:
     """Ayarları ayarlar.json'a yazar; anahtarlar kasa varsa kasaya, yoksa dosyaya gider."""
     out = {k: v for k, v in s.items() if k not in ("api_key", "key_store", "keys", "model")}
-    file_keys = dict(s.get("keys") or {}) if s.get("key_store") == "dosya" else {}
+    # Dosyadaki anahtarlar dosyadan okunur: s["keys"] ortam değişkeni anahtarlarını da içerir (onları diske yazma),
+    # ortam değişkeni varken de dosyadaki diğer anahtarlar silinmesin.
+    old = _read_file()
+    file_keys = dict(old.get("keys") or {})
+    if old.get("api_key"):
+        file_keys.setdefault("gemini", old["api_key"])
+    if s.get("key_store") == "dosya":  # anahtarların tamamı dosyadan geldiyse (ortamdan değil) aynen korunur
+        file_keys.update(s.get("keys") or {})
     kr = _keyring()
     for pid, key in (new_keys or {}).items():
         stored = False
@@ -170,7 +177,12 @@ def _public_settings(s: dict) -> dict:
                       "hint": (f"…{key[-4:]}" if key and not key.startswith("http") else key),
                       "available": info.get("models") or [], "key_url": p.key_url})
     hidden = ("api_key", "keys", "providers")
-    return {**{k: v for k, v in s.items() if k not in hidden}, "providers": provs,
+    where = s.get("key_store")
+    if where == "kasa" and sys.platform == "win32":
+        where = "windows"
+    elif where == "dosya" and ANDROID:
+        where = "android"
+    return {**{k: v for k, v in s.items() if k not in hidden}, "providers": provs, "key_store": where,
             "has_key": any(x["has_key"] for x in provs),
             "formats": [{"id": k, "name": v[0]} for k, v in FORMATS.items()]}
 

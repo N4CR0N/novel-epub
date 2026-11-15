@@ -100,3 +100,64 @@ def test_old_uploads_are_pruned(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(web, "UPLOADS", up)
     web._prune_uploads()
     assert not stale.exists()
+
+
+# --- ağ: yerel adres, Retry-After, Durdur -----------------------------------------------------------------
+
+def test_fetcher_refuses_local_and_non_http_urls():
+    import pytest
+
+    from novel_epub.fetcher import FetchError, Fetcher
+
+    f = Fetcher(delay=0)
+    for url in ("file:///etc/passwd", "http://127.0.0.1:5000/api/settings", "http://192.168.1.10/",
+                "http://[::1]/", "http://localhost/", "http://169.254.169.254/latest/meta-data/"):
+        with pytest.raises(FetchError):
+            f.get(url)
+
+
+def test_fetcher_caps_retry_after_and_stops_on_cancel(monkeypatch):
+    import threading
+
+    import pytest
+
+    from novel_epub import fetcher as fm
+
+    class Resp:
+        status_code, url, text = 429, "", ""
+        headers = {"Retry-After": "86400"}
+
+    stop = threading.Event()
+    f = fm.Fetcher(delay=0, retries=2, stop=stop)
+    monkeypatch.setattr(fm, "check_url", lambda url: None)
+    monkeypatch.setattr(f.session, "get", lambda *a, **k: Resp())
+    waits = []
+    monkeypatch.setattr(f, "_sleep", lambda s: waits.append(s))
+    with pytest.raises(fm.FetchError):
+        f.get("https://site.example/a")
+    assert waits and max(waits) <= fm.MAX_RETRY_AFTER
+
+    f2 = fm.Fetcher(delay=0, retries=2, stop=stop)
+    monkeypatch.setattr(f2.session, "get", lambda *a, **k: Resp())
+    stop.set()
+    t = time.perf_counter()
+    with pytest.raises(fm.FetchError, match="Durduruldu"):
+        f2.get("https://site.example/a")
+    assert time.perf_counter() - t < 1
+
+
+# --- anahtarlar ---------------------------------------------------------------------------------------------
+
+def test_saving_settings_with_env_key_keeps_file_keys(tmp_path: Path, monkeypatch):
+    from novel_epub import web
+
+    monkeypatch.setattr(web, "SETTINGS_PATH", tmp_path / "ayarlar.json")
+    monkeypatch.setattr(web, "_keyring", lambda: None)
+    (tmp_path / "ayarlar.json").write_text(json.dumps({"models": [], "keys": {"openai": "sk-UYDURMA"}}), "utf-8")
+    monkeypatch.setenv("GEMINI_API_KEY", "AIzaORTAM")
+    s = web.load_settings()
+    assert s["key_store"] == "ortam"
+    s["theme"] = "dark"
+    web.save_settings(s)
+    saved = json.loads((tmp_path / "ayarlar.json").read_text("utf-8"))
+    assert saved["keys"] == {"openai": "sk-UYDURMA"}  # dosyadaki anahtar silinmedi, ortamdaki diske yazılmadı

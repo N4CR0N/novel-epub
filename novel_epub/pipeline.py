@@ -95,7 +95,7 @@ class Job:
 
     def _run(self) -> Path:
         o = self.opts
-        fetcher = Fetcher(delay=o.delay)
+        fetcher = Fetcher(delay=o.delay, stop=self.cancel_event)
         cover = None
         if o.file:
             from .files import load_file
