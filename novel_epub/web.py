@@ -432,7 +432,7 @@ def start_job():
         review_after=20 if data.get("review") else 0,
         library=LIBRARY,
         output=OUTPUT,
-        fmt=normalize(s.get("output_format")),
+        fmt=normalize(data.get("format") or s.get("output_format")),
     )
     if opts.translate and (not opts.model or (not opts.keys and not opts.model.startswith("ollama_chat/"))):
         return jsonify({"error": "Çeviri için önce Ayarlar'dan bir API anahtarı ekle ve en az bir model seç"}), 400

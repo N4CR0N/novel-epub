@@ -1042,6 +1042,21 @@ def test_output_format_setting_drives_jobs_and_book_list(tmp_path: Path, monkeyp
     out = pipeline.Job(pipeline.Options(url="", file=str(src), fmt=web.load_settings()["output_format"],
                                         library=tmp_path / "kutuphane", output=tmp_path / "cikti")).run()
     assert out and Path(out).suffix == ".docx"
+    # Başlat'ta seçilen biçim ayarı ezer (yalnız bu iş için)
+    started = {}
+    class FakeJob:
+        def __init__(self, opts, on_log=None):
+            started["o"] = opts
+
+        def run(self):
+            pass
+
+    monkeypatch.setattr(web, "Job", FakeJob)
+    assert c.post("/api/jobs", json={"url": "https://example.com/novel/x", "format": "html"}).status_code == 200
+    assert started["o"].fmt == "html"
+    started.clear()
+    c.post("/api/jobs", json={"url": "https://example.com/novel/x"})
+    assert started["o"].fmt == "docx"
     (tmp_path / "cikti" / "not.exe").write_bytes(b"MZ")
     books = c.get("/api/books").get_json()
     assert [b["format"] for b in books] == ["docx"]  # yalnız kitap biçimleri listelenir

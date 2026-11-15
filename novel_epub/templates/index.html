@@ -65,15 +65,6 @@
   h1 { font:600 20px/1.2 var(--font-disp); letter-spacing:-.015em; margin:0 0 4px; }
   .lede { color:var(--mut); margin:0 0 18px; }
   h2 { font:600 14px/1.3 var(--font-disp); margin:0 0 10px; }
-  .fmts { display:grid; gap:8px; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); }
-  .fmts label { display:flex; gap:10px; align-items:flex-start; margin:0; padding:10px 12px; border:1px solid var(--line);
-    border-radius:var(--r); background:var(--paper); cursor:pointer; font-weight:400; }
-  .fmts label:has(input:checked) { border-color:var(--acc); background:var(--acc-soft); }
-  .fmts input { width:auto; height:auto; margin-top:3px; accent-color:var(--acc); }
-  .fmts b { display:block; font-weight:600; } .fmts small { color:var(--mut); font-size:12px; }
-  .fmtnote { margin-left:auto; background:none; border:0; padding:0 2px; height:auto; color:var(--mut); font-size:12.5px;
-    font-weight:400; text-decoration:underline dotted; text-underline-offset:3px; cursor:pointer; }
-  .fmtnote:hover { color:var(--acc); background:none; }
   section.panel { background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); padding:16px 18px; margin-bottom:14px; }
   section.panel.quiet { background:transparent; border-style:dashed; }
 
@@ -85,7 +76,7 @@
   textarea.mono { font:12.5px/1.45 ui-monospace,"Cascadia Mono",Consolas,monospace; }
   input:focus, select:focus, textarea:focus { border-color:var(--acc); outline:none; box-shadow:0 0 0 3px var(--acc-soft); }
   .row { display:flex; gap:8px; align-items:center; } .row > .grow { flex:1; }
-  .grid3 { display:grid; grid-template-columns:1.1fr 1fr 1.2fr; gap:10px; }
+  .grid3 { display:grid; grid-template-columns:1fr 1fr; gap:10px 12px; }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   .pair { display:flex; gap:6px; align-items:center; } .pair input { min-width:0; } .pair span { color:var(--mut); }
 
@@ -115,7 +106,7 @@
   .chip { display:inline-flex; align-items:center; gap:6px; height:24px; padding:0 9px; border-radius:12px; background:var(--acc-soft); color:var(--ink); font-size:12px; font-weight:500; }
   .chip.plain { background:var(--sunk); color:var(--mut); }
   .chips { display:flex; flex-wrap:wrap; gap:6px; }
-  .modelpick { all:unset; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:8px; height:34px; padding:0 10px;
+  .modelpick { all:unset; box-sizing:border-box; width:100%; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:8px; height:34px; padding:0 10px;
                border:1px solid var(--line); border-radius:var(--r); background:var(--paper); overflow:hidden; }
   .modelpick b { font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .modelpick:hover { border-color:var(--acc); }
@@ -178,8 +169,6 @@
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 2.5h3.5v11H3zM6.5 2.5H10v11H6.5zM10.5 3.2l2.6-.7 2 10.6-2.6.7z"/></svg>Kitaplık</button>
     <button class="nav" role="tab" data-view="ai" aria-selected="false">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"/></svg>Yapay zekâ</button>
-    <button class="nav" role="tab" data-view="settings" aria-selected="false">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 4.5h7m3 0h1M2.5 11.5h1m3 0h7"/><circle cx="11" cy="4.5" r="1.5"/><circle cx="5" cy="11.5" r="1.5"/></svg>Ayarlar</button>
     <button class="nav" role="tab" data-view="tools" aria-selected="false" id="navTools" hidden>
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3.5 3.5"/></svg>Site bul</button>
     <div class="foot"><div><span class="dot" id="aiDot"></span><span id="aiFoot">Yapay zekâ bağlı değil</span></div>
@@ -230,6 +219,7 @@
             <div class="pair"><input id="start" type="number" min="1" placeholder="1" aria-label="İlk bölüm"><span>–</span>
               <input id="end" type="number" min="1" placeholder="son" aria-label="Son bölüm"></div></div>
           <div><label for="lang">Hedef dil</label><select id="lang"></select></div>
+          <div><label for="fmt">Biçim</label><select id="fmt"></select></div>
           <div><span class="lbl">Modeller</span><button class="modelpick" type="button" id="modelPick"><b id="modelName">Seçilmedi</b><span class="chip plain" id="modelMore" hidden></span></button></div>
         </div>
 
@@ -241,7 +231,6 @@
         <div class="actions">
           <button class="big" id="go" type="button">Başlat</button>
           <button class="ghost" id="stop" type="button" disabled>Durdur</button>
-          <button class="fmtnote" id="fmtNote" type="button"></button>
         </div>
       </section>
       </div><div class="side">
@@ -327,18 +316,6 @@
       </section>
     </div>
 
-    <!-- AYARLAR -->
-    <div data-pane="settings" hidden>
-      <h1>Ayarlar</h1>
-      <p class="lede">Burada seçtiğin ayarlar kaydedilir ve sonraki bütün işlerde kullanılır.</p>
-      <section class="panel">
-        <h2>Çıktı biçimi</h2>
-        <p class="mut" style="margin:-4px 0 12px">İndirilen, çevrilen ya da dosyadan dönüştürülen kitap bu biçimde kaydedilir.</p>
-        <div class="fmts" id="fmts" role="radiogroup" aria-label="Çıktı biçimi"></div>
-        <div class="msg" id="fmtMsg"></div>
-      </section>
-    </div>
-
     <!-- SİTE BUL -->
     <div data-pane="tools" hidden>
       <h1>Okuduğun siteleri bul</h1>
@@ -403,21 +380,13 @@ document.querySelectorAll('.nav').forEach(b => b.onclick = () => show(b.dataset.
 $('modelPick').onclick = () => show('ai');
 
 /* yapay zekâ ayarları */
-const FMT_HELP = {epub: 'E-kitap okuyucu, telefon ve tablet için. Önerilen.', docx: "Word ya da Google Dokümanlar'da düzenlemek için.",
-  html: 'Tarayıcıda açılan tek dosya.', txt: 'Biçimsiz düz metin.', md: 'Not uygulamaları ve metin düzenleyiciler için.'};
 function renderFormats(s) {
-  const cur = s.output_format || 'epub', fs = s.formats || [];
-  $('fmts').innerHTML = fs.map(f => `<label><input type="radio" name="fmt" value="${esc(f.id)}"${f.id === cur ? ' checked' : ''}>
-    <span><b>${esc(T(f.name))}</b><small>${esc(T(FMT_HELP[f.id] || ''))}</small></span></label>`).join('');
-  $('fmts').querySelectorAll('input').forEach(r => r.onchange = async () => {
-    try { renderSettings(await api('/api/settings', {output_format: r.value})); $('fmtMsg').innerHTML = `<span class="ok">${esc(T('Kaydedildi.'))}</span>`; }
-    catch (e) { $('fmtMsg').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
-  });
-  const name = (fs.find(f => f.id === cur) || {name: 'EPUB'}).name;
-  $('fmtNote').textContent = T('{f} olarak kaydedilecek', {f: T(name)});
-  $('fmtNote').title = T("Ayarlar'dan değiştirebilirsin");
+  const cur = $('fmt').value || s.output_format || 'epub';
+  $('fmt').innerHTML = (s.formats || [{id: 'epub', name: 'EPUB'}]).map(f =>
+    `<option value="${esc(f.id)}">${esc(f.id === 'epub' ? T('EPUB (önerilen)') : T(f.name))}</option>`).join('');
+  $('fmt').value = s.output_format || cur;
 }
-$('fmtNote').onclick = () => show('settings');
+$('fmt').onchange = () => { api('/api/settings', {output_format: $('fmt').value}).catch(() => {}); };
 function renderSettings(s) {
   settings = s; renderFormats(s);
   $('delay').value = s.delay; $('workers').value = s.workers; $('batch').value = s.batch ?? 0;
@@ -541,7 +510,7 @@ $('go').onclick = async () => {
     if (mode === 'file' && !fileId) throw new Error(T('Önce bir dosya seç ve okunmasını bekle.'));
     if ($('translate').checked && !(settings && settings.models && settings.models.length)) { show('ai'); throw new Error(T('Çeviri için önce bir API anahtarı ekle ve model seç.')); }
     const d = await api('/api/jobs', {url: mode === 'site' ? $('url').value : '', file_id: mode === 'file' ? fileId : '',
-      lang:$('lang').value, start:$('start').value, end:$('end').value, translate:$('translate').checked, edit:$('edit').checked, review:$('review').checked});
+      lang:$('lang').value, format:$('fmt').value, start:$('start').value, end:$('end').value, translate:$('translate').checked, edit:$('edit').checked, review:$('review').checked});
     jobId = d.id; $('jobCard').hidden = false; $('jResult').innerHTML = '';
     $('go').disabled = true; $('stop').disabled = false;
     clearInterval(timer); timer = setInterval(poll, 1500); poll();

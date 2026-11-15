@@ -1,7 +1,8 @@
 // Arayüz dilleri. Anahtar Türkçe metnin kendisidir; çevirisi olmayan metin Türkçe kalır. {x} = değişken.
 const I18N = {
 en: {
-"Ayarlar": "Settings", "Burada seçtiğin ayarlar kaydedilir ve sonraki bütün işlerde kullanılır.": "Settings chosen here are saved and used for every following job.", "Çıktı biçimi": "Output format", "İndirilen, çevrilen ya da dosyadan dönüştürülen kitap bu biçimde kaydedilir.": "Downloaded, translated or converted books are saved in this format.", "E-kitap okuyucu, telefon ve tablet için. Önerilen.": "For e-readers, phones and tablets. Recommended.", "Word ya da Google Dokümanlar'da düzenlemek için.": "To edit in Word or Google Docs.", "Tarayıcıda açılan tek dosya.": "A single file that opens in a browser.", "Biçimsiz düz metin.": "Plain text without formatting.", "Not uygulamaları ve metin düzenleyiciler için.": "For note apps and text editors.", "{f} olarak kaydedilecek": "Will be saved as {f}", "Ayarlar'dan değiştirebilirsin": "You can change this in Settings",
+"Biçim": "Format", "EPUB (önerilen)": "EPUB (recommended)",
+"Ayarlar": "Settings", 
 "Tema": "Theme", "Açık tema": "Light theme", "Koyu tema": "Dark theme", "Sistem teması": "System theme",
 "İndir ve çevir": "Download & translate", "Kitaplık": "Library", "Yapay zekâ": "AI", "Site bul": "Find sites",
 "Yapay zekâ bağlı değil": "No AI connected", "{n} model hazır": "{n} models ready", "Arayüz dili": "Interface language",
@@ -65,7 +66,8 @@ en: {
 "Bu cihazdan yalnız hazır kitaplar indirilebilir; çeviri ve ayarlar bilgisayardaki uygulamada.": "Only finished books can be downloaded from this device; translation and settings are in the app on the computer.",
 },
 de: {
-"Ayarlar": "Einstellungen", "Burada seçtiğin ayarlar kaydedilir ve sonraki bütün işlerde kullanılır.": "Die hier gewählten Einstellungen werden gespeichert und für alle weiteren Aufträge verwendet.", "Çıktı biçimi": "Ausgabeformat", "İndirilen, çevrilen ya da dosyadan dönüştürülen kitap bu biçimde kaydedilir.": "Geladene, übersetzte oder umgewandelte Bücher werden in diesem Format gespeichert.", "E-kitap okuyucu, telefon ve tablet için. Önerilen.": "Für E-Reader, Handy und Tablet. Empfohlen.", "Word ya da Google Dokümanlar'da düzenlemek için.": "Zum Bearbeiten in Word oder Google Docs.", "Tarayıcıda açılan tek dosya.": "Eine einzelne Datei, die sich im Browser öffnet.", "Biçimsiz düz metin.": "Reiner Text ohne Formatierung.", "Not uygulamaları ve metin düzenleyiciler için.": "Für Notiz-Apps und Texteditoren.", "{f} olarak kaydedilecek": "Wird als {f} gespeichert", "Ayarlar'dan değiştirebilirsin": "In den Einstellungen änderbar",
+"Biçim": "Format", "EPUB (önerilen)": "EPUB (empfohlen)",
+"Ayarlar": "Einstellungen", 
 "Tema": "Design", "Açık tema": "Helles Design", "Koyu tema": "Dunkles Design", "Sistem teması": "Systemdesign",
 "İndir ve çevir": "Laden & übersetzen", "Kitaplık": "Bibliothek", "Yapay zekâ": "KI", "Site bul": "Seiten finden",
 "Yapay zekâ bağlı değil": "Keine KI verbunden", "{n} model hazır": "{n} Modelle bereit", "Arayüz dili": "Sprache der Oberfläche",
@@ -129,7 +131,8 @@ de: {
 "Bu cihazdan yalnız hazır kitaplar indirilebilir; çeviri ve ayarlar bilgisayardaki uygulamada.": "Von diesem Gerät können nur fertige Bücher geladen werden; Übersetzung und Einstellungen gibt es in der App auf dem Computer.",
 },
 es: {
-"Ayarlar": "Ajustes", "Burada seçtiğin ayarlar kaydedilir ve sonraki bütün işlerde kullanılır.": "Los ajustes elegidos aquí se guardan y se usan en todos los trabajos siguientes.", "Çıktı biçimi": "Formato de salida", "İndirilen, çevrilen ya da dosyadan dönüştürülen kitap bu biçimde kaydedilir.": "Los libros descargados, traducidos o convertidos se guardan en este formato.", "E-kitap okuyucu, telefon ve tablet için. Önerilen.": "Para lectores de libros electrónicos, móviles y tabletas. Recomendado.", "Word ya da Google Dokümanlar'da düzenlemek için.": "Para editar en Word o Google Docs.", "Tarayıcıda açılan tek dosya.": "Un solo archivo que se abre en el navegador.", "Biçimsiz düz metin.": "Texto plano sin formato.", "Not uygulamaları ve metin düzenleyiciler için.": "Para apps de notas y editores de texto.", "{f} olarak kaydedilecek": "Se guardará como {f}", "Ayarlar'dan değiştirebilirsin": "Puedes cambiarlo en Ajustes",
+"Biçim": "Formato", "EPUB (önerilen)": "EPUB (recomendado)",
+"Ayarlar": "Ajustes", 
 "Tema": "Tema", "Açık tema": "Tema claro", "Koyu tema": "Tema oscuro", "Sistem teması": "Tema del sistema",
 "İndir ve çevir": "Descargar y traducir", "Kitaplık": "Biblioteca", "Yapay zekâ": "IA", "Site bul": "Buscar sitios",
 "Yapay zekâ bağlı değil": "Sin IA conectada", "{n} model hazır": "{n} modelos listos", "Arayüz dili": "Idioma de la interfaz",
@@ -193,7 +196,8 @@ es: {
 "Bu cihazdan yalnız hazır kitaplar indirilebilir; çeviri ve ayarlar bilgisayardaki uygulamada.": "Desde este dispositivo solo se pueden descargar los libros terminados; la traducción y los ajustes están en la app del ordenador.",
 },
 ru: {
-"Ayarlar": "Настройки", "Burada seçtiğin ayarlar kaydedilir ve sonraki bütün işlerde kullanılır.": "Выбранные здесь настройки сохраняются и используются во всех следующих заданиях.", "Çıktı biçimi": "Формат вывода", "İndirilen, çevrilen ya da dosyadan dönüştürülen kitap bu biçimde kaydedilir.": "Скачанные, переведённые или преобразованные книги сохраняются в этом формате.", "E-kitap okuyucu, telefon ve tablet için. Önerilen.": "Для электронных книг, телефонов и планшетов. Рекомендуется.", "Word ya da Google Dokümanlar'da düzenlemek için.": "Для правки в Word или Google Документах.", "Tarayıcıda açılan tek dosya.": "Один файл, который открывается в браузере.", "Biçimsiz düz metin.": "Простой текст без оформления.", "Not uygulamaları ve metin düzenleyiciler için.": "Для приложений заметок и текстовых редакторов.", "{f} olarak kaydedilecek": "Сохранится как {f}", "Ayarlar'dan değiştirebilirsin": "Можно изменить в настройках",
+"Biçim": "Формат", "EPUB (önerilen)": "EPUB (рекомендуется)",
+"Ayarlar": "Настройки", 
 "Tema": "Тема", "Açık tema": "Светлая тема", "Koyu tema": "Тёмная тема", "Sistem teması": "Системная тема",
 "İndir ve çevir": "Скачать и перевести", "Kitaplık": "Библиотека", "Yapay zekâ": "ИИ", "Site bul": "Найти сайты",
 "Yapay zekâ bağlı değil": "ИИ не подключён", "{n} model hazır": "Готово моделей: {n}", "Arayüz dili": "Язык интерфейса",
