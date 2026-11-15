@@ -138,8 +138,8 @@ def main() -> None:
     web.LIBRARY.mkdir(exist_ok=True)
     web.OUTPUT.mkdir(exist_ok=True)
     web.APP_MODE["port"] = port
-    # Aynı Wi‑Fi'den indirme ayarı kapalıysa (varsayılan) sunucu yalnız bu bilgisayardan erişilebilir.
-    web.start_server(port, lan=bool(web.load_settings().get("lan_share")))
+    # Aynı Wi‑Fi'deki telefon hazır kitapları indirebilir (yalnız okuma; ayarlar/işler erişim anahtarı ister).
+    web.start_server(port, lan=True)
 
     webview.settings["ALLOW_DOWNLOADS"] = True
     # Pencere: ilk açılışta ekranı kaplar (her çözünürlük/ölçekte düzgün); sonra son boyut ve konum hatırlanır.

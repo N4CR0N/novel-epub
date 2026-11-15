@@ -1,0 +1,302 @@
+<style>
+  /* Okuyucu: uygulamanın üstünde tam ekran; kendi temaları (uygulama temasından bağımsız) */
+  #reader { position:fixed; inset:0; z-index:50; display:flex; flex-direction:column;
+            --rbg:#fbfaf7; --rink:#22252a; --rmut:#767b83; --rline:#e4e2dc; --rbar:rgba(251,250,247,.96); --racc:#2f7fc4;
+            background:var(--rbg); color:var(--rink); }
+  #reader[data-th=sepia] { --rbg:#f3ead7; --rink:#3d3123; --rmut:#86765f; --rline:#e1d4b9; --rbar:rgba(243,234,215,.96); --racc:#9a5b1e; }
+  #reader[data-th=night] { --rbg:#1d2024; --rink:#cfd3d8; --rmut:#8a9099; --rline:#30353b; --rbar:rgba(29,32,36,.96); --racc:#7fb6e6; color-scheme:dark; }
+  #reader[data-th=black] { --rbg:#000; --rink:#a9adb2; --rmut:#6d7177; --rline:#1d1f22; --rbar:rgba(0,0,0,.94); --racc:#7fb6e6; color-scheme:dark; }
+  #reader[hidden] { display:none; }
+  #reader .rbar { position:absolute; left:0; right:0; z-index:2; display:flex; align-items:center; gap:6px; padding:8px 10px;
+                  background:var(--rbar); color:var(--rink); transition:transform .18s ease, opacity .18s ease; }
+  #reader .rtop { top:0; border-bottom:1px solid var(--rline); }
+  #reader .rbot { bottom:0; border-top:1px solid var(--rline); flex-direction:column; align-items:stretch; gap:4px; }
+  #reader.chrome-off .rtop { transform:translateY(-100%); opacity:0; pointer-events:none; }
+  #reader.chrome-off .rbot { transform:translateY(100%); opacity:0; pointer-events:none; }
+  #reader .rbtn { all:unset; cursor:pointer; min-width:38px; height:38px; display:grid; place-items:center; border-radius:8px; color:var(--rink); }
+  #reader .rbtn:hover { background:color-mix(in srgb, var(--rink) 8%, transparent); }
+  #reader .rbtn:focus-visible { outline:2px solid var(--racc); }
+  #reader .rbtn svg { width:21px; height:21px; }
+  #reader .rtitle { flex:1; min-width:0; font:600 14px/1.2 var(--font); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #reader .rtitle small { display:block; font-weight:400; font-size:12px; color:var(--rmut); overflow:hidden; text-overflow:ellipsis; }
+  #reader .rmeta { display:flex; justify-content:space-between; font-size:12px; color:var(--rmut); font-variant-numeric:tabular-nums; }
+  #reader input[type=range] { width:100%; accent-color:var(--racc); margin:2px 0; }
+
+  /* sayfa */
+  #rview { flex:1; position:relative; overflow:hidden; }
+  #rpage { position:absolute; inset:0; overflow:hidden; }
+  #rtext { height:100%; font-family:var(--rfont); font-size:var(--rsize); line-height:var(--rlh); hyphens:auto; -webkit-hyphens:auto;
+           overflow-wrap:break-word; text-align:var(--ralign); }
+  #reader.paged #rtext { column-fill:auto; column-gap:calc(2 * var(--rmargin)); padding:34px var(--rmargin) 30px; }
+  #reader.scroll #rpage { overflow-y:auto; -webkit-overflow-scrolling:touch; }
+  #reader.scroll #rtext { height:auto; max-width:44em; margin:0 auto; padding:64px var(--rmargin) 96px; }
+  #rtext h2 { font-family:var(--rfont); font-size:1.32em; line-height:1.25; font-weight:600; text-align:left; margin:.4em 0 1.1em; break-after:avoid; }
+  #rtext p { margin:0; text-indent:1.4em; }
+  #rtext p.first, #rtext p.brk + p { text-indent:0; }
+  #rtext p + p { margin-top:var(--rpara); }
+  #rtext p.brk { text-indent:0; text-align:center; color:var(--rmut); margin:.8em 0; }
+  #rtext .rend { text-align:center; color:var(--rmut); font:13px/1.4 var(--font); padding:2.5em 0 1em; break-inside:avoid; }
+  #rload { position:absolute; inset:0; display:grid; place-items:center; color:var(--rmut); font:14px var(--font); }
+  #rfoot { position:absolute; left:0; right:0; bottom:8px; text-align:center; font:11.5px/1 var(--font); color:var(--rmut);
+           font-variant-numeric:tabular-nums; pointer-events:none; }
+  #reader.scroll #rfoot { display:none; }
+
+  /* paneller: içindekiler, görünüm */
+  #reader .rpanel { position:absolute; z-index:3; background:var(--rbg); color:var(--rink); border:1px solid var(--rline);
+                    box-shadow:0 12px 36px rgba(0,0,0,.18); border-radius:12px; display:flex; flex-direction:column; }
+  #rtoc { top:58px; bottom:12px; right:10px; width:min(380px, calc(100% - 20px)); }
+  #rtoc input { margin:12px 12px 6px; padding:9px 11px; border-radius:8px; border:1px solid var(--rline); background:transparent; color:var(--rink); font:14px var(--font); }
+  #rtoc ol { list-style:none; margin:0; padding:4px 6px 10px; overflow:auto; flex:1; }
+  #rtoc li button { all:unset; cursor:pointer; display:flex; gap:10px; width:100%; box-sizing:border-box; padding:8px 10px; border-radius:8px; font:14px/1.3 var(--font); }
+  #rtoc li button:hover { background:color-mix(in srgb, var(--rink) 7%, transparent); }
+  #rtoc li button[aria-current=true] { background:color-mix(in srgb, var(--racc) 16%, transparent); font-weight:600; }
+  #rtoc li span.n { color:var(--rmut); min-width:2.6em; text-align:right; font-variant-numeric:tabular-nums; }
+  #rset { top:58px; right:10px; width:min(330px, calc(100% - 20px)); padding:14px; gap:14px; font:13px var(--font); }
+  #rset .row2 { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  #rset .lbl2 { color:var(--rmut); }
+  #rset .grp { display:flex; border:1px solid var(--rline); border-radius:9px; overflow:hidden; }
+  #rset .grp button { all:unset; cursor:pointer; padding:7px 12px; font:13px var(--font); color:var(--rink); text-align:center; min-width:34px; }
+  #rset .grp button + button { border-left:1px solid var(--rline); }
+  #rset .grp button[aria-pressed=true] { background:color-mix(in srgb, var(--racc) 18%, transparent); font-weight:600; }
+  #rset .sw { display:flex; gap:8px; }
+  #rset .sw button { all:unset; cursor:pointer; width:38px; height:38px; border-radius:50%; border:1px solid var(--rline);
+                     display:grid; place-items:center; font:600 13px Georgia, serif; }
+  #rset .sw button[aria-pressed=true] { outline:2px solid var(--racc); outline-offset:2px; }
+  #rset .val { min-width:3.2em; text-align:center; font-variant-numeric:tabular-nums; }
+</style>
+
+<div id="reader" hidden role="dialog" aria-label="Okuyucu" data-th="day" class="paged chrome-off">
+  <div class="rbar rtop">
+    <button class="rbtn" id="rClose" type="button" aria-label="Okuyucuyu kapat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+    <div class="rtitle"><span id="rBook"></span><small id="rChap"></small></div>
+    <button class="rbtn" id="rTocBtn" type="button" aria-label="İçindekiler"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg></button>
+    <button class="rbtn" id="rSetBtn" type="button" aria-label="Görünüm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19l5-14 5 14M5.8 14h6.4M15 19l3-8 3 8M16 16.5h4"/></svg></button>
+  </div>
+  <div id="rview">
+    <div id="rpage"><div id="rtext" lang="tr"></div></div>
+    <div id="rload" hidden>Yükleniyor…</div>
+    <div id="rfoot"></div>
+  </div>
+  <div class="rbar rbot">
+    <input type="range" id="rSlider" min="0" max="0" value="0" aria-label="Bölüme git">
+    <div class="rmeta"><span id="rPos"></span><span id="rPct"></span></div>
+  </div>
+
+  <div class="rpanel" id="rtoc" hidden>
+    <input id="rTocQ" type="search" placeholder="Bölüm ara" aria-label="Bölüm ara">
+    <ol id="rTocList"></ol>
+  </div>
+  <div class="rpanel" id="rset" hidden>
+    <div class="row2"><span class="lbl2">Tema</span>
+      <div class="sw" id="rThemes">
+        <button type="button" data-th="day" style="background:#fbfaf7;color:#22252a" aria-label="Gündüz">Aa</button>
+        <button type="button" data-th="sepia" style="background:#f3ead7;color:#3d3123" aria-label="Sepya">Aa</button>
+        <button type="button" data-th="night" style="background:#1d2024;color:#cfd3d8" aria-label="Gece">Aa</button>
+        <button type="button" data-th="black" style="background:#000;color:#a9adb2" aria-label="Siyah">Aa</button>
+      </div></div>
+    <div class="row2"><span class="lbl2">Yazı boyutu</span>
+      <div class="grp"><button type="button" data-step="size" data-d="-1" aria-label="Küçült">A−</button><span class="val" id="rSizeV" style="padding:7px 0"></span><button type="button" data-step="size" data-d="1" aria-label="Büyüt">A+</button></div></div>
+    <div class="row2"><span class="lbl2">Satır aralığı</span>
+      <div class="grp"><button type="button" data-step="lh" data-d="-1" aria-label="Azalt">−</button><span class="val" id="rLhV" style="padding:7px 0"></span><button type="button" data-step="lh" data-d="1" aria-label="Artır">+</button></div></div>
+    <div class="row2"><span class="lbl2">Kenar boşluğu</span>
+      <div class="grp"><button type="button" data-step="margin" data-d="-1" aria-label="Azalt">−</button><span class="val" id="rMarginV" style="padding:7px 0"></span><button type="button" data-step="margin" data-d="1" aria-label="Artır">+</button></div></div>
+    <div class="row2"><span class="lbl2">Yazı tipi</span>
+      <div class="grp" data-opt="font"><button type="button" data-v="serif" style="font-family:Georgia,serif">Tırnaklı</button><button type="button" data-v="sans">Düz</button></div></div>
+    <div class="row2"><span class="lbl2">Hizalama</span>
+      <div class="grp" data-opt="align"><button type="button" data-v="justify">İki yana</button><button type="button" data-v="left">Sola</button></div></div>
+    <div class="row2"><span class="lbl2">Okuma biçimi</span>
+      <div class="grp" data-opt="mode"><button type="button" data-v="paged">Sayfa</button><button type="button" data-v="scroll">Kaydırma</button></div></div>
+  </div>
+</div>
+
+<script>
+/* Okuyucu. Ayarlar ve kaldığın yer bu cihazda saklanır; uygulamanın penceresinde kaldığın yer bilgisayara da yazılır
+   (telefon uygulaması ve bilgisayar kendi kitaplıklarını ayrı tutar). */
+const R = { name:'', book:null, ch:0, page:0, pages:1, frac:0, cache:new Map(), saveT:null, open:false };
+const RS_DEF = { th:'day', size:19, lh:1.6, margin:24, font:'serif', align:'justify', mode:'paged' };
+let RS = {...RS_DEF};
+try { RS = {...RS_DEF, ...JSON.parse(localStorage.getItem('okuyucu') || '{}')}; } catch (e) {}
+const RFONTS = { serif:'"Literata","Charter","Iowan Old Style","Palatino Linotype",Georgia,"Noto Serif",serif',
+                 sans:'"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,"Noto Sans",sans-serif' };
+const rv = id => document.getElementById(id);
+
+function rApply() {
+  const el = rv('reader');
+  RS.size = Math.min(34, Math.max(13, RS.size)); RS.lh = Math.round(Math.min(2.2, Math.max(1.2, RS.lh)) * 10) / 10;
+  RS.margin = Math.min(64, Math.max(8, RS.margin));
+  el.dataset.th = RS.th; el.classList.toggle('paged', RS.mode === 'paged'); el.classList.toggle('scroll', RS.mode === 'scroll');
+  el.style.setProperty('--rsize', RS.size + 'px'); el.style.setProperty('--rlh', RS.lh);
+  el.style.setProperty('--rmargin', RS.margin + 'px'); el.style.setProperty('--rfont', RFONTS[RS.font] || RFONTS.serif);
+  el.style.setProperty('--ralign', RS.align); el.style.setProperty('--rpara', RS.lh > 1.75 ? '.15em' : '.35em');
+  rv('rSizeV').textContent = RS.size; rv('rLhV').textContent = RS.lh.toFixed(1); rv('rMarginV').textContent = RS.margin;
+  document.querySelectorAll('#rThemes button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.th === RS.th)));
+  document.querySelectorAll('#rset [data-opt]').forEach(g => g.querySelectorAll('button').forEach(b =>
+    b.setAttribute('aria-pressed', String(b.dataset.v === RS[g.dataset.opt]))));
+  try { localStorage.setItem('okuyucu', JSON.stringify(RS)); } catch (e) {}
+}
+
+function rEsc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+const RBRK = /^[\s*·•~=\-–—#oO0◇◆○●_]{1,12}$/;  // sahne geçişi: "***", "◇◇◇"
+
+async function rChapter(i) {
+  if (R.cache.has(i)) return R.cache.get(i);
+  const d = await api(`/api/read/${encodeURIComponent(R.name)}/${i}`);
+  R.cache.set(i, d); if (R.cache.size > 8) R.cache.delete(R.cache.keys().next().value);
+  return d;
+}
+
+/* sayfa düzeni: sütunlar sayfa genişliğinde; sayfa = sütun */
+function rLayout() {
+  const page = rv('rpage'), txt = rv('rtext');
+  if (RS.mode !== 'paged') { txt.style.columnWidth = ''; R.pages = 1; return; }
+  const w = page.clientWidth, cols = w >= 900 ? 2 : 1;  // geniş ekranda açık kitap gibi iki sütun
+  txt.style.columnWidth = (w / cols - 2 * RS.margin) + 'px';
+  txt.style.width = w + 'px';
+  R.pages = Math.max(1, Math.round(txt.scrollWidth / w));
+}
+function rShowPage(p) {
+  const page = rv('rpage');
+  R.page = Math.max(0, Math.min(R.pages - 1, p));
+  page.scrollLeft = R.page * page.clientWidth;
+  R.frac = R.pages > 1 ? R.page / (R.pages - 1) : 0;
+  rStatus();
+}
+function rStatus() {
+  const n = R.book.toc.length, title = R.book.toc[R.ch] || '';
+  rv('rChap').textContent = title;
+  rv('rfoot').textContent = R.pages > 1 ? `${R.page + 1} / ${R.pages}` : '';
+  rv('rPos').textContent = T('Bölüm {i} / {n}', {i: R.ch + 1, n});
+  rv('rPct').textContent = T('%{p}', {p: Math.round(100 * (R.ch + R.frac) / Math.max(1, n))});
+  rv('rSlider').max = n - 1; rv('rSlider').value = R.ch;
+  rSave();
+}
+function rSave() {
+  clearTimeout(R.saveT);
+  R.saveT = setTimeout(() => {
+    const rec = {ch: R.ch, frac: Math.round(R.frac * 1000) / 1000, t: Date.now() / 1000, total: R.book.toc.length};
+    try { localStorage.setItem('okuma:' + R.name, JSON.stringify(rec)); } catch (e) {}
+    if (INFO.local) api(`/api/read/${encodeURIComponent(R.name)}/progress`, rec).catch(() => {});
+  }, 600);
+}
+
+async function rGo(i, where) {  // where: 'start' | 'end' | oran (0..1)
+  const n = R.book.toc.length;
+  if (i < 0 || i >= n) return;
+  rv('rload').hidden = false;
+  let d;
+  try { d = await rChapter(i); } catch (e) { rv('rload').textContent = e.message; return; }
+  R.ch = i;
+  const paras = d.paragraphs, out = [];
+  if (d.title) out.push(`<h2>${rEsc(d.title)}</h2>`);
+  paras.forEach((p, k) => out.push(RBRK.test(p) ? `<p class="brk">${rEsc(p)}</p>` : `<p${k === 0 ? ' class="first"' : ''}>${rEsc(p)}</p>`));
+  if (i === n - 1) out.push(`<div class="rend">${rEsc(T('Kitabın sonu'))}</div>`);
+  const txt = rv('rtext'); txt.innerHTML = out.join(''); txt.lang = R.book.language || 'tr';
+  rv('rload').hidden = true;
+  await new Promise(r => requestAnimationFrame(r));
+  if (RS.mode === 'paged') {
+    rLayout();
+    rShowPage(where === 'end' ? R.pages - 1 : typeof where === 'number' ? Math.round(where * (R.pages - 1)) : 0);
+  } else {
+    const page = rv('rpage');
+    page.scrollTop = where === 'end' ? page.scrollHeight : typeof where === 'number' ? where * (page.scrollHeight - page.clientHeight) : 0;
+    R.frac = typeof where === 'number' ? where : where === 'end' ? 1 : 0; rStatus();
+  }
+  if (i + 1 < n) rChapter(i + 1).catch(() => {});  // sonraki bölüm hazır dursun
+}
+function rNext() { if (RS.mode === 'paged' && R.page < R.pages - 1) rShowPage(R.page + 1); else if (R.ch + 1 < R.book.toc.length) rGo(R.ch + 1, 'start'); }
+function rPrev() { if (RS.mode === 'paged' && R.page > 0) rShowPage(R.page - 1); else if (R.ch > 0) rGo(R.ch - 1, 'end'); }
+
+async function openReader(name) {
+  let b;
+  try { b = await api(`/api/read/${encodeURIComponent(name)}`); } catch (e) { alert(e.message); return; }
+  if (!b.toc.length) { alert(T('Bu kitapta okunacak bölüm bulunamadı.')); return; }
+  Object.assign(R, {name, book:b, cache:new Map(), open:true});
+  let pos = b.progress, local = null;
+  try { local = JSON.parse(localStorage.getItem('okuma:' + name) || 'null'); } catch (e) {}
+  if (local && (!pos || local.t > pos.t)) pos = local;
+  rv('rBook').textContent = b.title;
+  rApply(); rv('reader').hidden = false; rLock(true);
+  rv('reader').classList.add('chrome-off'); rPanels();
+  if (!history.state || !history.state.reader) history.pushState({reader: name}, '');
+  const first = b.toc.length > 1 && /^(Künye|İçindekiler)$/.test(b.toc[0]) ? 1 : 0;  // yeni kitap ilk bölümden açılır
+  await rGo(pos ? Math.min(pos.ch, b.toc.length - 1) : first, pos ? pos.frac : 'start');
+  rv('rpage').focus({preventScroll: true});
+}
+function rLock(on) {  // arkadaki sayfa kaymasın; kaydırma çubuğu payı (scrollbar-gutter) okuyucuyu daraltmasın
+  const h = document.documentElement.style;
+  h.overflow = document.body.style.overflow = on ? 'hidden' : '';
+  h.scrollbarGutter = on ? 'auto' : '';
+}
+function closeReader(fromHistory) {
+  if (!R.open) return;
+  R.open = false; rSave(); rv('reader').hidden = true; rLock(false);
+  if (!fromHistory && history.state && history.state.reader) history.back();
+  loadBooks();
+}
+window.addEventListener('popstate', () => { if (R.open) closeReader(true); });
+
+function rPanels(which) {
+  rv('rtoc').hidden = which !== 'toc'; rv('rset').hidden = which !== 'set';
+  if (which === 'toc') {
+    const q = rv('rTocQ').value.trim().toLocaleLowerCase(LANG);
+    rv('rTocList').innerHTML = R.book.toc.map((t, i) => (!q || t.toLocaleLowerCase(LANG).includes(q) || String(i + 1) === q)
+      ? `<li><button type="button" data-i="${i}" aria-current="${i === R.ch}"><span class="n">${i + 1}</span><span>${rEsc(t)}</span></button></li>` : '').join('');
+    const cur = rv('rTocList').querySelector('[aria-current=true]'); if (cur) cur.scrollIntoView({block:'center'});
+  }
+}
+rv('rClose').onclick = () => closeReader(false);
+rv('rTocBtn').onclick = () => rPanels(rv('rtoc').hidden ? 'toc' : null);
+rv('rSetBtn').onclick = () => rPanels(rv('rset').hidden ? 'set' : null);
+rv('rTocQ').oninput = () => rPanels('toc');
+rv('rTocList').onclick = e => { const b = e.target.closest('button[data-i]'); if (b) { rPanels(); rGo(+b.dataset.i, 'start'); } };
+rv('rSlider').oninput = () => { rv('rPos').textContent = T('Bölüm {i} / {n}', {i: +rv('rSlider').value + 1, n: R.book.toc.length}); };
+rv('rSlider').onchange = () => rGo(+rv('rSlider').value, 'start');
+rv('rThemes').onclick = e => { const b = e.target.closest('button[data-th]'); if (b) { RS.th = b.dataset.th; rApply(); } };
+rv('rset').addEventListener('click', e => {
+  const st = e.target.closest('[data-step]'), opt = e.target.closest('[data-opt] button');
+  if (!st && !opt) return;
+  const keep = R.frac;
+  if (st) { const d = +st.dataset.d; if (st.dataset.step === 'size') RS.size += d; else if (st.dataset.step === 'lh') RS.lh += d * 0.1; else RS.margin += d * 8; }
+  if (opt) RS[opt.parentElement.dataset.opt] = opt.dataset.v;
+  rApply(); rGo(R.ch, keep);  // yeniden diz, aynı yerde kal
+});
+
+/* dokunma: sol üçte bir geri, sağ üçte bir ileri, orta menü; kaydırma hareketi de sayfa çevirir */
+let rTouch = null;
+rv('rview').addEventListener('click', e => {
+  if (!rv('rtoc').hidden || !rv('rset').hidden) { rPanels(); return; }
+  if (window.getSelection && String(window.getSelection()).length) return;
+  const x = e.clientX / rv('rview').clientWidth;
+  if (RS.mode === 'paged' && x < 0.3) rPrev();
+  else if (RS.mode === 'paged' && x > 0.7) rNext();
+  else rv('reader').classList.toggle('chrome-off');
+});
+rv('rview').addEventListener('touchstart', e => { const t = e.touches[0]; rTouch = {x: t.clientX, y: t.clientY, at: Date.now()}; }, {passive: true});
+rv('rview').addEventListener('touchend', e => {
+  if (!rTouch || RS.mode !== 'paged') return;
+  const t = e.changedTouches[0], dx = t.clientX - rTouch.x, dy = t.clientY - rTouch.y;
+  if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5 && Date.now() - rTouch.at < 700) { e.preventDefault(); dx < 0 ? rNext() : rPrev(); }
+  rTouch = null;
+});
+rv('rpage').addEventListener('scroll', () => {
+  if (RS.mode !== 'scroll' || !R.open) return;
+  const p = rv('rpage'), max = p.scrollHeight - p.clientHeight;
+  R.frac = max > 0 ? p.scrollTop / max : 0; rStatus();
+}, {passive: true});
+rv('rpage').addEventListener('wheel', e => {
+  if (RS.mode !== 'paged') return;
+  e.preventDefault(); if (Math.abs(e.deltaY) + Math.abs(e.deltaX) > 4) (e.deltaY + e.deltaX > 0 ? rNext : rPrev)();
+}, {passive: false});
+document.addEventListener('keydown', e => {
+  if (!R.open || e.target.tagName === 'INPUT') return;
+  if (e.key === 'Escape') { if (!rv('rtoc').hidden || !rv('rset').hidden) rPanels(); else closeReader(false); }
+  else if (RS.mode === 'paged' && ['ArrowRight', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); rNext(); }
+  else if (RS.mode === 'paged' && ['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); rPrev(); }
+  else if (RS.mode === 'scroll' && e.key === 'ArrowRight') rGo(R.ch + 1, 'start');
+  else if (RS.mode === 'scroll' && e.key === 'ArrowLeft') rGo(R.ch - 1, 'start');
+});
+let rResizeT = null;
+window.addEventListener('resize', () => { if (!R.open) return; clearTimeout(rResizeT); rResizeT = setTimeout(() => rGo(R.ch, R.frac), 150); });
+rv('rpage').tabIndex = -1;
+rApply();
+</script>

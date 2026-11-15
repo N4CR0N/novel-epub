@@ -13,6 +13,7 @@ import sys
 import threading
 import time
 import uuid
+import zipfile
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -629,8 +630,71 @@ def books():
     OUTPUT.mkdir(exist_ok=True)
     files = sorted((f for f in OUTPUT.iterdir() if f.is_file() and f.suffix[1:].lower() in EXTENSIONS),
                    key=lambda p: p.stat().st_mtime, reverse=True)
-    return jsonify([{"name": f.name, "mb": round(f.stat().st_size / 1e6, 2), "format": EXTENSIONS[f.suffix[1:].lower()]}
-                    for f in files])
+    prog = _progress().all()
+
+    def pct(name: str):
+        r = prog.get(name)
+        return round(100 * (r["ch"] + r["frac"]) / r["total"]) if r and r.get("total") else None
+
+    return jsonify([{"name": f.name, "mb": round(f.stat().st_size / 1e6, 2), "format": EXTENSIONS[f.suffix[1:].lower()],
+                     "read": pct(f.name)} for f in files])
+
+
+def _epub(name: str) -> Path:
+    """Çıktı klasöründeki bir EPUB (yalnız var olan dosya adları; klasör dışına çıkılamaz)."""
+    path = (OUTPUT / Path(name).name).resolve()
+    if path.suffix.lower() != ".epub" or path.parent != OUTPUT.resolve() or not path.is_file():
+        abort(404)
+    return path
+
+
+def _progress():
+    from .reader import Progress
+
+    return Progress(BASE / "okuma.json")
+
+
+@app.get("/api/read/<name>")
+def read_book(name: str):
+    """Okuyucu: kitabın başlığı, içindekiler ve kaldığın yer."""
+    from .reader import open_book
+
+    try:
+        book = open_book(_epub(name))
+    except (OSError, ValueError, KeyError, AttributeError, zipfile.BadZipFile):
+        return jsonify({"error": "Bu EPUB açılamadı"}), 400
+    return jsonify({"name": name, "title": book.title, "author": book.author, "language": book.language,
+                    "toc": book.toc(), "cover": bool(book.cover), "progress": _progress().get(name)})
+
+
+@app.get("/api/read/<name>/<int:index>")
+def read_chapter(name: str, index: int):
+    from .reader import open_book
+
+    book = open_book(_epub(name))
+    if not 0 <= index < len(book.items):
+        abort(404)
+    return jsonify(book.chapter(index))
+
+
+@app.get("/api/read/<name>/cover")
+def read_cover(name: str):
+    from .reader import open_book
+
+    got = open_book(_epub(name)).cover_bytes()
+    if not got:
+        abort(404)
+    return app.response_class(got[0], mimetype=got[1], headers={"Cache-Control": "max-age=86400"})
+
+
+@app.post("/api/read/<name>/progress")
+def read_progress(name: str):
+    _epub(name)
+    data = request.get_json(force=True)
+    try:
+        return jsonify(_progress().set(name, data.get("ch", 0), data.get("frac", 0), data.get("t"), data.get("total", 0)))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Geçersiz konum"}), 400
 
 
 @app.get("/indir/<path:name>")
@@ -680,7 +744,7 @@ def _guard():
             abort(403)
     if _trusted():
         return None
-    if request.method in ("GET", "HEAD") and (request.path in _LAN_READ or request.path.startswith("/indir/")):
+    if request.method in ("GET", "HEAD") and (request.path in _LAN_READ or request.path.startswith(("/indir/", "/api/read/"))):
         if _is_local() or SERVER["lan"]:  # paylaşım kapalıyken ağdan gelen istek hiç kabul edilmez
             return None
     abort(403)
@@ -691,24 +755,9 @@ def info():
     port = APP_MODE.get("port") or request.host.rsplit(":", 1)[-1]
     trusted = _trusted()
     return jsonify({"app": bool(APP_MODE), "local": trusted, "loopback": _is_local(), "android": ANDROID,
-                    "version": __version__, "lan": SERVER["lan"], "lan_possible": bool(SERVER["srv"]) and not ANDROID,
+                    "version": __version__, "lan": SERVER["lan"],
                     "phone_url": f"http://{lan_ip()}:{port}" if trusted else "",
                     "home": str(BASE) if trusted else ""})
-
-
-@app.post("/api/lan")
-def set_lan():
-    """Aynı Wi‑Fi'deki cihazların hazır kitapları indirmesine izin ver/verme (sunucu yeni adrese yeniden bağlanır)."""
-    if ANDROID or not SERVER["srv"]:
-        return jsonify({"error": "Bu kurulumda kullanılamaz"}), 400
-    on = bool((request.get_json(silent=True) or {}).get("on"))
-    s = load_settings()
-    s["lan_share"] = on
-    save_settings(s)
-    if on != SERVER["lan"]:  # yanıt gittikten sonra yeniden başlat (bu istek o sunucuda çalışıyor)
-        threading.Timer(0.3, lambda: start_server(SERVER["port"], on)).start()
-    port = SERVER["port"]
-    return jsonify({"lan": on, "phone_url": f"http://{lan_ip()}:{port}"})
 
 
 @app.post("/api/open-folder")
@@ -766,7 +815,7 @@ def local_url(port: int) -> str:
 def serve(host: str | None = None, port: int = 5000) -> None:
     OUTPUT.mkdir(exist_ok=True)
     LIBRARY.mkdir(exist_ok=True)
-    lan = host == "0.0.0.0" if host else bool(load_settings().get("lan_share"))
+    lan = host != "127.0.0.1"  # varsayılan: aynı Wi‑Fi'deki telefon hazır kitapları indirebilir
     start_server(port, lan)
     print(f"\n  WebNovel Downloader & Translator hazır.\n  Bu PC'de: {local_url(port)}")
     if SERVER["lan"]:

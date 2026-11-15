@@ -126,6 +126,8 @@
   ul.files li { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:7px 2px; border-bottom:1px solid var(--line); }
   ul.files li:last-child { border-bottom:0; }
   ul.files li > span { white-space:nowrap; }
+  ul.files li > a { flex:1; min-width:0; overflow-wrap:anywhere; }
+  button.read { height:30px; padding:0 12px; font-size:13px; white-space:nowrap; }
   ul.files a { text-decoration:none; color:var(--ink); word-break:break-word; } ul.files a:hover { color:var(--acc); }
 
   /* sağlayıcı ve modeller */
@@ -248,7 +250,6 @@
           <span id="localBtns" hidden><button class="ghost" id="openOut" type="button">Klasörü aç</button> <button class="ghost" id="openHome" type="button">Veri klasörü</button></span></div>
         <ul class="files" id="books"></ul>
         <div class="mut" id="phoneInfo" style="margin-top:8px"></div>
-        <label class="mut" id="lanBox" hidden style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" id="lanShare"> <span>Aynı Wi‑Fi'deki telefon hazır kitapları indirebilsin</span></label>
       </section>
       </div></div>
     </div>
@@ -333,6 +334,7 @@
     </div>
   </main>
 </div>
+{% include "reader.html" %}
 <script>{% include "i18n.js" %}</script>
 <script>
 const $ = id => document.getElementById(id);
@@ -577,16 +579,20 @@ async function poll() {
   log.textContent = s.logs.join('\n'); if (atBottom) log.scrollTop = log.scrollHeight;
   if (!s.running) {
     clearInterval(timer); $('go').disabled = false; $('stop').disabled = true;
-    if (s.result) $('jResult').innerHTML = `<p class="ok">${esc(T('Hazır:'))} <a href="/indir/${encodeURIComponent(s.result)}">${esc(s.result)}</a></p>`;
+    if (s.result) $('jResult').innerHTML = `<p class="ok">${esc(T('Hazır:'))} <a href="/indir/${encodeURIComponent(s.result)}">${esc(s.result)}</a>${
+      /\.epub$/i.test(s.result) ? ` <button type="button" class="ghost read" data-read="${esc(s.result)}">${esc(T('Oku'))}</button>` : ''}</p>`;
     if (s.notice) $('jResult').innerHTML += `<p class="warn">${esc(s.notice)}</p>`;
     if (s.error) $('jResult').innerHTML += `<p class="err">${esc(s.error)}</p>`;
     loadBooks();
   }
 }
 
+$('jResult').addEventListener('click', e => { const b = e.target.closest('[data-read]'); if (b) openReader(b.dataset.read); });
+$('books').addEventListener('click', e => { const b = e.target.closest('[data-read]'); if (b) openReader(b.dataset.read); });
 async function loadBooks() {
   const b = await api('/api/books');
-  $('books').innerHTML = b.length ? b.map(x => `<li><a href="/indir/${encodeURIComponent(x.name)}">${esc(x.name)}</a><span class="mut">${x.mb} MB</span></li>`).join('')
+  $('books').innerHTML = b.length ? b.map(x => `<li><a href="/indir/${encodeURIComponent(x.name)}">${esc(x.name)}</a><span class="mut">${x.mb} MB</span>${x.format === 'epub'
+      ? `<button type="button" class="ghost read" data-read="${esc(x.name)}">${esc(x.read ? T('Oku · %{p}', {p: x.read}) : T('Oku'))}</button>` : ''}</li>`).join('')
                                   : `<li class="mut">${esc(T('Henüz kitap yok. İlk kitap burada görünecek.'))}</li>`;
 }
 
@@ -691,18 +697,10 @@ async function loadInfo() {
   } catch (e) {}
 }
 function showLan(i) {
-  $('lanBox').hidden = !i.lan_possible; $('lanShare').checked = !!i.lan;
   $('phoneInfo').textContent = i.lan
     ? T("Telefondan indirmek için aynı Wi‑Fi'de {url} adresini aç. Veriler: {home}", {url: i.phone_url, home: i.home})
     : T('Veriler: {home}', {home: i.home});
 }
-$('lanShare').onchange = async () => {
-  try {
-    const d = await api('/api/lan', {on: $('lanShare').checked});
-    setTimeout(loadInfo, 800);  // sunucu yeni adrese geçerken kısa bir ara
-    showLan({...INFO, lan: d.lan, phone_url: d.phone_url});
-  } catch (e) { $('lanShare').checked = !$('lanShare').checked; alert(e.message); }
-};
 $('openOut').onclick = () => api('/api/open-folder', {which:'cikti'}).catch(e => alert(e.message));
 $('openHome').onclick = () => api('/api/open-folder', {which:'home'}).catch(e => alert(e.message));
 
