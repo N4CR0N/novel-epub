@@ -6,4 +6,5 @@
     <string name="notif_starting">Starting…</string>
     <string name="saved_to_downloads">Saved to Downloads: %1$s</string>
     <string name="no_reader">No app found to open this file. It is in Downloads.</string>
+    <string name="notif_done">Download/translation finished. Tap to open.</string>
 </resources>

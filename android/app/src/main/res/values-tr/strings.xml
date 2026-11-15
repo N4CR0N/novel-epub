@@ -5,4 +5,5 @@
     <string name="notif_starting">Başlatılıyor…</string>
     <string name="saved_to_downloads">İndirilenler\'e kaydedildi: %1$s</string>
     <string name="no_reader">Bu dosyayı açacak uygulama yok. Dosya İndirilenler klasöründe.</string>
+    <string name="notif_done">İndirme/çeviri bitti. Açmak için dokun.</string>
 </resources>

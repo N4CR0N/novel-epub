@@ -111,6 +111,11 @@ class MainActivity : AppCompatActivity() {
         WorkService.start(this) // hizmet boşta kalıp kapandıysa yeniden aç
     }
 
+    override fun onPause() {
+        WorkService.syncNow() // iş sürüyorsa bildirimli ön plan hizmetine uygulama hâlâ ekrandayken geç
+        super.onPause()
+    }
+
     override fun onStop() {
         WorkService.activityVisible = false
         super.onStop()
