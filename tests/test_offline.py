@@ -1059,9 +1059,12 @@ def test_output_format_setting_drives_jobs_and_book_list(tmp_path: Path, monkeyp
     assert out and Path(out).suffix == ".docx"
     # Başlat'ta seçilen biçim ayarı ezer (yalnız bu iş için)
     started = {}
+    from novel_epub.pipeline import Progress
+
     class FakeJob:
         def __init__(self, opts, on_log=None):
             started["o"] = opts
+            self.p = Progress()
 
         def run(self):
             pass
@@ -1070,8 +1073,12 @@ def test_output_format_setting_drives_jobs_and_book_list(tmp_path: Path, monkeyp
     assert c.post("/api/jobs", json={"url": "https://example.com/novel/x", "format": "html"}).status_code == 200
     assert started["o"].fmt == "html"
     started.clear()
-    c.post("/api/jobs", json={"url": "https://example.com/novel/x"})
+    # aynı kitap sürerken ikinci iş açılmaz: süren işin kimliği döner
+    dup = c.post("/api/jobs", json={"url": "https://example.com/novel/x"})
+    assert dup.status_code == 409 and dup.get_json()["id"] and not started
+    c.post("/api/jobs", json={"url": "https://example.com/novel/y"})
     assert started["o"].fmt == "docx"
+    assert {j["running"] for j in c.get("/api/jobs").get_json()} == {True}
     (tmp_path / "cikti" / "not.exe").write_bytes(b"MZ")
     books = c.get("/api/books").get_json()
     assert [b["format"] for b in books] == ["docx"]  # yalnız kitap biçimleri listelenir

@@ -216,11 +216,18 @@ def post_settings():
         s["output_format"] = data["output_format"]
     if data.get("thinking") in THINKING_LEVELS:
         s["thinking"] = data["thinking"]
-    if data.get("temperature") not in (None, ""):
-        s["temperature"] = max(0.0, min(1.5, float(data["temperature"])))
-    for k, typ in (("delay", float), ("workers", int), ("batch", int)):
-        if data.get(k) not in (None, ""):
-            s[k] = typ(data[k])
+    limits = {"temperature": (float, 0.0, 1.5), "delay": (float, 0.0, 30.0), "workers": (int, 1, 8),
+              "batch": (int, 0, MAX_AUTO_CHAPTERS)}
+    for k, (typ, lo, hi) in limits.items():
+        if data.get(k) in (None, ""):
+            continue
+        try:
+            v = typ(float(data[k]))
+        except (TypeError, ValueError, OverflowError):
+            return jsonify({"error": f"Geçersiz değer: {k}"}), 400
+        if v != v:  # NaN
+            return jsonify({"error": f"Geçersiz değer: {k}"}), 400
+        s[k] = max(lo, min(hi, v))
     s["batch_set"] = True
     save_settings(s)
     return get_settings()
@@ -444,6 +451,8 @@ def phone_scan():
         dirs = pull_android(adb, dest)
     except PhoneError as e:
         return jsonify({"error": str(e)}), 400
+    except Exception as e:  # telefon çıkarıldı, adb takıldı…
+        return jsonify({"error": f"Telefondan okunamadı: {type(e).__name__}: {e}"}), 400
     return jsonify({**scan(_supported, dirs), "copied_to": str(dest)})
 
 
@@ -456,14 +465,21 @@ def start_job():
         return jsonify({"error": "Yüklenen dosya bulunamadı; yeniden seç"}), 400
     if not file_path and not url.startswith("http"):
         return jsonify({"error": "Geçerli bir link gir ya da dosya seç"}), 400
+    try:
+        start = int(data["start"]) if data.get("start") else None
+        end = int(data["end"]) if data.get("end") else None
+    except (TypeError, ValueError, OverflowError):
+        return jsonify({"error": "Bölüm aralığı sayı olmalı"}), 400
+    if (start is not None and start < 1) or (start and end and end < start):
+        return jsonify({"error": "Bölüm aralığı geçersiz"}), 400
     s = load_settings()
     lang = data.get("lang") if data.get("lang") in LANGUAGES else s.get("lang", "tr")
     opts = Options(
         url=url,
         file=str(file_path) if file_path else "",
         lang=lang,
-        start=int(data["start"]) if data.get("start") else None,
-        end=int(data["end"]) if data.get("end") else None,
+        start=start,
+        end=end,
         translate=bool(data.get("translate")),
         keys=s.get("keys", {}),
         model=", ".join(s.get("models") or []),
@@ -480,11 +496,36 @@ def start_job():
     )
     if opts.translate and (not opts.model or (not opts.keys and not opts.model.startswith("ollama_chat/"))):
         return jsonify({"error": "Çeviri için önce Ayarlar'dan bir API anahtarı ekle ve en az bir model seç"}), 400
+    source = f"dosya:{file_path.name}" if file_path else url
+    for jid, j in JOBS.items():  # aynı kitap aynı dile zaten işleniyorsa ikinci iş açma, ona bağlan
+        if j.p.phase not in DONE_PHASES and getattr(j, "source_key", None) == (source, lang):
+            return jsonify({"error": "Bu kitap zaten işleniyor", "id": jid}), 409
+    _prune_jobs()
     job_id = uuid.uuid4().hex[:10]
     job = Job(opts, on_log=print)
+    job.source_key = (source, lang)
+    job.started = time.time()
     JOBS[job_id] = job
     threading.Thread(target=job.run, daemon=True).start()
     return jsonify({"id": job_id})
+
+
+MAX_FINISHED_JOBS = 10
+
+
+def _prune_jobs() -> None:
+    """Biten işler bellekte birikmesin: en yeni 10'u kalır (sonuçları kitaplıkta/çıktıda zaten duruyor)."""
+    done = [jid for jid, j in JOBS.items() if j.p.phase in DONE_PHASES]
+    for jid in done[:-MAX_FINISHED_JOBS] if len(done) > MAX_FINISHED_JOBS else []:
+        JOBS.pop(jid, None)
+
+
+@app.get("/api/jobs")
+def job_list():
+    """Sayfa yenilenince ya da pencere yeniden açılınca süren işe yeniden bağlanmak için (en yeni önce)."""
+    items = [{"id": jid, "title": j.p.title, "phase": j.p.phase, "running": j.p.phase not in DONE_PHASES,
+              "started": getattr(j, "started", 0)} for jid, j in JOBS.items()]
+    return jsonify(sorted(items, key=lambda x: x["started"], reverse=True))
 
 
 @app.get("/api/jobs/<job_id>")
@@ -555,22 +596,30 @@ def put_glossary(name: str):
 def retranslate(name: str):
     st = _book(name)
     data = request.get_json(force=True)
-    try:
-        a, b = int(data["start"]), int(data["end"])
-    except (KeyError, TypeError, ValueError):
-        return jsonify({"error": "Bölüm aralığı gir"}), 400
+    a, b = _range(data)
+    if a is None:
+        return jsonify({"error": "Bölüm aralığı gir (ör. 10–25; en çok 10000 bölüm)"}), 400
     n = sum(st.drop_tr(i) for i in range(a, b + 1))
     return jsonify({"ok": True, "removed": n})
+
+
+def _range(data: dict) -> tuple[int | None, int | None]:
+    try:
+        a, b = int(data["start"]), int(data["end"])
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return None, None
+    if a < 1 or b < a or b - a >= 10000:
+        return None, None
+    return a, b
 
 
 @app.post("/api/library/<name>/restore")
 def restore(name: str):
     st = _book(name)
     data = request.get_json(force=True)
-    try:
-        a, b = int(data["start"]), int(data["end"])
-    except (KeyError, TypeError, ValueError):
-        return jsonify({"error": "Bölüm aralığı gir"}), 400
+    a, b = _range(data)
+    if a is None:
+        return jsonify({"error": "Bölüm aralığı gir (ör. 10–25; en çok 10000 bölüm)"}), 400
     n = sum(st.restore_tr(i) for i in range(a, b + 1))
     return jsonify({"ok": True, "restored": n})
 

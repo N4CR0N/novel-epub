@@ -57,12 +57,25 @@ class Progress:
     logs: list[str] = field(default_factory=list)
 
 
+_ACTIVE_BOOKS: set[str] = set()  # şu an işlenen kitap klasörleri (aynı kitaba iki iş aynı anda yazmasın)
+_ACTIVE_LOCK = threading.Lock()
+
+
 class Job:
     def __init__(self, opts: Options, on_log: Callable[[str], None] | None = None):
         self.opts = opts
         self.p = Progress()
         self.cancel_event = threading.Event()
         self._on_log = on_log
+        self._claimed: str | None = None
+
+    def _claim(self, store: BookStore) -> None:
+        key = f"{store.dir.resolve()}|{self.opts.lang}"
+        with _ACTIVE_LOCK:
+            if key in _ACTIVE_BOOKS:
+                raise RuntimeError("Bu kitap başka bir işte zaten işleniyor; o bitince yeniden başlat.")
+            _ACTIVE_BOOKS.add(key)
+            self._claimed = key
 
     # --- yardımcılar ---
     def log(self, msg: str) -> None:
@@ -91,6 +104,10 @@ class Job:
             self.p.phase = "hata"
             self.p.error = str(e)
             self.log(f"HATA: {e}")
+        finally:
+            if self._claimed:
+                with _ACTIVE_LOCK:
+                    _ACTIVE_BOOKS.discard(self._claimed)
         return None
 
     def _run(self) -> Path:
@@ -105,6 +122,7 @@ class Job:
             novel, all_chapters, cover = load_file(o.file)
             self.p.title = novel.title
             store = BookStore(o.library, novel, lang=o.lang)
+            self._claim(store)
             self.log(f"{novel.title} — {len(all_chapters)} bölüm ayrıldı")
             chapters = all_chapters[(o.start or 1) - 1: o.end or None]
             if not chapters:
@@ -118,6 +136,7 @@ class Job:
             novel = source.novel(o.url)
             self.p.title = novel.title
             store = BookStore(o.library, novel, lang=o.lang)
+            self._claim(store)
 
             if novel.follow_next:
                 self.log("Bölüm listesi bulunamadı; bu sayfadan 'Sonraki' bağlantılarıyla ilerlenecek.")

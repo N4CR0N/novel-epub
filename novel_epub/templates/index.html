@@ -540,16 +540,34 @@ $('go').onclick = async () => {
     if ($('translate').checked && !(settings && settings.models && settings.models.length)) { show('ai'); throw new Error(T('Çeviri için önce bir API anahtarı ekle ve model seç.')); }
     const d = await api('/api/jobs', {url: mode === 'site' ? $('url').value : '', file_id: mode === 'file' ? fileId : '',
       lang:$('lang').value, format:$('fmt').value, start:$('start').value, end:$('end').value, translate:$('translate').checked, edit:$('edit').checked, review:$('review').checked});
-    jobId = d.id; $('jobCard').hidden = false; $('jResult').innerHTML = '';
-    $('go').disabled = true; $('stop').disabled = false;
-    clearInterval(timer); timer = setInterval(poll, 1500); poll();
-  } catch (e) { alert(e.message); }
+    attachJob(d.id);
+  } catch (e) {
+    if (e.data && e.data.id) { attachJob(e.data.id); return; }  // aynı kitap zaten işleniyor: ona bağlan
+    alert(e.message);
+  }
 };
+function attachJob(id) {
+  jobId = id; $('jobCard').hidden = false; $('jResult').innerHTML = '';
+  try { sessionStorage.setItem('job', id); } catch (e) {}
+  $('go').disabled = true; $('stop').disabled = false;
+  clearInterval(timer); timer = setInterval(poll, 1500); poll();
+}
+/* sayfa yenilenince süren işe (yoksa bu pencerenin son işine) yeniden bağlan */
+async function resumeJob() {
+  try {
+    const jobs = await api('/api/jobs');
+    let last = null; try { last = sessionStorage.getItem('job'); } catch (e) {}
+    const run = jobs.find(j => j.running), mine = jobs.find(j => j.id === last);
+    if (run || mine) attachJob((run || mine).id);
+  } catch (e) {}
+}
 $('stop').onclick = () => jobId && api(`/api/jobs/${jobId}/cancel`, {});
 
 async function poll() {
   if (!jobId) return;
-  const s = await api(`/api/jobs/${jobId}`);
+  let s;
+  try { s = await api(`/api/jobs/${jobId}`); }
+  catch (e) { if (/404/.test(e.message) || (e.data && !e.data.error)) { clearInterval(timer); jobId = null; $('jobCard').hidden = true; $('go').disabled = false; } return; }
   $('jTitle').textContent = s.title || T('Hazırlanıyor');
   $('jPhase').textContent = s.phase.charAt(0).toUpperCase() + s.phase.slice(1);
   const pct = s.total ? Math.round(100 * s.done / s.total) : 0;
@@ -691,7 +709,7 @@ $('openHome').onclick = () => api('/api/open-folder', {which:'home'}).catch(e =>
 let _t = null; try { _t = localStorage.getItem('theme'); } catch (e) {}
 applyTheme(_t);
 LANG = pickLang(); document.documentElement.lang = LANG; $('uiLang').value = LANG; translateDOM(document.body);
-loadSettings(); loadBooks(); loadInfo();
+loadSettings(); loadBooks(); loadInfo().then(() => INFO.local && resumeJob());
 </script>
 </body>
 </html>

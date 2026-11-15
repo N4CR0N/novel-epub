@@ -180,3 +180,67 @@ def test_unknown_key_format_is_not_sent_anywhere(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(web, "SETTINGS_PATH", tmp_path / "ayarlar.json")
     r = web.app.test_client().post("/api/keys", json={"key": "tamamen-bilinmeyen-bicim"})
     assert r.status_code == 400 and r.get_json()["choose_provider"] is True
+
+
+# --- küçük sağlamlık işleri --------------------------------------------------------------------------------
+
+def test_bad_settings_and_ranges_get_400_not_500(tmp_path: Path, monkeypatch):
+    from novel_epub import web
+
+    monkeypatch.setattr(web, "SETTINGS_PATH", tmp_path / "ayarlar.json")
+    monkeypatch.setattr(web, "_keyring", lambda: None)
+    c = web.app.test_client()
+    assert c.post("/api/settings", json={"delay": "abc"}).status_code == 400
+    assert c.post("/api/settings", json={"workers": "nan"}).status_code == 400
+    r = c.post("/api/settings", json={"workers": 500, "delay": -3}).get_json()
+    assert r["workers"] == 8 and r["delay"] == 0
+    assert c.post("/api/jobs", json={"url": "https://example.com/n/x", "start": "bir"}).status_code == 400
+
+    monkeypatch.setattr(web, "LIBRARY", tmp_path / "kutuphane")
+    from novel_epub.store import BookStore
+
+    st = BookStore(tmp_path / "kutuphane", _novel("Kitap", "https://a.example/k"))
+    for body in ({"start": 1, "end": 10 ** 9}, {"start": 5, "end": 2}, {"start": "x", "end": 3}):
+        assert c.post(f"/api/library/{st.dir.name}/retranslate", json=body).status_code == 400
+    assert c.post(f"/api/library/{st.dir.name}/retranslate", json={"start": 1, "end": 3}).status_code == 200
+
+
+def test_phone_scan_reports_unplugged_phone(monkeypatch, tmp_path: Path):
+    from novel_epub import history, web
+
+    monkeypatch.setattr(history, "find_adb", lambda base: "adb")
+
+    def boom(adb, dest):
+        raise OSError("device offline")
+
+    monkeypatch.setattr(history, "pull_android", boom)
+    r = web.app.test_client().post("/api/phone/scan", json={})
+    assert r.status_code == 400 and "offline" in r.get_json()["error"]
+
+
+def test_finished_jobs_are_pruned(monkeypatch):
+    from novel_epub import web
+    from novel_epub.pipeline import Progress
+
+    class J:
+        def __init__(self, phase):
+            self.p = Progress()
+            self.p.phase = phase
+
+    jobs = {f"b{i}": J("bitti") for i in range(25)}
+    jobs["run"] = J("çevriliyor")
+    monkeypatch.setattr(web, "JOBS", jobs)
+    web._prune_jobs()
+    assert "run" in jobs and len(jobs) == web.MAX_FINISHED_JOBS + 1 and "b24" in jobs
+
+
+def test_cjk_target_batch_is_not_called_incomplete():
+    from novel_epub.models import Chapter
+    from novel_epub.translator import Translator
+
+    t = Translator.__new__(Translator)
+    en = Chapter(1, "C1", "u", ["The lantern swayed while Arin counted the steps to the mill."] * 5)
+    t.lang = "zh"
+    assert t.min_length_ratio(en) < 0.35  # ~1/3 uzunlukta Çince çeviri eksik sayılmaz
+    t.lang = "tr"
+    assert t.min_length_ratio(en) == 0.7

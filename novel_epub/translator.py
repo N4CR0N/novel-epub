@@ -707,6 +707,14 @@ class Translator:
             self.thought_tokens = 0.7 * self.thought_tokens + 0.3 * thought
         self.budget = min(MAX_BUDGET, int(self.budget * 1.1))
 
+    def min_length_ratio(self, ch: Chapter) -> float:
+        """Toplu çeviride "eksik çevrilmiş" sayılmadan önce çevirinin kaynağa göre en kısa olabileceği oran.
+        Çince/Japonca/Korece aynı anlamı Latin harflerinin üçte biri kadar karakterle yazar."""
+        src_cjk = len(CJK_RE.findall(" ".join(ch.paragraphs[:20]))) > 0.3 * len(" ".join(ch.paragraphs[:20]) or "x")
+        if self.lang in ("zh", "ja", "ko") and not src_cjk:
+            return 0.2
+        return 0.7
+
     def translate_batch(self, chs: list[Chapter], glossary: dict[str, str], context: list[str],
                         lookahead: list[str] | None = None) -> tuple[list[Chapter], dict[str, str]]:
         """Birden çok bölümü tek istekte çevirir (ücretsiz kota istek sayısıyla ölçülür).
@@ -733,7 +741,7 @@ class Translator:
             result = []
             for c, o in zip(chs, outs):
                 paras = [p for p in (str(x).strip() for x in o.get("paragraphs") or []) if p]
-                if sum(map(len, paras)) < 0.7 * c.char_count:
+                if sum(map(len, paras)) < self.min_length_ratio(c) * c.char_count:
                     raise ValueError(f"{c.index}. bölüm eksik çevrilmiş")
                 result.append(Chapter(c.index, (o.get("title") or c.title).strip(), c.url, paras))
             result = [self.repair(c, r, glossary) for c, r in zip(chs, result)]
