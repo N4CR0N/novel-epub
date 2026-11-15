@@ -278,6 +278,8 @@ def read_docx(path: Path) -> tuple[Novel, list[Chapter], bytes | None]:
         ps = p.find(f"{W}pPr/{W}pStyle")
         sid = ps.get(f"{W}val", "") if ps is not None else ""
         style = (style_names.get(sid) or sid).lower()
+        if not parts and re.match(r"(title|subtitle|konu başlığı|alt konu başlığı)$", style):
+            continue  # kapak sayfası: kitabın adı / alt başlığı, bölüm değil
         if re.match(r"(heading|başlık|title)\s*[12]?$", style):
             styled = True
             parts.append((text, []))
