@@ -256,7 +256,8 @@ def mentions(name: str, low_text: str) -> bool:
 
 # Çeviride kaynak dilde kalmış paragrafı yakalamak için: yalnız İngilizceye özgü sık kelimeler (başka dillerde
 # kelime olarak geçmeyenler; ör. "her/his/in/was/of" Türkçe/Almanca/Felemenkçede de kelime olduğu için yok).
-_EN_ONLY = re.compile(r"\b(the|and|with|that|you|they|said|this|from|would|could|were|have|been|which|what|there)\b", re.I)
+# Küçük harfle: "You", "The" gibi büyük harfli sözcükler Çince soyadı/özel ad olabilir (ör. You Feng), sayılmaz.
+_EN_ONLY = re.compile(r"\b(the|and|with|that|you|they|said|this|from|would|could|were|have|been|which|what|there)\b")
 _NORM = re.compile(r"[\W_]+", re.U)
 # Kaynakla aynı kalmış kısa satır gerçekten cümle mi? (ad, sayı, sistem satırı, başlık değil)
 _EN_PROSE = re.compile(r"\b(the|a|an|and|or|but|of|to|in|on|at|is|was|are|were|he|she|it|his|her|they|you|i|we|"
@@ -279,7 +280,9 @@ def untranslated_paragraphs(source: list[str], out: list[str], lang: str) -> lis
     for i, p in enumerate(out):
         words = p.split()
         n = _NORM.sub(" ", p).strip().lower()
-        if len(words) >= 4 and n in src_norm and lang != "en" and (len(words) >= 8 or _EN_PROSE.search(p)):
+        # Bütün sözcükleri büyük harfle başlayan satır (çevriyazılı mantra/dua, unvan, ad dizisi) çevrilmeden kalabilir.
+        prose = any(w[:1].islower() for w in re.findall(r"[^\W\d_]+", p))
+        if len(words) >= 4 and n in src_norm and lang != "en" and prose and (len(words) >= 8 or _EN_PROSE.search(p)):
             bad.append(i)
         elif not cjk_src and lang != "en" and len(words) >= 8 and len(_EN_ONLY.findall(p)) / len(words) > 0.12:
             bad.append(i)

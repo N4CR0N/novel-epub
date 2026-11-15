@@ -244,3 +244,17 @@ def test_cjk_target_batch_is_not_called_incomplete():
     assert t.min_length_ratio(en) < 0.35  # ~1/3 uzunlukta Çince çeviri eksik sayılmaz
     t.lang = "tr"
     assert t.min_length_ratio(en) == 0.7
+
+
+def test_mantras_and_chinese_surnames_are_not_flagged_untranslated():
+    from novel_epub.translator import untranslated_paragraphs
+
+    src = ["The monk folded his hands and began to chant slowly before the hall.",
+           '"Om Lorem Ipsum Dolor Sit Amet Hum Namo Lorem Ipsum Dolor Sit"',
+           "You Feng said nothing."]
+    out = ["Keşiş ellerini birleştirdi ve salonun önünde yavaşça ilahi okumaya başladı.",
+           '"Om Lorem Ipsum Dolor Sit Amet Hum Namo Lorem Ipsum Dolor Sit"',
+           "You Feng hiçbir şey söylemedi, You ailesinin genç efendisi yalnızca başını sallayıp uzaklaştı."]
+    assert untranslated_paragraphs(src, out, "tr") == []
+    # gerçekten çevrilmemiş İngilizce cümle yine yakalanır
+    assert untranslated_paragraphs(src, [src[0], *out[1:]], "tr") == [0]
