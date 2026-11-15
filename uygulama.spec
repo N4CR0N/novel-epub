@@ -1,6 +1,5 @@
 # PyInstaller tarifi: tek dosyalık, pencereli Windows exe'si (GitHub Actions derler).
-# Boyut için: kullanılmayan paketler dışlanır, Windows 10/11'de zaten bulunan UCRT DLL'leri ve
-# x64 dışındaki WebView2Loader kopyaları pakete konmaz.
+# Boyut için: kullanılmayan paketler ve Windows 10/11'de zaten bulunan UCRT DLL'leri pakete konmaz.
 import os
 from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules, copy_metadata
 
@@ -35,8 +34,7 @@ def _keep(entry) -> bool:
     base = name.rsplit("/", 1)[-1]
     if base.startswith("api-ms-win-") or base == "ucrtbase.dll":  # Windows 10+ içinde var
         return False
-    if "webview2loader.dll" in base and "win-x64" not in name:  # yalnız 64 bit Windows hedefleniyor
-        return False
+    # WebView2Loader'ın ARM64/x86 kopyaları atılmaz: pywebview açılışta üçünü de arar (yoksa uygulama açılmaz)
     return True
 
 

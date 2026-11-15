@@ -57,6 +57,18 @@ def _free_port(preferred: int = 5000) -> int:
     return preferred
 
 
+def _window_backend_ok():
+    """Pencerenin Windows tarafını (WinForms + WebView2 DLL'leri) pencere açmadan yükle.
+
+    pywebview açılışta ARM64/x64/x86 WebView2Loader klasörlerinin hepsini arar; biri pakette yoksa uygulama hiç açılmaz.
+    """
+    if sys.platform != "win32":
+        return None
+    import webview.platforms.winforms  # noqa: F401  (edgechromium + DLL yollarını da yükler)
+
+    return True
+
+
 def self_test(home: Path) -> int:
     """Paketlenmiş exe'nin parçalarını pencere açmadan sınar (derleme hattı kullanır): --oz-test"""
     import json
@@ -98,7 +110,8 @@ def self_test(home: Path) -> int:
         report["info"] = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/api/info").read())["local"]
         kr = web._keyring()
         report["kasa"] = type(kr.get_keyring()).__name__ if kr else "yok"
-        report["ok"] = report["arayuz"] and report["info"] and report["llm"]
+        report["pencere"] = _window_backend_ok()
+        report["ok"] = report["arayuz"] and report["info"] and report["llm"] and report["pencere"] is not False
     except Exception as e:  # rapora yaz, çıkış kodu 1
         report["hata"] = repr(e)
         report["ok"] = False
