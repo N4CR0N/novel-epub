@@ -52,9 +52,14 @@ uygulamasında çalışır.
 - **İndir ve çevir:** linki yapıştır (roman sayfası ya da herhangi bir bölüm), istersen bölüm aralığı ver, **Başlat**.
   "Siteyi dene" bölüm listesini ve ilk bölümü deneyip sonucu gösterir.
 - İlerleme çubuğu ve kayıt canlı akar. Bitince EPUB "Hazır kitaplar" listesine düşer.
-- **Telefondan:** "Hazır kitaplar"ın altındaki "Aynı Wi‑Fi'deki telefon hazır kitapları indirebilsin" kutusunu işaretle,
-  orada yazan `http://192.168.x.x:5000` adresini telefonda aç; EPUB'a dokununca telefona iner. Güvenlik duvarı sorarsa
-  **Özel ağlar**'a izin ver. Kutu varsayılan olarak kapalı.
+- **Oku:** hazır EPUB'un yanındaki **Oku**'ya bas. Gömülü okuyucuda sayfa çevirme (kenarlara dokun, kaydır ya da ok
+  tuşları) veya kaydırarak okuma, gündüz / sepya / gece / siyah tema, yazı boyutu, satır aralığı, kenar boşluğu,
+  tırnaklı ya da düz yazı tipi ve aranabilir içindekiler var; kaldığın yeri hatırlar.
+- **Telefondan:** "Hazır kitaplar"ın altında yazan `http://192.168.x.x:5000` adresini aynı Wi‑Fi'deki telefonda aç;
+  kitapları oradan indirip okuyabilirsin. Güvenlik duvarı sorarsa **Özel ağlar**'a izin ver.
+- **Google Drive:** "Hazır kitaplar"ın altındaki panelden Google ile giriş yap. Biten kitaplar Drive'ındaki
+  "WebNovel Downloader & Translator" klasörüne yüklenir (otomatik ya da **Drive ↑** ile); başka cihazda tek dokunuşla
+  indirilir. **Kitaplığı yedekle** indirilen ve çevrilen bölümleri, sözlükleri ve okuma yerlerini tek zip olarak kaydeder.
 
 Komut satırı:
 
@@ -132,10 +137,12 @@ Kişisel okuma içindir; sitelerin kullanım koşullarına ve yazar/çevirmen em
 - API anahtarları Windows Kimlik Bilgisi Yöneticisi'nde saklanır (o kullanılamazsa veri klasöründeki `ayarlar.json`'da;
   Android'de uygulamanın özel alanında). Nerede durduğu Yapay zekâ sekmesinde yazar. Kayda ya da EPUB'a yazılmaz; arayüz
   yalnız son dört karakteri gösterir. Biçimi tanınmayan anahtar her sağlayıcıda denenmez; hangisine ait olduğunu sen seçersin.
-- Telefondan indirme açılmadıkça yerel sunucu yalnız bu bilgisayardan erişilebilir. Açıkken de diğer cihazlar **yalnız**
-  kitap listesini görüp EPUB indirebilir. Ayarlar, anahtarlar, kitaplık ve iş başlatma her açılışta değişen, yalnız
+- Wi‑Fi'deki diğer cihazlar **yalnız** kitap listesini görebilir, kitap indirip okuyabilir. Ayarlar, anahtarlar, kitaplık ve iş başlatma her açılışta değişen, yalnız
   uygulamanın kendi penceresinin bildiği bir erişim anahtarı ister; aynı bilgisayardaki ya da telefondaki başka
   programlar da bunlara dokunamaz. Başka sitelerden gelen istekler (CSRF) ve DNS yeniden bağlama istekleri reddedilir.
+- Google Drive `drive.file` iznini kullanır: uygulama Drive'ında yalnız kendi oluşturduğu dosyaları görür, diğer
+  dosyalarına erişemez. Giriş anahtarı Windows Kimlik Bilgisi Yöneticisi'nde (Android'de uygulamanın özel alanında)
+  durur; uygulamadan çıkış yapabilir ya da https://myaccount.google.com/permissions adresinden erişimi kaldırabilirsin.
 - Novel sayfalarındaki bağlantılar (sonraki bölüm, kapak resmi) yalnız internet adresiyse açılır: `file://`, `localhost`
   ve yerel ağ adresleri reddedilir.
 - Açtığın novel siteleri ve seçtiğin yapay zekâ sağlayıcısı dışında hiçbir yere veri gönderilmez.

@@ -48,9 +48,15 @@ the Windows app.
 - **Download & translate:** paste a link (novel page or any chapter), optionally a chapter range, then **Start**.
   "Test site" tries the chapter list and the first chapter first.
 - Progress and the log update live; the finished EPUB appears under "Ready books".
-- **Phone:** tick "Let a phone on the same Wi‑Fi download finished books" under Ready books, open the
-  `http://192.168.x.x:5000` address shown there on your phone and tap an EPUB to download it. If the firewall asks,
-  allow **Private networks**. The switch is off by default.
+- **Read:** press **Read** next to a finished EPUB. The built-in reader has page turning (tap the sides, swipe or use
+  the arrow keys) or scrolling, day / sepia / night / black themes, text size, line spacing, margins, serif or sans
+  type, a searchable table of contents, and it remembers where you left off.
+- **Phone:** open the `http://192.168.x.x:5000` address shown under Ready books on a phone on the same Wi‑Fi to
+  download or read the finished books there. If the firewall asks, allow **Private networks**.
+- **Google Drive:** sign in with Google under Ready books. Finished books are uploaded to the
+  "WebNovel Downloader & Translator" folder in your Drive (automatically, or with **Drive ↑**); on another device you
+  can download them with one tap. **Back up library** saves the downloaded and translated chapters, glossaries and
+  reading positions as one zip.
 - **Interface:** theme (light / dark / system) and interface language (Türkçe, English, Deutsch, Español, Русский)
   in the top-right corner; the device language is preselected. The window opens maximized the first time and then
   remembers its size.
@@ -134,10 +140,12 @@ For personal reading; respect the sites' terms and the authors' and translators'
   data folder; on Android in the app's private storage). The AI tab says where they are. They never go into logs or
   EPUBs, and the interface only ever shows the last four characters. A key whose format isn't recognised is not tried
   on every provider: you choose which one it belongs to.
-- The local server listens only on this computer unless you turn on phone downloads. Even then other devices can
-  **only** see the book list and download EPUBs. Settings, keys, the library and starting jobs need a per-launch
+- Other devices on your Wi‑Fi can **only** see the book list, download and read books. Settings, keys, the library and starting jobs need a per-launch
   access key that only the app's own window has, so other programs on the same computer or phone can't use them
   either. Requests from other websites (CSRF) and DNS-rebinding requests are rejected.
+- Google Drive uses the `drive.file` permission: the app can only see files it created itself, not the rest of your
+  Drive. The sign-in token stays in the Windows Credential Manager (on Android in the app's private storage); you can
+  sign out in the app or remove access at https://myaccount.google.com/permissions.
 - Links found on novel pages (next chapter, cover image) are opened only if they are ordinary internet addresses:
   `file://`, `localhost` and local-network addresses are refused.
 - Nothing is sent anywhere except the novel sites you open and the AI provider you choose.

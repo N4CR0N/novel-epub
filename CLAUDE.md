@@ -13,7 +13,7 @@ Depo herkese açık (MIT lisansı): gizli bilgi, kişisel bilgi, sunucu adresi a
 - `gelistir.bat` (Windows): .venv kurar, uygulamayı **kaynak koddan** pencerede açar. Kod değişince pencereyi kapat-aç.
 - Elle: `python -m venv .venv && .venv\Scripts\pip install -r requirements.txt pywebview pytest`, sonra
   `.venv\Scripts\python uygulama.py` (pencere) ya da `python -m novel_epub` (tarayıcıda, 127.0.0.1:5000).
-- Testler: `.venv\Scripts\python -m pytest -q` (ağsız; şu an 80 test; `tests/conftest.py` istemciye erişim anahtarını ekler). Her değişiklikte çalıştır, kırmızıyla push etme.
+- Testler: `.venv\Scripts\python -m pytest -q` (ağsız; şu an 85 test; `tests/conftest.py` istemciye erişim anahtarını ekler). Her değişiklikte çalıştır, kırmızıyla push etme.
 - Veri klasörü: exe/kaynak klasöründe `kutuphane/` varsa orası; yoksa `Belgeler\Novel EPUB` (eski sürüm) varsa o, yoksa
   `Belgeler\WebNovel Downloader & Translator` (`NOVEL_EPUB_HOME` ile değişir).
   İçinde: `kutuphane/<kaynak>-<kitap>/` (ham/, ceviri[-dil]/, ceviri_eski/, sozluk[-dil].json, hafiza[-dil].json,
@@ -76,8 +76,15 @@ tetiklemez: `gh workflow run windows-uygulama.yml --ref <dal>` (sürüm yalnız 
 Origin aynı host olmalı (CSRF); tam erişim yalnız `_trusted()` = 127.0.0.1 + `X-Token: API_TOKEN` (her açılışta yeni;
 pencere `local_url()` = `#t=` ile açılır, JS sessionStorage'a alıp her isteğe ekler; Android'de `android_main.token()`).
 Anahtarsız istek (başka yerel program, ağdaki telefon) yalnız `/`, `/api/info|books|languages|settings` (ipucusuz) ve
-`/indir/*` GET; ağdan gelen ancak "telefondan indirme" (`lan_share`, varsayılan kapalı; `/api/lan`) açıkken.
-`start_server(port, lan)` kapalıyken 127.0.0.1'e, açıkken 0.0.0.0'a bağlar (değişince yeniden başlar). Yeni uçta
+`/indir/*`, `/api/read/*` GET (kullanıcı kararı: ağ paylaşımı hep açık, anahtar yok; `start_server(port, lan=True)`
+masaüstünde 0.0.0.0, Android 127.0.0.1). `/oauth2cb` yalnız 127.0.0.1'den anahtarsız (state ile doğrulanır).
+Okuyucu: `reader.py` (EPUB içindekiler + tek bölüm, önbellek; `okuma.json` kaldığın yer) + `templates/reader.html`
+(tam ekran, sayfa=CSS sütunları, geniş ekranda 2 sütun; tema/boyut/aralık/kenar/yazı tipi localStorage'da).
+Drive: `drive.py` (PKCE + 127.0.0.1 dönüşlü masaüstü istemcisi, Android'de de aynı akış Chrome'da; `drive.file`;
+klasör "WebNovel Downloader & Translator"; resumable yükleme, PATCH yerine POST + X-HTTP-Method-Override).
+Yenileme anahtarı kasada `google_drive_refresh` (yoksa ayarlar.json `drive.refresh`; `drive` arayüze asla gitmez).
+İstemci kimliği CI'da `GOOGLE_DESKTOP_CLIENT_ID/SECRET` gizlilerinden `novel_epub/_google.py`'ye yazılır (gitignore;
+geliştirmede `NOVEL_EPUB_GOOGLE_ID/SECRET`). Biten iş otomatik yüklenir (`_run_job`, `drive.auto`). Yeni uçta
 endpoint içi kontrol `_trusted()` olsun. `Fetcher` yalnız http/https ve yerel ağ dışı adresleri açar (`check_url`;
 198.18/15 fake-ip serbest), Retry-After ≤120 sn, Durdur beklemeyi keser. `/api/keys`: biçimi tanınmayan anahtar
 hiçbir sağlayıcıya gönderilmez (`UnknownFormat` → arayüz sağlayıcı seçtirir). Kitap klasörü `store.book_dirname`
@@ -103,8 +110,10 @@ Aynı kitaba ikinci iş açılmaz (409 + süren işin id'si; `pipeline._ACTIVE_B
   adımına (zipalign + apksigner, parola dosyadan) verilir; APK'nın SHA-256'sı sürüm notuna eklenir. Gizli değerlerden
   türeyen hiçbir şeyi (özet öneki, uzunluk) loga basma: depo herkese açık. Anahtarı kullanıcı GitHub'a ekler; oturum gizli değerlere yazamaz, anahtarı
   ekrana basma. Uygulama kimliği `io.github.n4cr0n.novelepub`, yalnız arm64.
-- Sırada: Google Drive (giriş, uygulama klasörü, otomatik yükleme, kitaplık yedeği; `drive.file` kapsamı, Google
-  projesi "In production" olmalı yoksa giriş 7 günde düşer). Kullanıcının Google Cloud projesi gerekiyor.
+- Bildirim yalnız iş sürerken (ön plan hizmetine iş başlayınca geçer, `MainActivity.onPause` → `syncNow`), iş bitince
+  kalkar; uygulama kapalıyken bittiyse kapatılabilir "bitti" notu.
+- Drive girişi Android'de de masaüstü istemcisiyle Chrome'da yapılır (gömülü WebView'de Google izin vermez); Google
+  projesi "In production" olmalı yoksa giriş 7 günde düşer. Yedekten geri yükleme henüz yok.
 
 ## Yeni site eklerken
 1. `novel_epub/sources/<site>.py`: `name`, `domains`; novel sayfası **ve** bölüm linkinden çalışsın; bölüm listesinin
