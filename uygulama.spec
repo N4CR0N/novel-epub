@@ -51,7 +51,6 @@ exe = EXE(
     name="WebNovelDownloaderTranslator",
     icon="assets/icon.ico",
     console=False,
-    upx=True,
-    upx_exclude=["vcruntime140.dll", "python3.dll"],
+    upx=False,  # UPX antivirüslerde yanlış alarma yol açıyor; 2 MB'lık kazanç buna değmez
     runtime_tmpdir=None,
 )

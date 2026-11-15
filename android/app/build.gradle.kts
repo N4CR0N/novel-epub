@@ -38,7 +38,11 @@ android {
         release {
             isMinifyEnabled = false
             // Kalıcı imza anahtarı yoksa hata ayıklama anahtarıyla imzalanır (sürümler arası güncelleme için kalıcı anahtar gerekir)
-            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            // Yayın hattı imzasız derleyip anahtarı yalnız apksigner adımına verir (ANDROID_UNSIGNED=1)
+            signingConfig = when {
+                System.getenv("ANDROID_UNSIGNED") == "1" -> null
+                else -> signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            }
         }
     }
 
@@ -54,10 +58,10 @@ chaquopy {
         version = "3.12"
         pip {
             // Masaüstündeki curl_cffi, keyring ve pywebview telefonda yok: ağ için net.py sistemin bağlantısını kullanır.
-            install("flask")
-            install("beautifulsoup4")
-            install("pypdf")
-            install("certifi")
+            install("flask==3.1.3")
+            install("beautifulsoup4==4.15.0")
+            install("pypdf==7.1.0")
+            install("certifi==2026.10.23")
         }
     }
 }
