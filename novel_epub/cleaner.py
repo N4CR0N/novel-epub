@@ -12,8 +12,8 @@ from .models import Chapter
 # Kısa satırlarda görülen site reklamı / filigran / emek satırları.
 NOISE_RE = re.compile(
     r"(free\s*web\s*novel|novel\s*bin|light\s*novel\s*(world|pub|cave)|webnovel\.com|"
-    r"read\s+(the\s+)?(latest|more|next)\s+chapters?|visit\s+\S+\s+for|for\s+the\s+best\s+novel|"
-    r"^(translated|translator|edited|editor|proofread(er)?|tl|ed|tlc)\s*(by)?\s*[:：]|"
+    r"read\s+(the\s+)?(latest|more|next)\s+chapters?|visit\s+\S+\.(com|net|org|me|io|co|info)\b|^\s*visit\s+(\S+\s+)?for\s+(the\s+)?(latest|best|more|full)\b|for\s+the\s+best\s+novel|"
+    r"^(translated|translator|edited|editor|proofread(er)?|tl|ed|tlc)\s*(by)?\s*[:：]\s*[^\"“”'‘’!?]{0,40}$|"
     r"^\s*(advertisement|sponsored content)\s*$|https?://|www\.\S+|"
     r"^\s*(end of|-+\s*end)\s+(b\d+\s*c\d+|c\d+\s*b\d+|chapter|book|volume)\b|"
     r"^\s*(b\d+\s*c\d+|c\d+\s*b\d+)\s*(end)?\s*[.!]?\s*$|"
@@ -23,7 +23,7 @@ NOISE_RE = re.compile(
 )
 # Paragrafın ortasına gömülü site adları (süslü Unicode harfler NFKC ile düz harfe çevrildikten sonra).
 INLINE_WATERMARK_RE = re.compile(
-    r"\s*[\(\[]?\s*(f\s*r\s*e\s*e\s*w\s*e\s*b\s*n\s*o\s*v\s*e\s*l|n\s*o\s*v\s*e\s*l\s*b\s*i\s*n)"
+    r"(?:[\(\[]\s*)?(f\s*r\s*e\s*e\s*w\s*e\s*b\s*n\s*o\s*v\s*e\s*l|n\s*o\s*v\s*e\s*l\s*b\s*i\s*n)"
     r"\s*[\.,·]\s*(c\s*o\s*m|n\s*e\s*t|m\s*e|o\s*r\s*g)\s*[\)\]]?",
     re.I,
 )

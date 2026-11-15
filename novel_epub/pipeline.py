@@ -153,7 +153,8 @@ class Job:
         first, last = chapters[0].index, chapters[-1].index
         rng = f"{first}-{last}"
         suffix = o.lang if o.translate else "orijinal"
-        base = Path(o.output) / f"{slugify(novel.title)}_{rng}_{suffix}"
+        stem = store.dir.name.removeprefix(f"{novel.source}-") or slugify(novel.title)
+        base = Path(o.output) / f"{stem}_{rng}_{suffix}"
         lang_label = LANGUAGES.get(o.lang, LANGUAGES["tr"])[1]
         out = export(fmt, novel, chapters, base, language=o.lang if o.translate else "en", cover=cover,
                      subtitle=f"Bölüm {rng}" + (f" · {lang_label}" if o.translate else ""))

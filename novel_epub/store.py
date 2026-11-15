@@ -1,6 +1,7 @@
 """Kitap başına yerel önbellek: yarıda kalan indirme/çeviri kaldığı yerden sürer."""
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import time
@@ -15,6 +16,44 @@ def slugify(text: str) -> str:
     return re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").lower()[:60] or "kitap"
 
 
+def _url_key(url: str) -> str:
+    """Aynı kitabın linkini aynı anahtara indirger (http/https, www, sondaki /)."""
+    u = (url or "").strip().lower()
+    u = re.sub(r"^https?://(www\.)?", "", u)
+    u = re.sub(r"^dosya:[0-9a-f]{8,12}_", "dosya:", u)  # eski yüklemelerin rastgele öneki
+    return u.rstrip("/")
+
+
+def book_dirname(root: Path, novel: Novel) -> str:
+    """Kitabın klasör adı. Eski klasör adları korunur (kaldığı yerden devam bozulmaz); başlığı Latin harfi
+    içermeyen ya da 60 karakterde kesilen kitaplara ve aynı adlı başka bir kitaba linkten türetilen kısa bir ek gelir."""
+    text = unicodedata.normalize("NFKD", novel.title or "").encode("ascii", "ignore").decode()
+    full = re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").lower()
+    tag = hashlib.sha1(_url_key(novel.url).encode()).hexdigest()[:8]
+    legacy = f"{novel.source}-{slugify(novel.title or '')}"
+
+    def owner(name: str) -> str | None:  # klasör hangi kitaba ait (yoksa None)
+        meta = Path(root) / name / "kitap.json"
+        try:
+            return _url_key(json.loads(meta.read_text("utf-8")).get("url", ""))
+        except (OSError, ValueError):
+            return None
+
+    mine = _url_key(novel.url)
+    if owner(legacy) == mine:  # bu kitabın eski klasörü
+        return legacy
+    try:  # başlığı sonradan değişmiş (ör. eski yüklemenin önekli adı) ama linki aynı klasör
+        for d in sorted(Path(root).glob(f"{novel.source}-*")):
+            if d.is_dir() and owner(d.name) == mine:
+                return d.name
+    except OSError:
+        pass
+    unique = full and len(full) <= 60
+    if unique and owner(legacy) is None:
+        return legacy
+    return f"{legacy}-{tag}"
+
+
 def _write_json(path: Path, data) -> None:
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -23,7 +62,7 @@ def _write_json(path: Path, data) -> None:
 
 class BookStore:
     def __init__(self, root: Path, novel: Novel | None = None, dirname: str | None = None, lang: str = "tr"):
-        self.dir = Path(root) / (dirname or f"{novel.source}-{slugify(novel.title)}")
+        self.dir = Path(root) / (dirname or book_dirname(root, novel))
         # Hedef dil başına ayrı çeviri/sözlük/hafıza; Türkçe eski dosya adlarını korur (geriye uyumlu).
         self.lang = lang
         self.sfx = "" if lang == "tr" else f"-{lang}"

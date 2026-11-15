@@ -1,6 +1,7 @@
 """PC'de çalışan yerel web arayüzü. Aynı Wi‑Fi'deki telefondan da açılır, hazır kitaplar oradan indirilir."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -8,6 +9,7 @@ import socket
 import subprocess
 import sys
 import threading
+import time
 import uuid
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -293,13 +295,18 @@ def upload():
     if ext not in SUPPORTED:
         return jsonify({"error": f"Desteklenmeyen tür: {ext or '?'} (desteklenen: {', '.join(SUPPORTED)})"}), 400
     UPLOADS.mkdir(parents=True, exist_ok=True)
+    _prune_uploads()
     safe = re.sub(r"[^\w.\- ]+", "_", name)[:120]
-    file_id = f"{uuid.uuid4().hex[:8]}_{safe}"
-    dest = UPLOADS / file_id
-    f.save(dest)
-    if dest.stat().st_size > MAX_UPLOAD_MB * 1024 * 1024:
-        dest.unlink()
+    tmp = UPLOADS / f".yukleniyor-{uuid.uuid4().hex[:8]}"
+    f.save(tmp)
+    if tmp.stat().st_size > MAX_UPLOAD_MB * 1024 * 1024:
+        tmp.unlink()
         return jsonify({"error": f"Dosya {MAX_UPLOAD_MB} MB'tan büyük"}), 400
+    # Aynı dosya aynı kimliği alır: yeniden yüklemede kopya birikmez, kitap klasörü de aynı kalır (kaldığı yerden sürer).
+    digest = hashlib.sha1(tmp.read_bytes()).hexdigest()[:12]
+    file_id = f"{digest}_{safe}"
+    dest = UPLOADS / file_id
+    tmp.replace(dest)
     try:  # hemen okunabiliyor mu: kitap adı ve bölüm sayısı
         from .files import load_file
 
@@ -309,6 +316,20 @@ def upload():
         return jsonify({"error": str(e)}), 400
     return jsonify({"id": file_id, "name": name, "title": novel.title, "chapters": len(chapters),
                     "words": sum(len(" ".join(c.paragraphs).split()) for c in chapters)})
+
+
+UPLOAD_KEEP_DAYS = 7
+
+
+def _prune_uploads() -> None:
+    """Yüklenen dosyalar okunup bölümleri kitap klasörüne kaydedildikten sonra gereksiz; bir haftadan eskileri silinir."""
+    limit = time.time() - UPLOAD_KEEP_DAYS * 86400
+    for p in UPLOADS.glob("*") if UPLOADS.is_dir() else []:
+        try:
+            if p.is_file() and p.stat().st_mtime < limit:
+                p.unlink()
+        except OSError:
+            pass
 
 
 def _upload_path(file_id: str) -> Path | None:

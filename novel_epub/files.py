@@ -37,8 +37,12 @@ class FileError(ValueError):
     pass
 
 
+UPLOAD_PREFIX = re.compile(r"^[0-9a-f]{8,12}_")  # arayüzden yüklenen dosyanın adına eklenen kimlik
+
+
 def _book(path: Path, title: str, author: str = "", description: str = "") -> Novel:
-    return Novel(url=f"dosya:{path.name}", title=title or path.stem, source="dosya", author=author,
+    name = UPLOAD_PREFIX.sub("", path.name)
+    return Novel(url=f"dosya:{name}", title=title or Path(name).stem, source="dosya", author=author,
                  description=description)
 
 
