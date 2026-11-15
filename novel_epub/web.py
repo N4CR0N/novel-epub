@@ -165,7 +165,7 @@ def index():
 
 
 def _public_settings(s: dict) -> dict:
-    from .providers import BY_ID
+    from .providers import BY_ID, PROVIDERS
 
     provs = []
     for pid, info in s.get("providers", {}).items():
@@ -184,7 +184,8 @@ def _public_settings(s: dict) -> dict:
         where = "android"
     return {**{k: v for k, v in s.items() if k not in hidden}, "providers": provs, "key_store": where,
             "has_key": any(x["has_key"] for x in provs),
-            "formats": [{"id": k, "name": v[0]} for k, v in FORMATS.items()]}
+            "formats": [{"id": k, "name": v[0]} for k, v in FORMATS.items()],
+            "all_providers": [{"id": p.id, "name": p.name} for p in PROVIDERS if p.auth != "none"]}
 
 
 @app.get("/api/settings")
@@ -222,13 +223,16 @@ def post_settings():
 @app.post("/api/keys")
 def add_key():
     """Anahtarı yapıştır: sağlayıcı tanınır, erişilen modeller listelenir, en iyi 5'i seçili gelir (ilk kez)."""
-    from .providers import KeyError_, detect, rank
+    from .providers import KeyError_, UnknownFormat, detect, rank
 
-    key = (request.get_json(force=True).get("key") or "").strip()
+    data = request.get_json(force=True)
+    key = (data.get("key") or "").strip()
     if not key:
         return jsonify({"error": "Anahtar boş"}), 400
     try:
-        prov, available = detect(key)
+        prov, available = detect(key, provider=str(data.get("provider") or ""))
+    except UnknownFormat as e:
+        return jsonify({"error": str(e), "choose_provider": True}), 400
     except KeyError_ as e:
         return jsonify({"error": str(e)}), 400
     s = load_settings()

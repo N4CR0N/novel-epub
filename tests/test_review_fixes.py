@@ -161,3 +161,22 @@ def test_saving_settings_with_env_key_keeps_file_keys(tmp_path: Path, monkeypatc
     web.save_settings(s)
     saved = json.loads((tmp_path / "ayarlar.json").read_text("utf-8"))
     assert saved["keys"] == {"openai": "sk-UYDURMA"}  # dosyadaki anahtar silinmedi, ortamdaki diske yazılmadı
+
+
+def test_unknown_key_format_is_not_sent_anywhere(tmp_path: Path, monkeypatch):
+    import pytest
+
+    from novel_epub import providers, web
+
+    calls = []
+    with pytest.raises(providers.UnknownFormat):
+        providers.detect("tamamen-bilinmeyen-bicim", get=lambda u, h: calls.append(u) or (200, {"data": []}))
+    assert calls == []
+    # kullanıcı sağlayıcıyı seçince yalnız ona sorulur
+    p, _ = providers.detect("tamamen-bilinmeyen-bicim", provider="groq",
+                            get=lambda u, h: calls.append(u) or (200, {"data": [{"id": "llama-x"}]}))
+    assert p.id == "groq" and len(calls) == 1 and "groq" in calls[0]
+
+    monkeypatch.setattr(web, "SETTINGS_PATH", tmp_path / "ayarlar.json")
+    r = web.app.test_client().post("/api/keys", json={"key": "tamamen-bilinmeyen-bicim"})
+    assert r.status_code == 400 and r.get_json()["choose_provider"] is True

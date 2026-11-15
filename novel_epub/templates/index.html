@@ -293,6 +293,7 @@
       <section class="panel">
         <label for="key" style="margin-top:0">API anahtarı</label>
         <div class="row"><input class="grow" id="key" type="password" placeholder="Gemini, OpenAI, Claude, DeepSeek, OpenRouter, Groq, xAI, Mistral… ya da ollama" autocomplete="off" spellcheck="false">
+          <select id="keyProv" hidden aria-label="Sağlayıcı"></select>
           <button id="addKey" type="button">Ekle</button></div>
         <div class="msg" id="keyMsg"></div>
         <div class="mut"><span>Ücretsiz Gemini anahtarı için:</span> <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. <span id="keyStore"></span></div>
@@ -342,7 +343,7 @@ async function api(path, body, method) {
   const opt = body === undefined ? (method ? {method} : {}) : {method: method || 'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)};
   const r = await fetch(path, opt);
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+  if (!r.ok) throw Object.assign(new Error(d.error || ('HTTP ' + r.status)), {data: d});
   return d;
 }
 
@@ -438,12 +439,21 @@ async function saveModels() {
 }
 $('addKey').onclick = async () => {
   const key = $('key').value.trim(); if (!key) return;
+  const sel = $('keyProv'), provider = sel.hidden ? '' : sel.value;
+  if (!sel.hidden && !provider) { sel.focus(); return; }
   $('keyMsg').textContent = T('Anahtar tanınıyor ve modeller listeleniyor…'); $('addKey').disabled = true;
   try {
-    const d = await api('/api/keys', {key});
-    $('key').value = ''; renderSettings(d); $('translate').checked = true;
+    const d = await api('/api/keys', {key, provider});
+    $('key').value = ''; sel.hidden = true; renderSettings(d); $('translate').checked = true;
     $('keyMsg').innerHTML = `<span class="ok">${esc(T('{name} eklendi: {n} model erişilebilir. Kullanmak istediklerini işaretle.', {name: d.name, n: d.models}))}</span>`;
-  } catch (e) { $('keyMsg').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  } catch (e) {
+    if (e.data && e.data.choose_provider) {  // biçimi tanınmayan anahtar: rastgele sağlayıcılara gönderilmez
+      sel.innerHTML = `<option value="">${esc(T('Sağlayıcı seç'))}</option>` +
+        ((settings && settings.all_providers) || []).map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+      sel.hidden = false; sel.focus();
+    }
+    $('keyMsg').innerHTML = `<span class="err">${esc(T(e.message))}</span>`;
+  }
   finally { $('addKey').disabled = false; }
 };
 $('key').onkeydown = e => { if (e.key === 'Enter') $('addKey').click(); };

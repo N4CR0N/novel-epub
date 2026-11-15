@@ -601,7 +601,7 @@ def test_provider_guess_and_rank():
     assert [p.id for p in guess("sk-ant-" + "Z" * 30)] == ["anthropic"]
     assert [p.id for p in guess("sk-or-" + "Z" * 30)] == ["openrouter"]
     assert [p.id for p in guess("gsk_" + "Z" * 30)] == ["groq"]
-    assert len(guess("bilinmeyen-bicim")) > 3  # tanınmayan biçim: hepsi denenir
+    assert guess("bilinmeyen-bicim") == []  # tanınmayan biçim: anahtar hiçbir sağlayıcıya gönderilmez
     g = ["gemini/gemini-3.1-flash-lite", "gemini/gemini-3.8-flash", "gemini/gemini-4-hydrogen",
          "gemini/gemini-3.5-flash-lite", "gemini/gemini-4-argon"]
     assert rank(g) == ["gemini/gemini-4-argon", "gemini/gemini-4-hydrogen", "gemini/gemini-3.8-flash",

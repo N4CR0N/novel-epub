@@ -73,10 +73,14 @@ class KeyError_(RuntimeError):
 
 
 def guess(key: str) -> list[Provider]:
-    """Anahtar biçimine uyan sağlayıcılar (en özgülden genele). Hiçbiri uymazsa liste ucu olan hepsi."""
+    """Anahtar biçimine uyan sağlayıcılar (en özgülden genele). Hiçbiri uymazsa boş: anahtar rastgele
+    sağlayıcılara gönderilmez, kullanıcı hangisine ait olduğunu seçer."""
     key = key.strip()
-    hits = [p for p in PROVIDERS if any(re.fullmatch(pat, key) for pat in p.patterns)]
-    return hits or [p for p in PROVIDERS if p.models_url and p.auth != "none"]
+    return [p for p in PROVIDERS if any(re.fullmatch(pat, key) for pat in p.patterns)]
+
+
+class UnknownFormat(Exception):
+    """Anahtarın biçimi hiçbir sağlayıcıya uymuyor: arayüz sağlayıcı seçtirir."""
 
 
 def _headers(p: Provider, key: str) -> dict:
@@ -138,10 +142,18 @@ def list_models(p: Provider, key: str, get: HttpGet | None = None) -> list[str]:
     return rank([f"{p.prefix}/{n}" for n in names])
 
 
-def detect(key: str, get: HttpGet | None = None) -> tuple[Provider, list[str]]:
-    """Anahtarın sağlayıcısını bulur ve erişilen modelleri döndürür."""
+def detect(key: str, get: HttpGet | None = None, provider: str = "") -> tuple[Provider, list[str]]:
+    """Anahtarın sağlayıcısını bulur ve erişilen modelleri döndürür. `provider` verilirse yalnız ona sorulur."""
     errors = []
-    for p in guess(key):
+    if provider:
+        if provider not in BY_ID:
+            raise KeyError_(f"Bilinmeyen sağlayıcı: {provider}")
+        candidates = [BY_ID[provider]]
+    else:
+        candidates = guess(key)
+        if not candidates:
+            raise UnknownFormat("Anahtarın biçimi tanınmadı; hangi sağlayıcıya ait olduğunu seç.")
+    for p in candidates:
         try:
             models = list_models(p, key, get)
         except KeyError_ as e:
