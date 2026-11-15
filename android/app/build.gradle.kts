@@ -19,7 +19,8 @@ android {
         targetSdk = 35
         versionCode = appVersionCode
         versionName = appVersionName
-        ndk { abiFilters += listOf("arm64-v8a") }
+        // Telefonlar arm64; emülatör testi için derleme hattı x86_64'ü de ekleyebilir
+        ndk { abiFilters += listOf("arm64-v8a") + (System.getenv("EXTRA_ABI")?.let { listOf(it) } ?: emptyList()) }
     }
 
     signingConfigs {
