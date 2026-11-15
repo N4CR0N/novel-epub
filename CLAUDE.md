@@ -31,6 +31,9 @@ kullanıcıya sürüm linkini ver (https://github.com/N4CR0N/novel-epub/releases
 (silinen) `eski-surumler.yml` ile v0.1.0–v1.1.1 olarak yayımlandı (etiket commit'leri eski kaynak + main'in workflow'ları:
 GitHub, Actions anahtarına workflow'u farklı commit'e etiket koydurmuyor; oturumdan etiket push'u ve sürüm
 oluşturma/düzenleme kapalı — sürüm işleri yalnız Actions workflow'larıyla). Exe imzasız: kullanıcı "Özellikler → Engellemeyi kaldır" yapar.
+**Her başarısız Actions çalıştırması kullanıcıya mail atar** (istemiyor): bilerek başarısız derleme tetikleme,
+workflow betiklerini önce yerelde dene, emin olmadığın şeyi dal + `workflow run` ile tek seferde doğrula. Öz-test
+(`--oz-test`) pencerenin WinForms/WebView2 tarafını da yükler (WebView2Loader'ın 3 mimari kopyası da pakette kalmalı).
 Yeni bir Python paketi eklersen `requirements.txt`'e ve gerekiyorsa `uygulama.spec`'e ekle. Boyut önemli (107 MB → ~18 MB;
 hedef ≤10 MB): ağır paket ekleme (LiteLLM, lxml, EbookLib, python-docx bu yüzden çıkarıldı). Dal push'ları Actions'ı
 tetiklemez: `gh workflow run windows-uygulama.yml --ref <dal>` (sürüm yalnız main'den yayımlanır).
