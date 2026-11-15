@@ -65,7 +65,9 @@ jobs:
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           umask 077
           printf '%s' "$KS_B64" | tr -d ' \r\n\t' | base64 -d > "$RUNNER_TEMP/webnovel.jks"
-          printf '%s' "$KS_PASS" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' > "$RUNNER_TEMP/ks.pass"
+          # apksigner aynı dosyadan iki parolayı ardışık satırlardan okur (--ks-pass, --key-pass)
+          P=$(printf '%s' "$KS_PASS" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          printf '%s\n%s\n' "$P" "$P" > "$RUNNER_TEMP/ks.pass"; unset P
           "$BT/zipalign" -f -p 4 "$RUNNER_TEMP/unsigned.apk" "$RUNNER_TEMP/aligned.apk"
           if "$BT/apksigner" sign --ks "$RUNNER_TEMP/webnovel.jks" --ks-key-alias webnovel \
                --ks-pass "file:$RUNNER_TEMP/ks.pass" --key-pass "file:$RUNNER_TEMP/ks.pass" \
