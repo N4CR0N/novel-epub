@@ -48,6 +48,23 @@ jobs:
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$BT/apksigner" verify --print-certs android/app/build/outputs/apk/release/*.apk | grep -E "Signer #1 certificate DN" | tee -a "$GITHUB_STEP_SUMMARY" || true
 
+      - name: Kalıcı anahtarla imzala ve doğrula (gizli değerler eklendiyse)
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          APP_VERSION_NAME: dev
+          APP_VERSION_CODE: ${{ github.run_number }}
+        run: |
+          if [ -z "$KS_B64" ]; then echo "Kalıcı anahtar: gizli değer YOK" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/k.jks"
+          if ! keytool -list -keystore "$RUNNER_TEMP/k.jks" -storepass "$ANDROID_KEYSTORE_PASSWORD" >/dev/null 2>&1; then
+            echo "Kalıcı anahtar: parola UYUŞMUYOR" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/k.jks"
+          gradle -p android assembleRelease
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --print-certs android/app/build/outputs/apk/release/*.apk | grep -E "certificate (DN|SHA-1|SHA-256) digest|certificate DN" | sed 's/^/Kalıcı anahtar: /' | tee -a "$GITHUB_STEP_SUMMARY"
+          rm -f "$RUNNER_TEMP/k.jks"
+
       - name: Sonuç
         if: always()
         run: |
