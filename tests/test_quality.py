@@ -141,3 +141,19 @@ def test_character_names_are_kept_but_titles_translated():
     assert quality.leftover_english(src, "Tiger Fussen ve Dean Ming, Five ile buluştu.", set(), names) == ["Dean"]
     assert quality.restore_names({"Tiger Fussen": "Kaplan Fussen", "Dean Ming": "Dekan Ming"}, chars) == \
         {"Tiger Fussen": "Tiger Fussen"}
+
+
+def test_title_line_in_body_is_dropped_and_never_inserted():
+    src = Chapter(580, "Chapter 580 Looming Shadow of a Lorem", "u",
+                  ["580 Looming Shadow of a Lorem", "Redmond sat cross-legged and listened to the principal speaking.",
+                   "The struggle over the treasures was an extinction event for the entire universe.", "Indeed, Redmond nodded."])
+    out = Chapter(580, "Bölüm 580: Bir Lorem'in Belirsiz Gölgesi", "u",
+                  ["Redmond bağdaş kurup oturdu ve müdürün konuşmasını dinledi.",
+                   "Bölüm 580 Bir Lorem'in Belirsiz Gölgesi",
+                   "Hazineler üzerindeki çekişme tüm evren için bir yok oluştu.", "Gerçekten de öyle, Redmond başını salladı."])
+    fixed = quality.fix_chapter(src, out, "tr")
+    assert len(fixed.paragraphs) == 3 and not fixed.paragraphs[1].startswith("Bölüm")
+    _, extra = quality.paragraph_issues(src, Chapter(580, fixed.title, "u", fixed.paragraphs), "tr", {}, set())
+    assert extra == {}  # kaynaktaki başlık satırı "atlanmış" sayılmaz
+    body = Chapter(100, "Bölüm 100: Yetişim", "u", ["100 yıl geçti.", "a" * 50, "b" * 50, "c" * 50])
+    assert quality.fix_chapter(Chapter(100, "Chapter 100 Lorem", "u", ["x"] * 4), body, "tr").paragraphs[0] == "100 yıl geçti."

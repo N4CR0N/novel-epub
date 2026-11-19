@@ -325,10 +325,26 @@ def normalize_title(src_title: str, title: str, lang: str) -> str:
     return f"{head}: {sub}" if sub else head
 
 
+def _title_line(text: str, index: int, title: str = "") -> bool:
+    """Metnin içinde tekrar eden bölüm başlığı satırı mı ("580 Looming Shadow…", "Bölüm 580: …")."""
+    t = text.strip()
+    if len(t) > 160 or not re.match(rf"^(?:(?:Chapter|Bölüm|Kapitel|Capítulo|Глава)\s*)?{index}\b", t, re.I):
+        return False
+    rest = re.sub(rf"^(?:(?:Chapter|Bölüm|Kapitel|Capítulo|Глава)\s*)?{index}\s*[:\-–—.]?\s*", "", t, flags=re.I)
+    if not rest:
+        return True
+    sub = re.sub(r"^.*?\d+\s*[:\-–—.]?\s*", "", title or "", count=1)
+    from difflib import SequenceMatcher
+
+    return not sub or SequenceMatcher(None, rest.lower(), sub.lower()).ratio() > 0.5
+
+
 def fix_chapter(src: Chapter, out: Chapter, lang: str) -> Chapter:
-    """Kesin kurallarla düzeltilmiş bölüm (başlık kalıbı; Türkçede seviye kısaltması)."""
+    """Kesin kurallarla düzeltilmiş bölüm (başlık kalıbı; Türkçede seviye kısaltması; gövdenin ilk iki paragrafında
+    başlığı tekrar eden satır atılır)."""
     title = normalize_title(src.title, out.title, lang)
-    paras = out.paragraphs
+    paras = [p for i, p in enumerate(out.paragraphs) if not (i < 2 and len(out.paragraphs) > 3
+                                                              and _title_line(p, out.index, title))]
     if lang == "tr":
         title = fix_levels(title)
         paras = [fix_levels(p) for p in paras]
@@ -438,6 +454,8 @@ def paragraph_issues(src: Chapter, out: Chapter, lang: str, glossary: dict[str, 
         if si and not oi:  # çevrilmemiş kaynak paragrafı
             for k in si:
                 sp = src.paragraphs[k]
+                if _title_line(sp, src.index, src.title):
+                    continue  # metnin içinde tekrar eden bölüm başlığı: başlıkta zaten var
                 if len(sp) >= 50 and not re.search(r"(?i)\b(chapter|translat|novel|\.com|\.net|patreon|discord)\b", sp):
                     tgt = last_out if last_out is not None else 0
                     extra.setdefault(tgt, []).append(sp)
@@ -457,8 +475,7 @@ def paragraph_issues(src: Chapter, out: Chapter, lang: str, glossary: dict[str, 
         found: list[str] = []
         if i in drop:
             found.append("bu paragraf bölümde ikinci kez geçiyor (tekrar): boş döndür")
-        elif not sp and len(p) >= 40:
-            found.append("kaynakta karşılığı bulunamadı: başka bir paragrafın tekrarı ya da uydurmaysa boş döndür, değilse aynen bırak")
+        # Kaynakta karşılığı bulunamayan paragraf silinmeye aday gösterilmez: eşleme yanılabilir, gerçek metin gider.
         if lang == "tr":
             old = archaic_words(p)
             if old:
