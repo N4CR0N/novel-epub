@@ -79,6 +79,7 @@ ARCHAIC_TR: dict[str, str] = {
     r"suretle\b|surette\b": "biçimde",
     r"nazaran": "göre",
     r"hasebiyle": "yüzünden / nedeniyle",
+    r"iptidai": "ilkel",
 }
 _ARCHAIC = [(re.compile(r"(?<![\wçğıöşüâîû])" + k, re.I), v) for k, v in ARCHAIC_TR.items()]
 
@@ -128,6 +129,7 @@ platform form minimum maksimum oval mineral arena tsunami meteor veto internet v
 yuan tael kcal general total final bonus mega ultra data atom proton elektron virus bakteri doktor profesör
 salon film pasta pizza kanal ton kilo metre gram kalori modül model status avatar kart sistem enerji motor
 size bile gene tire fare kale alan bale dere kara sade hala nine anne mama papa baba sana dana pare rota
+lord
 """.split())
 
 _WORD = re.compile(r"(?<![\wçğıöşüâîûÇĞİÖŞÜ'’])([A-Za-z]{3,})(?![\wçğıöşüâîûÇĞİÖŞÜ])")
@@ -152,15 +154,21 @@ def _kept_words(glossary: dict[str, str], vocab: set[str]) -> set[str]:
     return out
 
 
+_LAUGH = re.compile(r"^(?:h[aeiou]|[aeiou]h|hm+|mm+|u+h|o+h|a+h)+h?$", re.I)
+
+
 def leftover_english(src_text: str, out_text: str, vocab: set[str], kept: set[str] = frozenset()) -> list[str]:
-    """Çeviride kaynak dilde kalmış sıradan kelimeler (kaynakta da geçen; adlar ve Türkçede aynı yazılanlar hariç)."""
+    """Çeviride kaynak dilde kalmış sıradan kelimeler. Bir kelime ya unvan/ad öbeklerinde sık geçen sıradan bir
+    kelimedir (COMMON_EN: Dean, Island, Realm…) ve kaynakta geçer, ya da kaynakta küçük harfle sıradan kelime olarak
+    geçer (dominion, sparring). Kaynakta yalnız büyük harfle geçen öteki kelimeler ad sayılır (Ming, Pang, Yang)."""
     src_low = src_text.lower()
     found = []
     for w in dict.fromkeys(m.group(1) for m in _WORD.finditer(out_text)):
         lw = w.lower()
-        if lw in TR_SAME or lw in kept or len(lw) < 4 and lw not in ("sea", "sky", "art", "god", "war", "ice", "sun"):
+        if lw in TR_SAME or lw in kept or _LAUGH.match(lw) or len(lw) < 4 and lw not in ("sea", "sky", "art", "war", "ice"):
             continue
-        if (lw in COMMON_EN or lw in vocab) and re.search(r"(?<![a-z])" + re.escape(lw) + r"(?![a-z])", src_low):
+        pat = r"(?<![A-Za-z])" + re.escape(lw) + r"(?![A-Za-z])"
+        if lw in COMMON_EN and re.search(pat, src_low) or re.search(pat, src_text):
             found.append(w)
     return found
 
