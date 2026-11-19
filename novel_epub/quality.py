@@ -180,7 +180,7 @@ def suspicious_glossary(glossary: dict[str, str], vocab: set[str]) -> dict[str, 
         kw = {w.lower() for w in re.findall(r"[A-Za-z]{3,}", k)}
         left = [w for w in re.findall(r"[A-Za-z]{3,}", v)
                 if w.lower() in kw and w.lower() not in TR_SAME and (w.lower() in COMMON_EN or w.lower() in vocab)]
-        if left:
+        if left or archaic_words(v):  # karşılığı eski kelimeyle kurulmuş terim de ("İptidai Yıldız") düzeltilir
             bad[k] = v
     return bad
 
@@ -321,8 +321,9 @@ def paragraph_issues(src: Chapter, out: Chapter, lang: str, glossary: dict[str, 
 
 
 def archaic_density(out: Chapter) -> float:
-    """1000 kelimede eski/ağdalı kelime sayısı (yüksekse bölüm baştan redakte edilir)."""
+    """1000 kelimede eski/ağdalı kelime sayısı (yüksekse bölüm baştan redakte edilir). Sözlük teriminden gelen
+    kelimeler ("İptidai Yıldız") sayılmaz: onlar sözlük düzeltilince paragraf onarımıyla düzelir."""
     text = " ".join(out.paragraphs)
     n = max(1, len(text.split()))
-    hits = sum(len(rx.findall(text)) for rx, _ in _ARCHAIC)
+    hits = sum(len(rx.findall(text)) for k, (rx, _) in zip(ARCHAIC_TR, _ARCHAIC) if k != r"iptidai")
     return 1000 * hits / n
