@@ -469,6 +469,16 @@ def paragraph_issues(src: Chapter, out: Chapter, lang: str, glossary: dict[str, 
     return issues, extra
 
 
+def missing_share(src: Chapter, out: Chapter) -> float:
+    """Kaynağın çevrilmeden kalan (eşlenemeyen) kısmının oranı; yüksekse bölüm baştan çevrilir."""
+    if not src.paragraphs or not out.paragraphs:
+        return 1.0 if src.paragraphs else 0.0
+    total = sum(len(p) for p in src.paragraphs) or 1
+    lost = sum(len(src.paragraphs[k]) for si, oi in align(src.paragraphs, out.paragraphs) if si and not oi for k in si
+               if len(src.paragraphs[k]) >= 50)
+    return lost / total
+
+
 def archaic_density(out: Chapter) -> float:
     """1000 kelimede eski/ağdalı kelime sayısı (yüksekse bölüm baştan redakte edilir). Sözlük teriminden gelen
     kelimeler ("İptidai Yıldız") sayılmaz: onlar sözlük düzeltilince paragraf onarımıyla düzelir."""

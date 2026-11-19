@@ -404,6 +404,16 @@ class Job:
                     self.log(f"Sözlükte {len(fixed_terms)} karşılık düzeltildi: "
                              + ", ".join(f"{k}→{v}" for k, v in list(fixed_terms.items())[:8]))
                 todo = [i for i, d in sorted(results.items()) if d is not source[i] and d.checked < quality.QUALITY_VERSION]
+                # Kaynağın %12'den fazlası çevrilmemişse (bölüm sonu ya da ortası atlanmış) bölüm baştan çevrilir.
+                redo = [i for i in todo if quality.missing_share(source[i], results[i]) > 0.12]
+                if redo:
+                    self.log(f"Denetim: {len(redo)} bölümün önemli bir kısmı çevrilmemiş, baştan çevrilecek: {redo[:20]}")
+                    for i in redo:
+                        store.drop_tr(i)  # eski çeviri yedeğe (Kitaplık → Eskiye dön)
+                        results.pop(i, None)
+                        pending.append(source[i])
+                    pending.sort(key=lambda c: c.index)
+                    todo = [i for i in todo if i not in redo]
                 heavy = [source[i] for i in todo if quality.archaic_density(results[i]) > 4]
                 self.log(f"Denetim: {len(todo)} bölüm denetlenecek" + (f"; {len(heavy)} bölüm eski/ağdalı dille yazılmış, baştan redakte edilecek: {[c.index for c in heavy][:20]}" if heavy else ""))
                 k = 0
