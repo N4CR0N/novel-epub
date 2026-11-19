@@ -853,6 +853,12 @@ class Translator:
                     pieces = [" ".join(pieces)]
                 if len(pieces[0]) < 0.6 * len(old) and not may_drop:
                     continue
+                # Güvenlik: düzeltilmiş paragraf taslağın kendisi olmalı (kelimelerinin çoğu korunur); başka bir
+                # paragrafın çevirisiyle değiştirilmişse (eşleme kayması) kabul edilmez.
+                ow = {w for w in re.findall(r"[^\W\d_]{4,}", old.lower())}
+                nw = {w for w in re.findall(r"[^\W\d_]{4,}", pieces[0].lower())}
+                if len(ow) >= 4 and len(ow & nw) < 0.4 * len(ow):
+                    continue
                 if item["source"] and untranslated_paragraphs([item["source"]], pieces[:1], self.lang):
                     continue
                 paras[k][i] = pieces if len(pieces) > 1 else pieces[0]

@@ -302,15 +302,17 @@ def align(src: list[str], out: list[str], ratio: float = 1.0) -> list[tuple[tupl
     ratio: çeviri/kaynak beklenen uzunluk oranı (Türkçe–İngilizce ~1)."""
     n, m = len(src), len(out)
     ls, lo = [len(x) for x in src], [len(x) for x in out]
-    # Uzunluğun yanında çapa: iki tarafta da aynen geçen sayılar ve Latin harfli adlar (Xu Jingming, 1.020).
+    # Uzunluğun yanında çapa: çeviride aynen korunan sayılar ve Latin harfli adlar (Xu Jingming, 1.020). Yalnız
+    # bölümün çevirisinde gerçekten geçen kaynak kelimeleri çapa sayılır ("Yes"/"Evet" gibi çevrilenler sayılmaz).
     anchor = re.compile(r"\d+|[A-Z][a-z]{2,}")
-    sa = [set(anchor.findall(x)) for x in src]
+    out_tokens = set(anchor.findall(" ".join(out)))
+    sa = [set(anchor.findall(x)) & out_tokens for x in src]
     oa = [set(anchor.findall(x)) for x in out]
 
     def lex(si: set, oi: set) -> float:
-        if not si and not oi:
+        if not si:
             return 0.0
-        return 1.2 * (1 - len(si & oi) / len(si | oi))
+        return 1.5 * (1 - len(si & oi) / len(si))
 
     INF = float("inf")
     cost = [[INF] * (m + 1) for _ in range(n + 1)]
@@ -325,13 +327,13 @@ def align(src: list[str], out: list[str], ratio: float = 1.0) -> list[tuple[tupl
             if i < n and j < m:
                 steps.append((1, 1, _cost(ls[i], lo[j], ratio) + lex(sa[i], oa[j])))
             if i + 1 < n and j < m:
-                steps.append((2, 1, 1.7 * _cost(ls[i] + ls[i + 1], lo[j], ratio) + 0.6 + lex(sa[i] | sa[i + 1], oa[j])))
+                steps.append((2, 1, 1.7 * _cost(ls[i] + ls[i + 1], lo[j], ratio) + 0.8 + lex(sa[i] | sa[i + 1], oa[j])))
             if i < n and j + 1 < m:
-                steps.append((1, 2, 1.7 * _cost(ls[i], lo[j] + lo[j + 1], ratio) + 0.6 + lex(sa[i], oa[j] | oa[j + 1])))
-            if i < n:
-                steps.append((1, 0, 2.2 if ls[i] >= 40 else 0.4))
+                steps.append((1, 2, 1.7 * _cost(ls[i], lo[j] + lo[j + 1], ratio) + 0.8 + lex(sa[i], oa[j] | oa[j + 1])))
+            if i < n:  # yalnız çok kısa satırlar ("***", reklam kırıntısı) ucuza atlanır
+                steps.append((1, 0, 2.4 if ls[i] >= 15 else 0.4))
             if j < m:
-                steps.append((0, 1, 2.2 if lo[j] >= 40 else 0.4))
+                steps.append((0, 1, 2.4 if lo[j] >= 15 else 0.4))
             for di, dj, k in steps:
                 if c + k < cost[i + di][j + dj]:
                     cost[i + di][j + dj] = c + k

@@ -107,3 +107,24 @@ def test_review_inserts_missing_and_drops_duplicates():
     tr._call = fake_call
     got = tr.review([(Chapter(1, "Chapter 1", "", src), Chapter(1, "Bölüm 1", "", draft))], {}, set())[0]
     assert got.paragraphs == out
+
+
+def test_short_paragraphs_with_equal_counts_stay_one_to_one():
+    # gerçek bir bölümdeki uzunluk deseni: kısa satırlar atlanıp yanlış eşlenmemeli
+    sl, ol = [38, 67, 109, 28, 38, 309, 60, 102], [43, 65, 87, 37, 59, 282, 57, 97]
+    src = [("Fang Xinglong said " if i % 2 else "Xu Jingming said ") + "x" * (n - 18) for i, n in enumerate(sl)]
+    out = [("Fang Xinglong dedi " if i % 2 else "Xu Jingming dedi ") + "y" * (n - 18) for i, n in enumerate(ol)]
+    assert quality.align(src, out) == [((i,), (i,)) for i in range(8)]
+
+
+def test_review_rejects_a_fix_that_replaces_the_paragraph():
+    from novel_epub.translator import Translator
+
+    src = ["Xu Jingming nodded at the dean today.", "Fang Xinglong asked how this could happen at all, frowning deeply."]
+    out = ["Xu Jingming bugün Dean'e başını salladı.", "Fang Xinglong kaşlarını çatarak bunun nasıl olabildiğini sordu."]
+    tr = Translator.__new__(Translator)
+    tr._init_state(model="gemini/x", lang="tr", log=lambda m: None)
+    tr._call = lambda payload, schema=None, bad_retries=None, system=None: {
+        "paragraphs": ["Fang Xinglong kaşlarını çatarak bunun nasıl olabildiğini tekrar tekrar sordu durdu."] * len(payload["items"])}
+    got = tr.review([(Chapter(1, "Chapter 1", "", src), Chapter(1, "Bölüm 1", "", out))], {}, set())[0]
+    assert got.paragraphs == out  # başka paragrafın metni kabul edilmedi
