@@ -337,15 +337,17 @@ class Job:
                 store.save_glossary(glossary)
                 self.log(f"  sözlüğe eklendi: {', '.join(f'{k}→{glossary.get(k, v)}' for k, v in list(new_terms.items())[:6])}")
 
-        def review(indices: list[int]) -> None:
+        def review(indices: list[int], size: int = 8) -> None:
             """Kalite denetimi: başlık/seviye kalıbı, kaynak dilde kalmış kelime, sözlük, eski kelime, eksik çeviri."""
             idx = [i for i in indices if i in results and results[i] is not source[i]]
-            for j in range(0, len(idx), 8):
-                part = idx[j:j + 8]
+            for j in range(0, len(idx), size):
+                part = idx[j:j + size]
                 checked = tr.review([(source[i], results[i]) for i in part], glossary, vocab)
                 for c in checked:
                     store.save_tr(c)
                     results[c.index] = c
+                if getattr(tr, "review_stop", None):
+                    raise tr.review_stop
 
         def edit(drafts: list[Chapter]) -> None:
             """Taslakları redakte eder; kota hatası yukarı çıkar, diğer hatada taslak kalır."""
@@ -424,10 +426,10 @@ class Job:
                     edit([results[c.index] for c in group])
                 self.p.phase = f"denetleniyor ({tr.model})"
                 self.p.total, self.p.done = len(todo), 0
-                for j in range(0, len(todo), 8):
+                for j in range(0, len(todo), 30):  # 30 bölümün sorunlu paragrafları 40'arlı isteklerle
                     self._check_cancel()
-                    review(todo[j:j + 8])
-                    self.p.done = min(len(todo), j + 8)
+                    review(todo[j:j + 30], 30)
+                    self.p.done = min(len(todo), j + 30)
                 self.p.total, self.p.done = len(chapters), len(results)
             except QuotaExhausted as e:
                 stop_reason = str(e)

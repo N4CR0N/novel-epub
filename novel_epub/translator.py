@@ -825,14 +825,23 @@ class Translator:
             self.log(f"  denetim: {len(todo)} paragrafta sorun bulundu ({', '.join(str(outs[k].index) for k in sorted({t[0] for t in todo})[:12])}…); düzeltiliyor")
         paras: list[list] = [list(o.paragraphs) for o in outs]
         fixed_n = 0
+        self.review_stop = None
+        unfinished: set[int] = set()
         for j in range(0, len(todo), max_items):
             part = todo[j:j + max_items]
+            if self.review_stop:
+                unfinished.update(t[0] for t in part)
+                continue
             text = " ".join(t[2]["source"] + " " + t[2]["draft"] for t in part)
             payload = {"glossary": relevant_glossary(glossary, text), **self.memory_context(text),
                        "items": [t[2] for t in part]}
             try:
                 data = self._call(payload, POLISH_SCHEMA, bad_retries=0, system=POLISH_PROMPT)
-            except (QuotaExhausted, FatalError):
+            except QuotaExhausted as e:  # yapılan düzeltmeler kaybolmasın; kalan bölümler denetlenmemiş kalır
+                self.review_stop = e
+                unfinished.update(t[0] for t in part)
+                continue
+            except FatalError:
                 raise
             except TranslationError as e:
                 self.log(f"  denetim onarımı olmadı ({e}); sonraki denetimde yeniden denenecek")
@@ -867,14 +876,15 @@ class Translator:
         if todo:
             self.log(f"  denetim: {fixed_n}/{len(todo)} paragraf düzeltildi")
         result = []
-        for (src, _), out, ps in zip(pairs, outs, paras):
+        for k, ((src, _), out, ps) in enumerate(zip(pairs, outs, paras)):
             flat: list[str] = []
             for x in ps:  # eklenen (atlanmış) paragraflar araya girer, silinenler çıkar
                 if isinstance(x, list):
                     flat.extend(x)
                 elif x:
                     flat.append(x)
-            result.append(Chapter(out.index, out.title, out.url, flat, out.next_url, out.edited, quality.QUALITY_VERSION))
+            result.append(Chapter(out.index, out.title, out.url, flat, out.next_url, out.edited,
+                                  out.checked if k in unfinished else quality.QUALITY_VERSION))
         return result
 
     def fix_glossary(self, glossary: dict[str, str], vocab: set[str]) -> dict[str, str]:
