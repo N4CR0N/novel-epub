@@ -128,3 +128,13 @@ def test_review_rejects_a_fix_that_replaces_the_paragraph():
         "paragraphs": ["Fang Xinglong kaşlarını çatarak bunun nasıl olabildiğini tekrar tekrar sordu durdu."] * len(payload["items"])}
     got = tr.review([(Chapter(1, "Chapter 1", "", src), Chapter(1, "Bölüm 1", "", out))], {}, set())[0]
     assert got.paragraphs == out  # başka paragrafın metni kabul edilmedi
+
+
+def test_character_names_are_kept_but_titles_translated():
+    chars = {"Tiger Fussen": "", "Dean Ming": "", "Five": "", "Spacetime Island Lord": ""}
+    names = quality.name_words(chars)
+    assert {"tiger", "fussen", "five", "ming"} <= names and "dean" not in names and "island" not in names
+    src = "Tiger Fussen and Dean Ming met Five."
+    assert quality.leftover_english(src, "Tiger Fussen ve Dean Ming, Five ile buluştu.", set(), names) == ["Dean"]
+    assert quality.restore_names({"Tiger Fussen": "Kaplan Fussen", "Dean Ming": "Dekan Ming"}, chars) == \
+        {"Tiger Fussen": "Tiger Fussen"}

@@ -107,7 +107,7 @@ POLISH_PROMPT = """Sen web novel çevirilerinde uzman, deneyimli bir {target} ed
 
 Kurallar:
 1. Yalnız "issues"teki sorunları gider; doğru olan yerleri değiştirme, anlamı kaynağa göre koru, özetleme ya da ekleme yapma (eksik çeviri sorunu varsa atlanan kısmı kaynaktan çevirip ekle). Kaynakla anlamı ya da olayı farklı olan (yanlış kişi, ters anlam, yanlış sayı) bir yer görürsen onu da kaynağa göre düzelt.
-1b. "missing" alanı varsa, o kaynak metin çeviriden atlanmıştır: çıktıda önce bu paragrafın düzeltilmiş hâli, sonra boş satır, sonra "missing" metninin çevirisi gelir (tek dize içinde, aralarında boş satır).
+1b. "missing" alanı varsa, o kaynak metin çeviriden atlanmış olabilir: çıktıda önce bu paragrafın düzeltilmiş hâli, sonra boş satır, sonra "missing" metninin çevirisi gelir (tek dize içinde, aralarında boş satır). "missing"in anlamı bu paragrafta zaten varsa tekrar ekleme.
 1c. Sorun "tekrar" ya da "kaynakta karşılığı bulunamadı" ise ve paragraf gerçekten fazlalıksa boş dize döndür.
 2. Kaynak dilde kalmış sıradan kelimeleri ve unvanları çevir; kişi/yer adının asıl kısmını (Ming, Xu Jingming) aynen bırak.
 3. "glossary" karşılıklarını aynen ve doğru çekim ekleriyle kullan.
@@ -812,9 +812,10 @@ class Translator:
         from . import quality
 
         outs = [quality.fix_chapter(src, out, self.lang) for src, out in pairs]
+        names = quality.name_words((self.memory or {}).get("characters", {}))
         todo: list[tuple[int, int, dict]] = []
         for k, ((src, _), out) in enumerate(zip(pairs, outs)):
-            found, extra = quality.paragraph_issues(src, out, self.lang, glossary, vocab)
+            found, extra = quality.paragraph_issues(src, out, self.lang, glossary, vocab, names)
             for i, (sp, issues) in sorted(found.items()):
                 item = {"source": sp, "draft": out.paragraphs[i], "issues": issues}
                 if i in extra:

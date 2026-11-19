@@ -132,6 +132,39 @@ size bile gene tire fare kale alan bale dere kara sade hala nine anne mama papa 
 lord
 """.split())
 
+# Unvan kelimeleri: ad öbeğinde geçse de çevrilir ("Dean Ming" → "Dekan Ming"). Unvan olmayan sıradan bir kelime bir
+# karakter adının parçasıysa ("Tiger Fussen", robot "Five") ad sayılır ve aynen kalır.
+TITLE_EN = set("""
+dean senior junior elder master lord lady king queen prince princess emperor empress duke marquis count baron sir
+madam miss mister teacher student disciple patriarch matriarch matron butler steward guard general captain commander
+overlord saint sage old young little big first second third fourth fifth sixth seventh eighth ninth tenth
+""".split())
+
+
+def name_words(characters) -> set[str]:
+    """Karakter adlarındaki, unvan olmayan kelimeler (küçük harf): bunlar kaynak dilde kalmış sayılmaz."""
+    out = set()
+    for name in characters or ():
+        words = re.findall(r"[A-Za-z]{3,}", str(name))
+        if any(w.lower() in TITLE_EN for w in words):
+            words = [w for w in words if w.lower() not in TITLE_EN and w.lower() not in COMMON_EN]
+        out.update(w.lower() for w in words)
+    return out
+
+
+def restore_names(glossary: dict[str, str], characters) -> dict[str, str]:
+    """Sözlükte yanlışlıkla çevrilmiş kişi adları ("Tiger Fussen" → "Kaplan Fussen"): adın aynen kalması gereken
+    kayıtlar (unvansız, kaynakta karakter olarak geçen). {terim: ad} döndürür."""
+    names = {str(n) for n in characters or ()}
+    out = {}
+    for k, v in glossary.items():
+        words = re.findall(r"[A-Za-z]{3,}", k)
+        if k in names and v != k and words and not any(w.lower() in TITLE_EN for w in words) \
+                and any(w.lower() not in COMMON_EN for w in words) and any(w in v for w in words):
+            out[k] = k
+    return out
+
+
 _WORD = re.compile(r"(?<![\wçğıöşüâîûÇĞİÖŞÜ'’])([A-Za-z]{3,})(?![\wçğıöşüâîûÇĞİÖŞÜ])")
 
 
@@ -326,8 +359,10 @@ def align(src: list[str], out: list[str], ratio: float = 1.0) -> list[tuple[tupl
             steps = []
             if i < n and j < m:
                 steps.append((1, 1, _cost(ls[i], lo[j], ratio) + lex(sa[i], oa[j])))
-            if i + 1 < n and j < m:
-                steps.append((2, 1, 1.7 * _cost(ls[i] + ls[i + 1], lo[j], ratio) + 0.8 + lex(sa[i] | sa[i + 1], oa[j])))
+            for k in range(2, 6):  # 2–5 kaynak paragrafı tek paragrafta birleştirilmiş (ör. durum ekranı satırları)
+                if i + k <= n and j < m:
+                    steps.append((k, 1, 1.7 * _cost(sum(ls[i:i + k]), lo[j], ratio) + 0.8 + 0.3 * (k - 2)
+                                  + lex(set().union(*sa[i:i + k]), oa[j])))
             if i < n and j + 1 < m:
                 steps.append((1, 2, 1.7 * _cost(ls[i], lo[j] + lo[j + 1], ratio) + 0.8 + lex(sa[i], oa[j] | oa[j + 1])))
             if i < n:  # yalnız çok kısa satırlar ("***", reklam kırıntısı) ucuza atlanır
@@ -362,8 +397,8 @@ def _norm(text: str) -> str:
 OMITTED = "atlanmış kaynak paragrafı"
 
 
-def paragraph_issues(src: Chapter, out: Chapter, lang: str, glossary: dict[str, str], vocab: set[str]
-                     ) -> dict[int, tuple[str, list[str]]]:
+def paragraph_issues(src: Chapter, out: Chapter, lang: str, glossary: dict[str, str], vocab: set[str],
+                     names: set[str] = frozenset()) -> tuple[dict[int, tuple[str, list[str]]], dict[int, list[str]]]:
     """Modelle düzeltilecek paragraflar: {çıktı paragrafı sırası: (karşılık gelen kaynak metin, [sorunlar])}.
     Kaynak ve çeviri uzunluklarına göre eşlenir; atlanmış kaynak paragrafı önceki çeviri paragrafına "ardına ekle"
     sorunu olarak, karşılıksız (uydurma/tekrar) çeviri paragrafı "sil" sorunu olarak gelir."""
@@ -373,7 +408,7 @@ def paragraph_issues(src: Chapter, out: Chapter, lang: str, glossary: dict[str, 
     src_all = " ".join(src.paragraphs)
     cjk_src = bool(re.search(r"[぀-ヿ㐀-鿿가-힯]", src_all[:2000]))
     latin_src = not cjk_src
-    kept = _kept_words(glossary, vocab)
+    kept = _kept_words(glossary, vocab) | set(names)
     pairs = align(src.paragraphs, out.paragraphs, 0.35 if cjk_src and lang not in ("zh", "ja", "ko") else 1.0) \
         if out.paragraphs and src.paragraphs else []
     src_of: dict[int, str] = {}
@@ -418,9 +453,8 @@ def paragraph_issues(src: Chapter, out: Chapter, lang: str, glossary: dict[str, 
             if left:
                 found.append("kaynak dilde kalmış kelime (kişi/yer adı değilse çevir): " + ", ".join(left))
         if sp:
-            miss = glossary_misses(sp, p, glossary)
-            if miss:
-                found.append("sözlükteki karşılığı kullan: " + "; ".join(f"{k} → {v}" for k, v in miss[:8]))
+            # Sözlük tutarlılığı tek başına sorun sayılmaz (sözlükte de hata olabilir; maliyetli); onarılan
+            # paragrafta sözlük zaten modele gider. Yeni çeviride sözlük istemin parçası.
             lost = Counter(_numbers(sp)) - Counter(_numbers(p))
             if lost and latin_src:
                 found.append("kaynaktaki sayı(lar) çeviride yok ya da farklı: " + ", ".join(sorted(lost)[:6])

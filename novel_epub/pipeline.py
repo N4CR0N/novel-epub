@@ -392,6 +392,11 @@ class Job:
         #     bölümler (baştan redaksiyon) ve tüm bölümlerde paragraf düzeyinde denetim.
         if o.audit and not stop_reason:
             try:
+                names = quality.restore_names(glossary, (tr.memory or {}).get("characters", {}))
+                if names:
+                    glossary.update(names)
+                    store.save_glossary(glossary)
+                    self.log(f"Sözlükte çevrilmiş {len(names)} kişi adı geri alındı: {', '.join(list(names)[:8])}")
                 fixed_terms = tr.fix_glossary(glossary, vocab)
                 if fixed_terms:
                     glossary.update(fixed_terms)
