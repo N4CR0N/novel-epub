@@ -289,35 +289,148 @@ def fix_chapter(src: Chapter, out: Chapter, lang: str) -> Chapter:
     return Chapter(out.index, title, out.url, paras, out.next_url, out.edited, getattr(out, "checked", 0))
 
 
+# --- kaynak ↔ çeviri paragraf eşleme --------------------------------------------------------------------------
+def _cost(ls: int, lo: int, ratio: float) -> float:
+    import math
+
+    return 3.0 * abs(math.log((lo + 25) / (ls * ratio + 25)))
+
+
+def align(src: list[str], out: list[str], ratio: float = 1.0) -> list[tuple[tuple[int, ...], tuple[int, ...]]]:
+    """Kaynak ve çeviri paragraflarını uzunluklarına göre eşler (Gale–Church benzeri): 1–1, 2–1 (birleştirilmiş),
+    1–2 (bölünmüş), atlanan kaynak (eksik çeviri ya da reklam) ve karşılıksız çeviri (tekrar ya da uydurma).
+    ratio: çeviri/kaynak beklenen uzunluk oranı (Türkçe–İngilizce ~1)."""
+    n, m = len(src), len(out)
+    ls, lo = [len(x) for x in src], [len(x) for x in out]
+    # Uzunluğun yanında çapa: iki tarafta da aynen geçen sayılar ve Latin harfli adlar (Xu Jingming, 1.020).
+    anchor = re.compile(r"\d+|[A-Z][a-z]{2,}")
+    sa = [set(anchor.findall(x)) for x in src]
+    oa = [set(anchor.findall(x)) for x in out]
+
+    def lex(si: set, oi: set) -> float:
+        if not si and not oi:
+            return 0.0
+        return 1.2 * (1 - len(si & oi) / len(si | oi))
+
+    INF = float("inf")
+    cost = [[INF] * (m + 1) for _ in range(n + 1)]
+    back: list[list[tuple[int, int] | None]] = [[None] * (m + 1) for _ in range(n + 1)]
+    cost[0][0] = 0.0
+    for i in range(n + 1):
+        for j in range(m + 1):
+            c = cost[i][j]
+            if c == INF:
+                continue
+            steps = []
+            if i < n and j < m:
+                steps.append((1, 1, _cost(ls[i], lo[j], ratio) + lex(sa[i], oa[j])))
+            if i + 1 < n and j < m:
+                steps.append((2, 1, 1.7 * _cost(ls[i] + ls[i + 1], lo[j], ratio) + 0.6 + lex(sa[i] | sa[i + 1], oa[j])))
+            if i < n and j + 1 < m:
+                steps.append((1, 2, 1.7 * _cost(ls[i], lo[j] + lo[j + 1], ratio) + 0.6 + lex(sa[i], oa[j] | oa[j + 1])))
+            if i < n:
+                steps.append((1, 0, 2.2 if ls[i] >= 40 else 0.4))
+            if j < m:
+                steps.append((0, 1, 2.2 if lo[j] >= 40 else 0.4))
+            for di, dj, k in steps:
+                if c + k < cost[i + di][j + dj]:
+                    cost[i + di][j + dj] = c + k
+                    back[i + di][j + dj] = (di, dj)
+    pairs = []
+    i, j = n, m
+    while i or j:
+        di, dj = back[i][j]
+        pairs.append((tuple(range(i - di, i)), tuple(range(j - dj, j))))
+        i, j = i - di, j - dj
+    return pairs[::-1]
+
+
+_NUM = re.compile(r"\d[\d.,]*\d|\d")
+
+
+def _numbers(text: str) -> list[str]:
+    return [x.replace(",", "").replace(".", "") for x in _NUM.findall(text)]
+
+
+def _norm(text: str) -> str:
+    return re.sub(r"[\W_]+", " ", text.lower()).strip()
+
+
 # --- paragraf sorunları ------------------------------------------------------------------------------------------
-def paragraph_issues(src: Chapter, out: Chapter, lang: str, glossary: dict[str, str], vocab: set[str]) -> dict[int, list[str]]:
-    """Modelle düzeltilecek paragraflar: {çıktı paragrafı sırası: [sorunların açıklaması]}.
-    Kaynak ve çeviri paragraf sayısı eşitse paragraf paragraf (sözlük, eksik çeviri), değilse bölüm genelinde bakılır."""
-    issues: dict[int, list[str]] = {}
-    aligned = len(src.paragraphs) == len(out.paragraphs)
+OMITTED = "atlanmış kaynak paragrafı"
+
+
+def paragraph_issues(src: Chapter, out: Chapter, lang: str, glossary: dict[str, str], vocab: set[str]
+                     ) -> dict[int, tuple[str, list[str]]]:
+    """Modelle düzeltilecek paragraflar: {çıktı paragrafı sırası: (karşılık gelen kaynak metin, [sorunlar])}.
+    Kaynak ve çeviri uzunluklarına göre eşlenir; atlanmış kaynak paragrafı önceki çeviri paragrafına "ardına ekle"
+    sorunu olarak, karşılıksız (uydurma/tekrar) çeviri paragrafı "sil" sorunu olarak gelir."""
+    from collections import Counter
+
+    issues: dict[int, tuple[str, list[str]]] = {}
     src_all = " ".join(src.paragraphs)
-    latin_src = not re.search(r"[぀-ヿ㐀-鿿가-힯]", src_all[:2000])
+    cjk_src = bool(re.search(r"[぀-ヿ㐀-鿿가-힯]", src_all[:2000]))
+    latin_src = not cjk_src
     kept = _kept_words(glossary, vocab)
+    pairs = align(src.paragraphs, out.paragraphs, 0.35 if cjk_src and lang not in ("zh", "ja", "ko") else 1.0) \
+        if out.paragraphs and src.paragraphs else []
+    src_of: dict[int, str] = {}
+    extra: dict[int, list[str]] = {}
+    last_out = None
+    for si, oi in pairs:
+        stext = " ".join(src.paragraphs[k] for k in si)
+        for o in oi if si else ():
+            src_of[o] = stext
+        if oi:
+            last_out = oi[-1]
+        if si and not oi:  # çevrilmemiş kaynak paragrafı
+            for k in si:
+                sp = src.paragraphs[k]
+                if len(sp) >= 50 and not re.search(r"(?i)\b(chapter|translat|novel|\.com|\.net|patreon|discord)\b", sp):
+                    tgt = last_out if last_out is not None else 0
+                    extra.setdefault(tgt, []).append(sp)
+    # Kaynakta olmayan tekrar: aynı paragrafın kopyalarından eşleşmeyeni (yoksa sonrakini) silinecek say.
+    src_dups = any(v > 1 for v in Counter(_norm(p) for p in src.paragraphs if len(p) > 40).values())
+    copies: dict[str, list[int]] = {}
     for i, p in enumerate(out.paragraphs):
-        sp = src.paragraphs[i] if aligned else src_all
+        if len(p) > 40:
+            copies.setdefault(_norm(p), []).append(i)
+    drop: set[int] = set()
+    for idx in copies.values():
+        if len(idx) > 1 and not src_dups:
+            unmatched = [k for k in idx if k not in src_of]
+            drop.update(unmatched if 0 < len(unmatched) < len(idx) else idx[1:])
+    for i, p in enumerate(out.paragraphs):
+        sp = src_of.get(i, "")
         found: list[str] = []
+        if i in drop:
+            found.append("bu paragraf bölümde ikinci kez geçiyor (tekrar): boş döndür")
+        elif not sp and len(p) >= 40:
+            found.append("kaynakta karşılığı bulunamadı: başka bir paragrafın tekrarı ya da uydurmaysa boş döndür, değilse aynen bırak")
         if lang == "tr":
             old = archaic_words(p)
             if old:
                 found.append("eski/ağdalı kelime; bugünkü Türkçeyle yaz: " + ", ".join(f"{w} → {r}" for w, r in old))
-        if lang != "en" and latin_src:
+        if lang != "en" and latin_src and sp:
             left = leftover_english(sp, p, vocab, kept)
             if left:
                 found.append("kaynak dilde kalmış kelime (kişi/yer adı değilse çevir): " + ", ".join(left))
-        if aligned:
+        if sp:
             miss = glossary_misses(sp, p, glossary)
             if miss:
                 found.append("sözlükteki karşılığı kullan: " + "; ".join(f"{k} → {v}" for k, v in miss[:8]))
-            if len(sp) >= 160 and len(p) < 0.45 * len(sp) and lang not in ("zh", "ja", "ko"):
-                found.append("kaynağa göre çok kısa: eksik çevrilmiş olabilir, atlanan kısmı ekle")
+            lost = Counter(_numbers(sp)) - Counter(_numbers(p))
+            if lost and latin_src:
+                found.append("kaynaktaki sayı(lar) çeviride yok ya da farklı: " + ", ".join(sorted(lost)[:6])
+                             + " (kaynağa göre düzelt; sayı yazıyla yazılmışsa doğruysa bırak)")
+            if len(sp) >= 200 and len(p) < 0.6 * len(sp) and lang not in ("zh", "ja", "ko") and not cjk_src:
+                found.append("kaynağa göre çok kısa: atlanan cümleleri kaynaktan çevirip ekle")
+        if i in extra:
+            found.append(f"{OMITTED}: bu paragraftan SONRA gelen ve çevrilmemiş kaynak metni ('missing') çevir; çıktıda "
+                         "önce bu paragrafın düzeltilmiş hâli, sonra boş satır (\\n\\n), sonra atlanan kısmın çevirisi olsun")
         if found:
-            issues[i] = found
-    return issues
+            issues[i] = (sp, found)
+    return issues, extra
 
 
 def archaic_density(out: Chapter) -> float:

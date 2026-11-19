@@ -52,7 +52,7 @@ def test_review_fixes_flagged_paragraphs_with_one_request():
 
     def fake_call(payload, schema=None, bad_retries=None, system=None):
         calls.append(payload)
-        assert [len(i["issues"]) for i in payload["items"]] == [2]  # yalnız sorunlu paragraf: İngilizce + eski kelime
+        assert [len(i["issues"]) for i in payload["items"]] == [2]  # yalnız sorunlu paragraf: eski kelime + İngilizce
         return {"paragraphs": ["Dekan Ming akademinin salonundaki öğrencilere başını salladı."]}
 
     tr._call = fake_call
@@ -60,3 +60,50 @@ def test_review_fixes_flagged_paragraphs_with_one_request():
     assert len(calls) == 1 and got.title == "Bölüm 3: Lorem"
     assert got.paragraphs[0].startswith("Dekan Ming") and got.paragraphs[1] == out.paragraphs[1]
     assert got.checked == quality.QUALITY_VERSION
+
+
+def _pair(n):
+    k = [3, 7, 4, 9, 5, 8, 6, 10]
+    src = [f"Lorem {i} " + "dolor sit amet " * k[i % 8] for i in range(n)]
+    out = [f"Türkçe {i} " + "kalem su ve ta " * k[i % 8] for i in range(n)]
+    return [x.strip() for x in src], [x.strip() for x in out]
+
+
+def test_alignment_finds_omitted_and_duplicated_paragraphs():
+    src, out = _pair(8)
+    dropped = out[:3] + out[4:]                      # 4. paragraf atlanmış
+    assert ((3,), ()) in quality.align(src, dropped)
+    ch_src = Chapter(1, "Chapter 1", "", src)
+    issues, extra = quality.paragraph_issues(ch_src, Chapter(1, "Bölüm 1", "", dropped), "tr", {}, set())
+    assert extra == {2: [src[3]]} and any(quality.OMITTED in x for x in issues[2][1])
+    doubled = out[:5] + [out[4]] + out[5:]            # 5. paragraf iki kez
+    issues, _ = quality.paragraph_issues(ch_src, Chapter(1, "Bölüm 1", "", doubled), "tr", {}, set())
+    flagged = [i for i, (_, xs) in issues.items() if any("ikinci kez" in x for x in xs)]
+    assert flagged == [4] and set(issues) == {4}  # karşılıksız kopya silinecek, asıl paragraf kalır
+    merged = out[:2] + [out[2] + " " + out[3]] + out[4:]  # iki paragraf birleştirilmiş: sorun değil
+    issues, extra = quality.paragraph_issues(ch_src, Chapter(1, "Bölüm 1", "", merged), "tr", {}, set())
+    assert not extra and not issues
+
+
+def test_review_inserts_missing_and_drops_duplicates():
+    from novel_epub.translator import Translator
+
+    src, out = _pair(6)
+    draft = out[:2] + out[3:] + [out[5]]   # 2. atlanmış, sonuncusu tekrar
+    tr = Translator.__new__(Translator)
+    tr._init_state(model="gemini/x", lang="tr", log=lambda m: None)
+
+    def fake_call(payload, schema=None, bad_retries=None, system=None):
+        res = []
+        for it in payload["items"]:
+            if it.get("missing"):
+                res.append(it["draft"] + "\n\n" + out[src.index(it["missing"][0])])
+            elif any("ikinci kez" in x or "karşılığı" in x for x in it["issues"]):
+                res.append("")
+            else:
+                res.append(it["draft"])
+        return {"paragraphs": res}
+
+    tr._call = fake_call
+    got = tr.review([(Chapter(1, "Chapter 1", "", src), Chapter(1, "Bölüm 1", "", draft))], {}, set())[0]
+    assert got.paragraphs == out

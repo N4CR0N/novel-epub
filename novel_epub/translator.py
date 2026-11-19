@@ -106,7 +106,9 @@ Türkçeye özel: anlatım -dı/-di ile olsun ("-maktadır" ve geniş zamanla ka
 POLISH_PROMPT = """Sen web novel çevirilerinde uzman, deneyimli bir {target} editörsün. "items" listesinde her öğe bir paragraftır: kaynak ("source"), mevcut çeviri ("draft") ve denetimde bulunan sorunlar ("issues").
 
 Kurallar:
-1. Yalnız "issues"teki sorunları gider; doğru olan yerleri değiştirme, anlamı kaynağa göre koru, özetleme ya da ekleme yapma (eksik çeviri sorunu varsa atlanan kısmı kaynaktan çevirip ekle).
+1. Yalnız "issues"teki sorunları gider; doğru olan yerleri değiştirme, anlamı kaynağa göre koru, özetleme ya da ekleme yapma (eksik çeviri sorunu varsa atlanan kısmı kaynaktan çevirip ekle). Kaynakla anlamı ya da olayı farklı olan (yanlış kişi, ters anlam, yanlış sayı) bir yer görürsen onu da kaynağa göre düzelt.
+1b. "missing" alanı varsa, o kaynak metin çeviriden atlanmıştır: çıktıda önce bu paragrafın düzeltilmiş hâli, sonra boş satır, sonra "missing" metninin çevirisi gelir (tek dize içinde, aralarında boş satır).
+1c. Sorun "tekrar" ya da "kaynakta karşılığı bulunamadı" ise ve paragraf gerçekten fazlalıksa boş dize döndür.
 2. Kaynak dilde kalmış sıradan kelimeleri ve unvanları çevir; kişi/yer adının asıl kısmını (Ming, Xu Jingming) aynen bırak.
 3. "glossary" karşılıklarını aynen ve doğru çekim ekleriyle kullan.
 4. Dil çağdaş, sade {target} olsun; eski/ağdalı kelimeleri bugünkü karşılıklarıyla değiştir. Anlatım zamanını ve hitabı (sen/siz) bozma.
@@ -812,12 +814,15 @@ class Translator:
         outs = [quality.fix_chapter(src, out, self.lang) for src, out in pairs]
         todo: list[tuple[int, int, dict]] = []
         for k, ((src, _), out) in enumerate(zip(pairs, outs)):
-            for i, issues in quality.paragraph_issues(src, out, self.lang, glossary, vocab).items():
-                sp = src.paragraphs[i] if len(src.paragraphs) == len(out.paragraphs) else ""
-                todo.append((k, i, {"source": sp, "draft": out.paragraphs[i], "issues": issues}))
+            found, extra = quality.paragraph_issues(src, out, self.lang, glossary, vocab)
+            for i, (sp, issues) in sorted(found.items()):
+                item = {"source": sp, "draft": out.paragraphs[i], "issues": issues}
+                if i in extra:
+                    item["missing"] = extra[i]
+                todo.append((k, i, item))
         if todo:
             self.log(f"  denetim: {len(todo)} paragrafta sorun bulundu ({', '.join(str(outs[k].index) for k in sorted({t[0] for t in todo})[:12])}…); düzeltiliyor")
-        paras = [list(o.paragraphs) for o in outs]
+        paras: list[list] = [list(o.paragraphs) for o in outs]
         fixed_n = 0
         for j in range(0, len(todo), max_items):
             part = todo[j:j + max_items]
@@ -837,17 +842,32 @@ class Translator:
                 continue
             for (k, i, item), new in zip(part, got):
                 old = item["draft"]
-                if not new or len(new) < 0.6 * len(old):
+                may_drop = any(x.startswith(("bu paragraf bölümde ikinci", "kaynakta karşılığı")) for x in item["issues"])
+                if not new:
+                    if may_drop:  # tekrar / uydurma paragraf: silinir
+                        paras[k][i] = None
+                        fixed_n += 1
                     continue
-                if item["source"] and untranslated_paragraphs([item["source"]], [new], self.lang):
+                pieces = [x.strip() for x in re.split(r"\n\s*\n|\\n\\n", new) if x.strip()]
+                if not item.get("missing"):
+                    pieces = [" ".join(pieces)]
+                if len(pieces[0]) < 0.6 * len(old) and not may_drop:
                     continue
-                paras[k][i] = new
+                if item["source"] and untranslated_paragraphs([item["source"]], pieces[:1], self.lang):
+                    continue
+                paras[k][i] = pieces if len(pieces) > 1 else pieces[0]
                 fixed_n += 1
         if todo:
             self.log(f"  denetim: {fixed_n}/{len(todo)} paragraf düzeltildi")
         result = []
         for (src, _), out, ps in zip(pairs, outs, paras):
-            result.append(Chapter(out.index, out.title, out.url, ps, out.next_url, out.edited, quality.QUALITY_VERSION))
+            flat: list[str] = []
+            for x in ps:  # eklenen (atlanmış) paragraflar araya girer, silinenler çıkar
+                if isinstance(x, list):
+                    flat.extend(x)
+                elif x:
+                    flat.append(x)
+            result.append(Chapter(out.index, out.title, out.url, flat, out.next_url, out.edited, quality.QUALITY_VERSION))
         return result
 
     def fix_glossary(self, glossary: dict[str, str], vocab: set[str]) -> dict[str, str]:
