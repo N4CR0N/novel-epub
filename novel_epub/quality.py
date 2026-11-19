@@ -354,8 +354,10 @@ def _strip_title_prefix(text: str, index: int, title: str) -> str:
     best = None
     for w in re.finditer(r"\S+", rest[: len(sub) + 25]):
         cand = rest[: w.end()]
+        after = rest[w.end():].lstrip(" .:-–—")
+        starts = not after or after[0].isupper() or after[0] in "\"“‘'«-—–0123456789"
         r = SequenceMatcher(None, cand.lower().rstrip("."), sub.lower()).ratio()
-        if r > 0.72 and (best is None or r >= best[0]):
+        if (r > 0.72 or r > 0.5 and starts) and (best is None or r >= best[0]):
             best = (r, w.end())
     if not best:
         return text
@@ -465,6 +467,9 @@ def paragraph_issues(src: Chapter, out: Chapter, lang: str, glossary: dict[str, 
     cjk_src = bool(re.search(r"[぀-ヿ㐀-鿿가-힯]", src_all[:2000]))
     latin_src = not cjk_src
     kept = _kept_words(glossary, vocab) | set(names)
+    # Kaynakta metnin içinde tekrar eden başlık satırı eşlemeye girmez (yoksa ilk paragrafa yapıştırılıyordu).
+    src = Chapter(src.index, src.title, src.url, [p for i, p in enumerate(src.paragraphs)
+                                                  if not (i < 2 and _title_line(p, src.index, src.title))])
     pairs = align(src.paragraphs, out.paragraphs, 0.35 if cjk_src and lang not in ("zh", "ja", "ko") else 1.0) \
         if out.paragraphs and src.paragraphs else []
     src_of: dict[int, str] = {}

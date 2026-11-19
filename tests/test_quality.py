@@ -165,6 +165,8 @@ def test_title_glued_to_first_paragraph_is_removed():
     assert quality._strip_title_prefix("Bölüm 573: Genel Gelişme. Xu Jingming tek başına duruyordu.", 573,
                                        "Bölüm 573: Genel Gelişme") == "Xu Jingming tek başına duruyordu."
     assert quality._strip_title_prefix("514 kişi haritaya baktı.", 514, "Bölüm 514: Uzaylı Irklar (1)") == "514 kişi haritaya baktı."
+    assert quality._strip_title_prefix("Bölüm 586: Dokunmak “İlk onu mu?” Xu Jingming gülümsedi.", 586,
+                                       "Bölüm 586: Ona Dokunmak") == "“İlk onu mu?” Xu Jingming gülümsedi."
     assert quality.normalize_title("Chapter 473 Lorem (1)", "Cilt N Bölüm 473 Qin Fangke (1)", "tr") == "Bölüm 473: Qin Fangke (1)"
     assert quality.normalize_title("Chapter 473 Lorem (1)", "Bölüm 473: N Bölüm 473 Qin Fangke (1)", "tr") == "Bölüm 473: Qin Fangke (1)"
     assert quality.normalize_title("Chapter 9 Lorem", "Bölüm 9: Nehir", "tr") == "Bölüm 9: Nehir"
