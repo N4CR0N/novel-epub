@@ -157,3 +157,14 @@ def test_title_line_in_body_is_dropped_and_never_inserted():
     assert extra == {}  # kaynaktaki başlık satırı "atlanmış" sayılmaz
     body = Chapter(100, "Bölüm 100: Yetişim", "u", ["100 yıl geçti.", "a" * 50, "b" * 50, "c" * 50])
     assert quality.fix_chapter(Chapter(100, "Chapter 100 Lorem", "u", ["x"] * 4), body, "tr").paragraphs[0] == "100 yıl geçti."
+
+
+def test_title_glued_to_first_paragraph_is_removed():
+    assert quality._strip_title_prefix("514 Bölüm 514: Uzaylı Irklar (1) Genel Sekreter haritaya baktı.", 514,
+                                       "Bölüm 514: Uzaylı Irklar (1)") == "Genel Sekreter haritaya baktı."
+    assert quality._strip_title_prefix("Bölüm 573: Genel Gelişme. Xu Jingming tek başına duruyordu.", 573,
+                                       "Bölüm 573: Genel Gelişme") == "Xu Jingming tek başına duruyordu."
+    assert quality._strip_title_prefix("514 kişi haritaya baktı.", 514, "Bölüm 514: Uzaylı Irklar (1)") == "514 kişi haritaya baktı."
+    assert quality.normalize_title("Chapter 473 Lorem (1)", "Cilt N Bölüm 473 Qin Fangke (1)", "tr") == "Bölüm 473: Qin Fangke (1)"
+    assert quality.normalize_title("Chapter 473 Lorem (1)", "Bölüm 473: N Bölüm 473 Qin Fangke (1)", "tr") == "Bölüm 473: Qin Fangke (1)"
+    assert quality.normalize_title("Chapter 9 Lorem", "Bölüm 9: Nehir", "tr") == "Bölüm 9: Nehir"

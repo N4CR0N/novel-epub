@@ -297,8 +297,8 @@ def _subtitle(title: str, num: str, vol: str | None) -> str:
             after_vol_word = m.group(1).lower().rstrip(".") in ("cilt", "kitap", "book", "volume", "vol", "tome", "band", "том", "tom", "deel", "jilid", "cild")
             rest = rest[m.end():]
             continue
-        m = re.match(r"^(\d+)\b\s*", rest)
-        if m and (m.group(1) in (num, vol) or after_vol_word):
+        m = re.match(r"^(\d+|N(?=\s+(?:Bölüm|Cilt|Chapter)\b)|N(?=\s|$))\b\s*", rest)  # "Cilt N" yer tutucusu da atılır
+        if m and (m.group(1) in (num, vol, "N") and (m.group(1) != "N" or after_vol_word or re.match(r"N\s+(?:Bölüm|Cilt|Chapter)\b", rest)) or after_vol_word):
             after_vol_word = False
             rest = rest[m.end():]
             continue
@@ -339,12 +339,37 @@ def _title_line(text: str, index: int, title: str = "") -> bool:
     return not sub or SequenceMatcher(None, rest.lower(), sub.lower()).ratio() > 0.5
 
 
+def _strip_title_prefix(text: str, index: int, title: str) -> str:
+    """Paragrafın başına yapışmış bölüm başlığını atar: "514 Bölüm 514: Uzaylı Irklar (1) Genel Sekreter…" → "Genel
+    Sekreter…". Başlık kısmı bölüm başlığına benzemiyorsa paragrafa dokunmaz."""
+    m = re.match(rf"^\s*(?:{index}\s+)?(?:(?:Bölüm|Chapter|Cilt\s+\S+\s+Bölüm)\s*)?{index}\b\s*[:\-–—.]?\s*", text)
+    if not m:
+        return text
+    rest = text[m.end():]
+    sub = re.sub(r"^.*?\b\d+\s*[:\-–—.]?\s*", "", title or "", count=1).strip()
+    if not sub:
+        return text
+    from difflib import SequenceMatcher
+
+    best = None
+    for w in re.finditer(r"\S+", rest[: len(sub) + 25]):
+        cand = rest[: w.end()]
+        r = SequenceMatcher(None, cand.lower().rstrip("."), sub.lower()).ratio()
+        if r > 0.72 and (best is None or r >= best[0]):
+            best = (r, w.end())
+    if not best:
+        return text
+    return rest[best[1]:].lstrip(" .:-–—").strip()
+
+
 def fix_chapter(src: Chapter, out: Chapter, lang: str) -> Chapter:
     """Kesin kurallarla düzeltilmiş bölüm (başlık kalıbı; Türkçede seviye kısaltması; gövdenin ilk iki paragrafında
     başlığı tekrar eden satır atılır)."""
     title = normalize_title(src.title, out.title, lang)
     paras = [p for i, p in enumerate(out.paragraphs) if not (i < 2 and len(out.paragraphs) > 3
                                                               and _title_line(p, out.index, title))]
+    paras = [_strip_title_prefix(p, out.index, title) if i < 2 else p for i, p in enumerate(paras)]
+    paras = [p for p in paras if p]
     if lang == "tr":
         title = fix_levels(title)
         paras = [fix_levels(p) for p in paras]
