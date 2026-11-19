@@ -13,7 +13,7 @@ import re
 
 from .models import Chapter
 
-QUALITY_VERSION = 1  # denetim kuralları değişince artır: bitmiş kitaplar yeniden denetlenebilir
+QUALITY_VERSION = 2  # denetim kuralları değişince artır: bitmiş kitaplar yeniden denetlenebilir
 
 # --- eski / ağdalı Türkçe ---------------------------------------------------------------------------------------
 # Kalıp (kelime başı, ekleri kapsar) → bugünkü karşılık önerisi. Yalnız anlamı tek ve kesin eski olanlar; "vakit",
@@ -513,7 +513,9 @@ def paragraph_issues(src: Chapter, out: Chapter, lang: str, glossary: dict[str, 
         if lang != "en" and latin_src and sp:
             left = leftover_english(sp, p, vocab, kept)
             if left:
-                found.append("kaynak dilde kalmış kelime (kişi/yer adı değilse çevir): " + ", ".join(left))
+                found.append("kaynak dilde kalmış kelime: " + ", ".join(left) + " — ad öbeğinin parçası olsa da çevir "
+                             "(Feather Fire Lord → Tüy Ateşi Lordu, Green Lake → Yeşil Göl); yalnız kişinin asıl adı "
+                             "(Ming, Fussen, Lunardo) aynen kalır")
         if sp:
             # Sözlük tutarlılığı tek başına sorun sayılmaz (sözlükte de hata olabilir; maliyetli); onarılan
             # paragrafta sözlük zaten modele gider. Yeni çeviride sözlük istemin parçası.
