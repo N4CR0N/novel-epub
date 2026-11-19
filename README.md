@@ -48,6 +48,10 @@ the Windows app.
 - **Download & translate:** paste a link (novel page or any chapter), optionally a chapter range, then **Start**.
   "Test site" tries the chapter list and the first chapter first.
 - Progress and the log update live; the finished EPUB appears under "Ready books".
+- **Check and fix:** in Library, **Check and fix** scans every translated chapter for leftover source words
+  ("Dean Ming"), terms that don't follow the glossary, old-fashioned wording, skipped or repeated paragraphs,
+  numbers that differ from the original, chapter-title style and level notation. Only the problem paragraphs go to
+  the AI; new translations get the same check automatically.
 - **Read:** press **Read** next to a finished EPUB. The built-in reader has page turning (tap the sides, swipe or use
   the arrow keys) or scrolling, day / sepia / night / black themes, text size, line spacing, margins, serif or sans
   type, a searchable table of contents, and it remembers where you left off.

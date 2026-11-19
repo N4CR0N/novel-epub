@@ -13,7 +13,7 @@ Depo herkese açık (MIT lisansı): gizli bilgi, kişisel bilgi, sunucu adresi a
 - `gelistir.bat` (Windows): .venv kurar, uygulamayı **kaynak koddan** pencerede açar. Kod değişince pencereyi kapat-aç.
 - Elle: `python -m venv .venv && .venv\Scripts\pip install -r requirements.txt pywebview pytest`, sonra
   `.venv\Scripts\python uygulama.py` (pencere) ya da `python -m novel_epub` (tarayıcıda, 127.0.0.1:5000).
-- Testler: `.venv\Scripts\python -m pytest -q` (ağsız; şu an 85 test; `tests/conftest.py` istemciye erişim anahtarını ekler). Her değişiklikte çalıştır, kırmızıyla push etme.
+- Testler: `.venv\Scripts\python -m pytest -q` (ağsız; şu an 91 test; `tests/conftest.py` istemciye erişim anahtarını ekler). Her değişiklikte çalıştır, kırmızıyla push etme.
 - Veri klasörü: exe/kaynak klasöründe `kutuphane/` varsa orası; yoksa `Belgeler\Novel EPUB` (eski sürüm) varsa o, yoksa
   `Belgeler\WebNovel Downloader & Translator` (`NOVEL_EPUB_HOME` ile değişir).
   İçinde: `kutuphane/<kaynak>-<kitap>/` (ham/, ceviri[-dil]/, ceviri_eski/, sozluk[-dil].json, hafiza[-dil].json,
@@ -62,6 +62,18 @@ tetiklemez: `gh workflow run windows-uygulama.yml --ref <dal>` (sürüm yalnız 
   tablosu**), sonraki bölümün ilk 3 paragrafı (`next_context`), redaksiyon (`edit_batch`, EDIT_PROMPT),
   İngilizce kalmış kelime tespiti; `untranslated_paragraphs` (kaynakla aynı / İngilizce durak kelimesi oranı / CJK
   kalmış paragraf) + `repair()` yalnız bozuk paragrafları yeniden çevirir; redaksiyon çeviriyi bozarsa taslak kalır. `LANGUAGES` 18 hedef dil; `TURKISH_RULES` yalnız Türkçede eklenir.
+- `quality.py` kalite denetimi (her çevrilen paket + Kitaplık "Çeviriyi denetle ve düzelt" = `Options.audit`, CLI
+  `--denetle`): kodla `normalize_title` ("Chapter N X" → "Bölüm N: X"; kaynakta yoksa "Cilt" yok) ve `fix_levels`
+  ("Lv./Sv./Level N" → "Seviye N"); `align` (Gale–Church benzeri, uzunluk + sayı/ad çapası; 1–1, 2–1, 1–2, atlama)
+  ile paragraf eşleme → `paragraph_issues`: atlanmış kaynak paragrafı (`missing`, ardına eklenir), kaynakta olmayan
+  tekrar/uydurma (boş dönerse silinir), kaynak dilde kalan kelime (`COMMON_EN` unvan/ad kelimeleri ya da kaynakta
+  küçük harfle geçen; adlar ve `TR_SAME` hariç), sözlüğe uymama (çekim ekinden bağımsız kök), eski/ağdalı kelime
+  (`ARCHAIC_TR`), uyuşmayan sayı, %60'tan kısa paragraf. `Translator.review` sorunlu paragrafları POLISH_PROMPT ile
+  40'arlı istekte onarır, `checked = QUALITY_VERSION` yazar (kurallar değişince artır). `fix_glossary`: karşılığında
+  İngilizce ya da eski kelime kalan sözlük kayıtları (`suspicious_glossary`). Denetimde eski kelime yoğunluğu
+  >4/1000 olan bölüm baştan redakte edilir. Kök neden (2026-11): istemdeki "edebi/yayınevi kalitesinde" ağdalı dile
+  itiyordu → "çağdaş, sade"; T3 "Book N Chapter M → Cilt" kuralı "Chapter N"i "Cilt N" yaptırıyordu;
+  `untranslated_suspects` sözlüğün kaynak tarafındaki kelimeleri serbest sayıyordu ("Dean" yakalanmıyordu).
 - `pipeline.py` iş akışı (`Options`, `Job`): indir/oku → denetle → çevir (+redaksiyon, eski çevirileri de redakte
   eder) → EPUB. Başta eski çevirilerde yarım kalmış paragraf denetimi, sonda başarısız bölümler için bir tur daha.
   Kota bitince kısmi EPUB; olmayan bölüm "[Çevrilemedi]" ile orijinal kalır; "ilk 20'de dur".
@@ -143,6 +155,8 @@ Aynı kitaba ikinci iş açılmaz (409 + süren işin id'si; `pipeline._ACTIVE_B
 - novelbin canlı doğrulanmadı (sunucudan da 503). Desteklenmeyen (2026-11): novelfire (bölüm sayfası 403), scribblehub/
   novelupdates/ranobes/novelhall (Cloudflare), wtr-lab/wuxiaworld/webnovel (metin JS/şifreli API), lightnovelpub.vip,
   mtlnovels (JS). Bunların korumasını aşmaya çalışma.
+- Sunucuda `denetle.sh <url> [ilk son]` bitmiş kitabı denetler (anahtarı kuyruk.sh'den okur, `denetim.log`);
+  Cosmic'in denetim öncesi yedeği `yedek-cosmic-2026-11-19/`.
 - Kullanıcının 8 GB Ubuntu sunucusunda `builds/novel-epub/kuyruk.sh` çeviri kuyruğu çalışıyor (kitaplar.txt; `tamam.py`
   bitmemiş ya da kaynak dilde paragraf kalmış bölümleri `ceviri_eski/`'ye alıp yeniden çevirtir; bitmeyince 1 saat bekler).
   Süreç öldürürken `pkill -f` kullanma (kendi kabuğunu da vurur), PID ver.

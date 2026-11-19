@@ -52,6 +52,10 @@ uygulamasında çalışır.
 - **İndir ve çevir:** linki yapıştır (roman sayfası ya da herhangi bir bölüm), istersen bölüm aralığı ver, **Başlat**.
   "Siteyi dene" bölüm listesini ve ilk bölümü deneyip sonucu gösterir.
 - İlerleme çubuğu ve kayıt canlı akar. Bitince EPUB "Hazır kitaplar" listesine düşer.
+- **Denetle ve düzelt:** Kitaplık'taki **Denetle ve düzelt** bütün çevrilmiş bölümleri tarar: İngilizce kalmış
+  kelimeler ("Dean Ming"), sözlüğe uymayan terimler, eski/ağdalı kelimeler, atlanmış ya da tekrar eden paragraflar,
+  kaynakla uyuşmayan sayılar, bölüm başlığı ve seviye yazımı. Yalnız sorunlu paragraflar yapay zekâya gider; yeni
+  çeviriler de aynı denetimden kendiliğinden geçer.
 - **Oku:** hazır EPUB'un yanındaki **Oku**'ya bas. Gömülü okuyucuda sayfa çevirme (kenarlara dokun, kaydır ya da ok
   tuşları) veya kaydırarak okuma, gündüz / sepya / gece / siyah tema, yazı boyutu, satır aralığı, kenar boşluğu,
   tırnaklı ya da düz yazı tipi ve aranabilir içindekiler var; kaldığın yeri hatırlar.
