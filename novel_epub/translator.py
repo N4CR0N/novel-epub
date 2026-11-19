@@ -812,7 +812,7 @@ class Translator:
         from . import quality
 
         outs = [quality.fix_chapter(src, out, self.lang) for src, out in pairs]
-        names = quality.name_words((self.memory or {}).get("characters", {}))
+        names = quality.name_words((self.memory or {}).get("characters", {}), glossary)
         todo: list[tuple[int, int, dict]] = []
         for k, ((src, _), out) in enumerate(zip(pairs, outs)):
             found, extra = quality.paragraph_issues(src, out, self.lang, glossary, vocab, names)

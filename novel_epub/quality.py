@@ -138,12 +138,25 @@ TITLE_EN = set("""
 dean senior junior elder master lord lady king queen prince princess emperor empress duke marquis count baron sir
 madam miss mister teacher student disciple patriarch matriarch matron butler steward guard general captain commander
 overlord saint sage old young little big first second third fourth fifth sixth seventh eighth ninth tenth
+mr mrs ms dr
 """.split())
 
 
-def name_words(characters) -> set[str]:
-    """Karakter adlarındaki, unvan olmayan kelimeler (küçük harf): bunlar kaynak dilde kalmış sayılmaz."""
+def _is_person_name(key: str, target: str) -> bool:
+    """Sözlükte aynen bırakılmış kişi adı mı ("Tiger Fussen" → "Tiger Fussen"): unvansız ve en az bir kelimesi
+    sıradan İngilizce kelime değil. ("Feather Fire City" gibi tamamı sıradan kelime olan yer adları sayılmaz.)"""
+    words = re.findall(r"[A-Za-z]{2,}", key)
+    return (key == target and bool(words) and not any(w.lower() in TITLE_EN for w in words)
+            and any(w.lower() not in COMMON_EN for w in words if len(w) >= 3))
+
+
+def name_words(characters, glossary: dict[str, str] | None = None) -> set[str]:
+    """Karakter adlarındaki (ve sözlükte aynen bırakılmış kişi adlarındaki) unvan olmayan kelimeler (küçük harf):
+    bunlar kaynak dilde kalmış sayılmaz."""
     out = set()
+    for k, v in (glossary or {}).items():
+        if _is_person_name(k, v):
+            out.update(w.lower() for w in re.findall(r"[A-Za-z]{3,}", k))
     for name in characters or ():
         words = re.findall(r"[A-Za-z]{3,}", str(name))
         if any(w.lower() in TITLE_EN for w in words):
@@ -158,7 +171,7 @@ def restore_names(glossary: dict[str, str], characters) -> dict[str, str]:
     names = {str(n) for n in characters or ()}
     out = {}
     for k, v in glossary.items():
-        words = re.findall(r"[A-Za-z]{3,}", k)
+        words = re.findall(r"[A-Za-z]{2,}", k)
         if k in names and v != k and words and not any(w.lower() in TITLE_EN for w in words) \
                 and any(w.lower() not in COMMON_EN for w in words) and any(w in v for w in words):
             out[k] = k
@@ -210,6 +223,8 @@ def suspicious_glossary(glossary: dict[str, str], vocab: set[str]) -> dict[str, 
     """Karşılığında İngilizce sıradan kelime kalmış sözlük kayıtları ("Feather Fire City", "Abyssal Ana Kan")."""
     bad = {}
     for k, v in glossary.items():
+        if _is_person_name(k, v):  # kişi adı: aynen kalır
+            continue
         kw = {w.lower() for w in re.findall(r"[A-Za-z]{3,}", k)}
         left = [w for w in re.findall(r"[A-Za-z]{3,}", v)
                 if w.lower() in kw and w.lower() not in TR_SAME and (w.lower() in COMMON_EN or w.lower() in vocab)]

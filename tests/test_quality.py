@@ -37,6 +37,9 @@ def test_leftover_english_and_glossary_misses():
                                        "Abyssal Mother Blood": "Abyssal Ana Kan", "Black Lotus Sect": "Kara Lotus Tarikatı"},
                                       {"abyssal", "city"})
     assert set(bad) == {"Feather Fire City", "Abyssal Mother Blood"}
+    assert not quality.suspicious_glossary({"Tiger Fussen": "Tiger Fussen"}, {"tiger"})  # kişi adı aynen kalır
+    assert "tiger" in quality.name_words({}, {"Tiger Fussen": "Tiger Fussen"})
+    assert quality.restore_names({"Mr. Ninefish": "Bay Ninefish"}, {"Mr. Ninefish": ""}) == {}  # unvan çevrilir
 
 
 def test_review_fixes_flagged_paragraphs_with_one_request():
