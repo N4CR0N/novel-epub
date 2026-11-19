@@ -292,6 +292,11 @@
         <div class="actions"><button id="saveNotes" type="button">Talimatı kaydet</button></div>
       </section>
       <section class="panel">
+        <h2>Çeviriyi denetle ve düzelt</h2>
+        <p class="mut" style="margin:-4px 0 8px">Bütün bölümler taranır: İngilizce kalmış kelimeler (ör. "Dean Ming"), sözlüğe uymayan terimler, eski/ağdalı kelimeler, eksik çevrilmiş paragraflar, bölüm başlığı ve "Seviye" kalıbı. Yalnız sorunlu paragraflar yapay zekâya gönderilir, sonra kitap yeniden oluşturulur.</p>
+        <div class="row"><button class="ghost" id="auditGo" type="button">Denetle ve düzelt</button><span class="mut" id="auditMsg"></span></div>
+      </section>
+      <section class="panel">
         <h2>Bölümleri yeniden çevir</h2>
         <p class="mut" style="margin:-4px 0 8px">Eski çeviri silinmez, yedeğe alınır. Sonra aynı linkle Başlat'a bas.</p>
         <div class="row">
@@ -652,6 +657,15 @@ $('saveGloss').onclick = async () => {
 $('saveNotes').onclick = async () => {
   try { await api(`/api/library/${book()}/notes${lq()}`, {notes:$('notes').value}); $('glossMsg').textContent = T('Talimat kaydedildi.'); }
   catch (e) { $('glossMsg').textContent = e.message; }
+};
+$('auditGo').onclick = async () => {
+  const b = lib.find(x => x.id === $('libSel').value);
+  if (!b) return;
+  if (!b.url || b.url.startsWith('dosya:')) { $('auditMsg').textContent = T('Dosyadan gelen kitapta önce dosyayı İndir ve çevir bölümünden yeniden seç.'); return; }
+  try {
+    const d = await api('/api/jobs', {url: b.url, translate: true, audit: true, lang: $('lang').value});
+    show('run'); attachJob(d.id);
+  } catch (e) { if (e.data && e.data.id) { show('run'); attachJob(e.data.id); } else $('auditMsg').textContent = e.message; }
 };
 $('reBack').onclick = async () => {
   try { const d = await api(`/api/library/${book()}/restore${lq()}`, {start:$('reA').value, end:$('reB').value});

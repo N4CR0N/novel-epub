@@ -42,6 +42,7 @@ class Options:
     library: Path = Path("kutuphane")
     output: Path = Path("cikti")
     fmt: str = "epub"  # çıktı biçimi: epub / docx / html / txt / md (exporters.FORMATS)
+    audit: bool = False  # önceden çevrilmiş bölümleri de kalite denetiminden geçir ("Çeviriyi denetle ve düzelt")
 
 
 @dataclass
@@ -273,6 +274,7 @@ class Job:
             self.log("Denetim: tüm bölümler sağlam görünüyor ✓")
 
     def _translate(self, chapters: list[Chapter], store: BookStore) -> list[Chapter]:
+        from . import quality
         from . import translator as _t
         from .translator import (LOOKAHEAD_PARAGRAPHS, FatalError, QuotaExhausted, TranslationError,
                                  untranslated_paragraphs, untranslated_suspects)
@@ -320,12 +322,30 @@ class Job:
             nxt = source.get(index + 1)
             return nxt.paragraphs[:LOOKAHEAD_PARAGRAPHS] if nxt else []
 
+        vocab = quality.source_vocab(chapters)
+
         def save_state(new_terms: dict) -> None:
             store.save_memory(tr.memory)
             if new_terms:
                 glossary.update(new_terms)
+                bad = quality.suspicious_glossary(new_terms, vocab)
+                if bad:  # yeni terimin karşılığında İngilizce kelime kalmışsa hemen düzelt (sonraki bölümler doğru alsın)
+                    try:
+                        glossary.update(tr.fix_glossary(bad, vocab))
+                    except TranslationError:
+                        pass
                 store.save_glossary(glossary)
-                self.log(f"  sözlüğe eklendi: {', '.join(f'{k}→{v}' for k, v in list(new_terms.items())[:6])}")
+                self.log(f"  sözlüğe eklendi: {', '.join(f'{k}→{glossary.get(k, v)}' for k, v in list(new_terms.items())[:6])}")
+
+        def review(indices: list[int]) -> None:
+            """Kalite denetimi: başlık/seviye kalıbı, kaynak dilde kalmış kelime, sözlük, eski kelime, eksik çeviri."""
+            idx = [i for i in indices if i in results and results[i] is not source[i]]
+            for j in range(0, len(idx), 8):
+                part = idx[j:j + 8]
+                checked = tr.review([(source[i], results[i]) for i in part], glossary, vocab)
+                for c in checked:
+                    store.save_tr(c)
+                    results[c.index] = c
 
         def edit(drafts: list[Chapter]) -> None:
             """Taslakları redakte eder; kota hatası yukarı çıkar, diğer hatada taslak kalır."""
@@ -367,6 +387,35 @@ class Job:
                 stop_reason = str(e)
             except FatalError:
                 raise
+
+        # 1b) "Çeviriyi denetle ve düzelt": sözlükte İngilizce kalmış karşılıklar, ağdalı dille redakte edilmiş
+        #     bölümler (baştan redaksiyon) ve tüm bölümlerde paragraf düzeyinde denetim.
+        if o.audit and not stop_reason:
+            try:
+                fixed_terms = tr.fix_glossary(glossary, vocab)
+                if fixed_terms:
+                    glossary.update(fixed_terms)
+                    store.save_glossary(glossary)
+                    self.log(f"Sözlükte {len(fixed_terms)} karşılık düzeltildi: "
+                             + ", ".join(f"{k}→{v}" for k, v in list(fixed_terms.items())[:8]))
+                todo = [i for i, d in sorted(results.items()) if d is not source[i] and d.checked < quality.QUALITY_VERSION]
+                heavy = [source[i] for i in todo if quality.archaic_density(results[i]) > 4]
+                self.log(f"Denetim: {len(todo)} bölüm denetlenecek" + (f"; {len(heavy)} bölüm eski/ağdalı dille yazılmış, baştan redakte edilecek: {[c.index for c in heavy][:20]}" if heavy else ""))
+                k = 0
+                while k < len(heavy):
+                    self._check_cancel()
+                    group = tr.plan_batch(heavy[k:], o.batch)
+                    k += len(group)
+                    edit([results[c.index] for c in group])
+                self.p.phase = f"denetleniyor ({tr.model})"
+                self.p.total, self.p.done = len(todo), 0
+                for j in range(0, len(todo), 8):
+                    self._check_cancel()
+                    review(todo[j:j + 8])
+                    self.p.done = min(len(todo), j + 8)
+                self.p.total, self.p.done = len(chapters), len(results)
+            except QuotaExhausted as e:
+                stop_reason = str(e)
 
         # 2) Çevrilmemiş bölümler: çevir (+ redakte et).
         failed: list[int] = []
@@ -415,6 +464,11 @@ class Job:
                     stop_reason = str(e)  # taslaklar kayıtlı; redaksiyon sonraki çalıştırmada
                 except FatalError:
                     raise
+            if outs and not stop_reason:
+                try:
+                    review([d.index for d in outs])
+                except QuotaExhausted as e:
+                    stop_reason = str(e)  # denetim sonraki "denetle" çalıştırmasında
             streak = streak + 1 if missed and not outs else 0
             if streak >= 3:
                 self.log("  Art arda 3 istek başarısız; 5 dk bekleyip devam ediliyor")

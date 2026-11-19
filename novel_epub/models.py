@@ -18,6 +18,7 @@ class Chapter:
     paragraphs: list[str]
     next_url: str | None = None
     edited: bool = False  # redaksiyon turundan geçti mi (yalnız çeviriler için)
+    checked: int = 0  # hangi kalite denetiminden geçti (quality.QUALITY_VERSION; 0 = denetlenmedi)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -25,7 +26,7 @@ class Chapter:
     @classmethod
     def from_dict(cls, d: dict) -> "Chapter":
         return cls(**{k: d.get(k) for k in ("index", "title", "url", "paragraphs", "next_url")},
-                   edited=bool(d.get("edited")))
+                   edited=bool(d.get("edited")), checked=int(d.get("checked") or 0))
 
     @property
     def char_count(self) -> int:

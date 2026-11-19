@@ -146,6 +146,12 @@ def test_partial_epub_when_quota_runs_out(tmp_path: Path, monkeypatch):
     from novel_epub.store import BookStore
 
     class FakeTr:
+        def review(self, pairs, glossary, vocab):  # kalite denetimi: sahtede dokunmaz
+            return [o for _, o in pairs]
+
+        def fix_glossary(self, glossary, vocab):
+            return {}
+
         def __init__(self, *a, **k):
             self.model, self.n = "sahte", 0
 
@@ -289,6 +295,12 @@ def test_pipeline_skips_failed_group_and_continues(tmp_path: Path, monkeypatch):
     from novel_epub.store import BookStore
 
     class FakeTr:
+        def review(self, pairs, glossary, vocab):  # kalite denetimi: sahtede dokunmaz
+            return [o for _, o in pairs]
+
+        def fix_glossary(self, glossary, vocab):
+            return {}
+
         def __init__(self, *a, **k):
             self.model = "sahte"
 
@@ -357,6 +369,12 @@ def test_pipeline_repairs_old_translations_on_start(tmp_path: Path, monkeypatch)
     eng = "He opened the gate and they said that the wind would come from there."
 
     class FakeTr:
+        def review(self, pairs, glossary, vocab):  # kalite denetimi: sahtede dokunmaz
+            return [o for _, o in pairs]
+
+        def fix_glossary(self, glossary, vocab):
+            return {}
+
         def __init__(self, *a, **k):
             self.model = "sahte"
 
@@ -380,6 +398,12 @@ def test_cancel_interrupts_wait(tmp_path: Path, monkeypatch):
     job = pipeline.Job(pipeline.Options(url="u", translate=True))
 
     class FakeTr:
+        def review(self, pairs, glossary, vocab):  # kalite denetimi: sahtede dokunmaz
+            return [o for _, o in pairs]
+
+        def fix_glossary(self, glossary, vocab):
+            return {}
+
         def __init__(self, *a, **k):
             self.model = "sahte"
 
@@ -439,6 +463,12 @@ def test_pipeline_edits_and_pauses_for_review(tmp_path: Path, monkeypatch):
     from novel_epub.store import BookStore
 
     class FakeTr:
+        def review(self, pairs, glossary, vocab):  # kalite denetimi: sahtede dokunmaz
+            return [o for _, o in pairs]
+
+        def fix_glossary(self, glossary, vocab):
+            return {}
+
         def __init__(self, *a, **k):
             self.model, self.memory = "sahte", {"summary": "", "characters": {}}
 
@@ -511,6 +541,12 @@ def test_pipeline_sends_next_chapter_start(tmp_path: Path, monkeypatch):
     got = []
 
     class FakeTr:
+        def review(self, pairs, glossary, vocab):  # kalite denetimi: sahtede dokunmaz
+            return [o for _, o in pairs]
+
+        def fix_glossary(self, glossary, vocab):
+            return {}
+
         def __init__(self, *a, **k):
             self.model, self.memory = "sahte", {}
 
