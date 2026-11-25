@@ -613,6 +613,11 @@ def drop_next_chapter_copy(src: Chapter, out: Chapter, next_src: Chapter) -> tup
         return out, 0
     s0, s1 = span
     tail = s1 == len(src.paragraphs) - 1
+    # Daha önce kesildiyse yeniden kesme: çeviri uzunluğu kaynağın yalnız kendi kısmı kadarsa çık.
+    total = sum(len(p) for p in src.paragraphs) or 1
+    own = sum(len(p) for i, p in enumerate(src.paragraphs) if not s0 <= i <= s1) / total
+    if sum(len(p) for p in out.paragraphs) / total < own + (1 - own) / 2:
+        return out, 0
     pos: list[int] = []
     for si, oi in align(src.paragraphs, out.paragraphs):
         if si and oi and (s0 <= min(si) <= s1):

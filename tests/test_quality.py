@@ -218,6 +218,8 @@ def test_drop_next_chapter_copy_when_site_merged_two_chapters():
     out = Chapter(742, "742", "u", [p.upper() for p in own + nxt])
     fixed, n = drop_next_chapter_copy(src, out, Chapter(743, "743", "u", nxt))
     assert n == 6 and fixed.paragraphs == [p.upper() for p in own]
+    # Yeniden çalıştırınca bir daha kesmez
+    assert drop_next_chapter_copy(src, fixed, Chapter(743, "743", "u", nxt))[1] == 0
     # Birleşme yoksa dokunulmaz
     assert drop_next_chapter_copy(Chapter(742, "742", "u", own), Chapter(742, "742", "u", own),
                                   Chapter(743, "743", "u", nxt))[1] == 0
