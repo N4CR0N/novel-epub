@@ -221,3 +221,19 @@ def test_drop_next_chapter_copy_when_site_merged_two_chapters():
     # Birleşme yoksa dokunulmaz
     assert drop_next_chapter_copy(Chapter(742, "742", "u", own), Chapter(742, "742", "u", own),
                                   Chapter(743, "743", "u", nxt))[1] == 0
+
+
+def test_drop_repeats_removes_second_translation_in_other_words():
+    from novel_epub.quality import drop_repeats
+    words = [f"{c}{d}kelime" for c in "abcdefghij" for d in "klmnopqrst"]  # 100 farklı uydurma kelime
+    fill = [" ".join(words[i:i + 20]) for i in range(40, 100, 20)]
+    a, b = " ".join(words[:6]), " ".join(words[6:30])
+    # Aynı kaynak paragrafın ikinci çevirisi: iki paragraf tek paragraf olmuş, birkaç kelime değişmiş
+    again = " ".join(words[:6] + words[6:26] + ["zzbaska", "zyfarkli", "zxyeni", "zwobir"])
+    src = Chapter(5, "Chapter 5", "u", [fill[0], "Lorem ipsum dolor sit amet consectetur adipiscing elit sed do "
+                                        "eiusmod tempor incididunt ut labore et dolore magna aliqua enim", fill[1]])
+    out = Chapter(5, "Bölüm 5", "u", [fill[0], a, b, again, fill[1]])
+    fixed, n = drop_repeats(src, out)
+    assert n == 1 and fixed.paragraphs == [fill[0], a, b, fill[1]]
+    # Birbirine benzemeyen art arda paragraflara dokunulmaz
+    assert drop_repeats(src, Chapter(5, "Bölüm 5", "u", [fill[0], fill[1], fill[2]]))[1] == 0
