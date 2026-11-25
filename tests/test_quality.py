@@ -170,3 +170,54 @@ def test_title_glued_to_first_paragraph_is_removed():
     assert quality.normalize_title("Chapter 473 Lorem (1)", "Cilt N Bölüm 473 Qin Fangke (1)", "tr") == "Bölüm 473: Qin Fangke (1)"
     assert quality.normalize_title("Chapter 473 Lorem (1)", "Bölüm 473: N Bölüm 473 Qin Fangke (1)", "tr") == "Bölüm 473: Qin Fangke (1)"
     assert quality.normalize_title("Chapter 9 Lorem", "Bölüm 9: Nehir", "tr") == "Bölüm 9: Nehir"
+
+
+def _p(*words):
+    return " ".join(words)
+
+
+def test_drop_repeats_removes_doubled_paragraph_but_keeps_author_repeats():
+    from novel_epub.quality import drop_repeats
+    a = _p("Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore")
+    b = _p("Ut enim ad minim veniam quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo")
+    c = _p("Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur")
+    src = Chapter(1, "Chapter 1", "u", [a, b, c])
+    # Çeviri b'yi iki kez yazmış: biri tam, biri kısmi kopya
+    out = Chapter(1, "Bölüm 1", "u", [a, b, " ".join(b.split()[:13]), c])
+    fixed, n = drop_repeats(src, out)
+    assert n == 1 and fixed.paragraphs == [a, b, c]
+    # Kaynakta da aynı paragraf art arda geçiyorsa (yazarın tekrarı) dokunulmaz
+    src2 = Chapter(1, "Chapter 1", "u", [a, b, b, c])
+    out2 = Chapter(1, "Bölüm 1", "u", [a, b, b, c])
+    assert drop_repeats(src2, out2)[1] == 0
+    # Uzun paragrafın içinde geçen kısa cümle (12 kelimeden az) tekrar sayılmaz
+    assert drop_repeats(src, Chapter(1, "Bölüm 1", "u", [a, b, " ".join(b.split()[:8]), c]))[1] == 0
+    # Kısa satırlar (cevap, ünlem) tekrar sayılmaz
+    out3 = Chapter(1, "Bölüm 1", "u", [a, "Evet.", "Evet.", b, c])
+    assert drop_repeats(Chapter(1, "Chapter 1", "u", [a, "Yes.", "Yes.", b, c]), out3)[1] == 0
+
+
+def test_drop_boundary_repeat_removes_next_chapter_start():
+    from novel_epub.quality import drop_boundary_repeat
+    a, b, c, d, e = (_p(*(f"w{i}{k}" for k in range(12))) for i in range(5))
+    s1, s2 = Chapter(1, "1", "u", [a, b, c, d]), Chapter(2, "2", "u", [e, "z " * 10])
+    o1 = Chapter(1, "1", "u", [a, b, c, d, e])  # sonraki bölümün ilk paragrafı da bu bölümün sonuna eklenmiş
+    o2 = Chapter(2, "2", "u", [e, "z " * 10])
+    fixed, n = drop_boundary_repeat(s1, o1, s2, o2)
+    assert n == 1 and fixed.paragraphs == [a, b, c, d]
+    # Kaynakta da bölüm sonu sonraki bölümün başında tekrar ediyorsa dokunulmaz
+    s1b = Chapter(1, "1", "u", [a, b, c, e])
+    assert drop_boundary_repeat(s1b, Chapter(1, "1", "u", [a, b, c, e]), s2, o2)[1] == 0
+
+
+def test_drop_next_chapter_copy_when_site_merged_two_chapters():
+    from novel_epub.quality import drop_next_chapter_copy
+    own = [_p(*(f"a{i}x{k}" for k in range(14))) for i in range(8)]
+    nxt = [_p(*(f"b{i}x{k}" for k in range(14))) for i in range(6)]
+    src = Chapter(742, "742", "u", own + nxt)  # site 742. sayfaya 743'ü de koymuş
+    out = Chapter(742, "742", "u", [p.upper() for p in own + nxt])
+    fixed, n = drop_next_chapter_copy(src, out, Chapter(743, "743", "u", nxt))
+    assert n == 6 and fixed.paragraphs == [p.upper() for p in own]
+    # Birleşme yoksa dokunulmaz
+    assert drop_next_chapter_copy(Chapter(742, "742", "u", own), Chapter(742, "742", "u", own),
+                                  Chapter(743, "743", "u", nxt))[1] == 0

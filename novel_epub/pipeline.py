@@ -527,6 +527,27 @@ class Job:
             self.log(f"Çeviri durdu: {stop_reason}")
             self.p.error = f"Kısmi: {len(results)} bölüm çevrili ({stop_reason})"
 
+        # Art arda iki kez yazılmış paragraflar ve bölüm sonuna eklenmiş sonraki bölüm başı (modelsiz, kesin kural).
+        removed = 0
+        for i in sorted(results):
+            d = results[i]
+            if d is source[i]:
+                continue
+            fixed, n = quality.drop_repeats(source[i], d)
+            if i + 1 in source:
+                fixed, m = quality.drop_next_chapter_copy(source[i], fixed, source[i + 1])
+                n += m
+            nxt = results.get(i + 1)
+            if nxt is not None and nxt is not source.get(i + 1):
+                fixed, m = quality.drop_boundary_repeat(source[i], fixed, source[i + 1], nxt)
+                n += m
+            if n:
+                store.save_tr(fixed)
+                results[i] = fixed
+                removed += n
+        if removed:
+            self.log(f"Tekrar temizliği: {removed} tekrarlanmış paragraf atıldı")
+
         # Kitap, çevrilmiş son bölüme kadar gider; arada çevrilemeyenler orijinal metniyle kalır.
         last = max(results, default=0)
         out = [results.get(ch.index) or Chapter(ch.index, f"[Çevrilemedi] {ch.title}", ch.url, ch.paragraphs)

@@ -9,6 +9,7 @@ düzelt" de aynısını yapar. İki tür düzeltme var:
 """
 from __future__ import annotations
 
+import functools
 import re
 
 from .models import Chapter
@@ -366,7 +367,7 @@ def _strip_title_prefix(text: str, index: int, title: str) -> str:
 
 def fix_chapter(src: Chapter, out: Chapter, lang: str) -> Chapter:
     """Kesin kurallarla düzeltilmiş bölüm (başlık kalıbı; Türkçede seviye kısaltması; gövdenin ilk iki paragrafında
-    başlığı tekrar eden satır atılır)."""
+    başlığı tekrar eden satır ve art arda iki kez yazılmış paragraf atılır)."""
     title = normalize_title(src.title, out.title, lang)
     paras = [p for i, p in enumerate(out.paragraphs) if not (i < 2 and len(out.paragraphs) > 3
                                                               and _title_line(p, out.index, title))]
@@ -375,6 +376,7 @@ def fix_chapter(src: Chapter, out: Chapter, lang: str) -> Chapter:
     if lang == "tr":
         title = fix_levels(title)
         paras = [fix_levels(p) for p in paras]
+    paras = drop_repeats(src, Chapter(out.index, title, out.url, paras))[0].paragraphs
     if title == out.title and paras == out.paragraphs:
         return out
     return Chapter(out.index, title, out.url, paras, out.next_url, out.edited, getattr(out, "checked", 0))
@@ -449,6 +451,149 @@ def _numbers(text: str) -> list[str]:
 
 def _norm(text: str) -> str:
     return re.sub(r"[\W_]+", " ", text.lower()).strip()
+
+
+# --- tekrar temizliği (modelsiz, kesin kurallar) ---------------------------------------------------------------
+@functools.lru_cache(maxsize=50000)
+def _shingles(text: str, n: int = 3) -> frozenset[tuple[str, ...]]:
+    w = re.findall(r"\w+", text.lower())
+    return frozenset(tuple(w[i:i + n]) for i in range(max(1, len(w) - n + 1))) if w else frozenset()
+
+
+def _contain(a: str, b: str) -> float:
+    """Kısa olanın kelime üçlülerinin ne kadarı uzun olanda geçiyor (1.0 = biri ötekinin içinde)."""
+    A, B = _shingles(a), _shingles(b)
+    return len(A & B) / max(1, min(len(A), len(B)))
+
+
+def _repeatable(p: str) -> bool:
+    return len(p) >= 40 and len(p.split()) >= 6
+
+
+def _src_repeats(src: list[str]) -> list[tuple[int, int]]:
+    """Kaynakta birbirine çok benzeyen (yazarın bilerek tekrarladığı) yakın paragraf çiftleri."""
+    pairs = []
+    for j in range(len(src)):
+        if not _repeatable(src[j]):
+            continue
+        for k in range(j + 1, min(len(src), j + 6)):
+            if _repeatable(src[k]) and _contain(src[j], src[k]) >= 0.6:
+                pairs.append((j, k))
+    return pairs
+
+
+def drop_repeats(src: Chapter, out: Chapter, window: int = 3) -> tuple[Chapter, int]:
+    """Çeviride art arda (en çok `window` paragraf arayla) iki kez yazılmış paragrafı atar: aynısı ya da biri
+    ötekinin içinde. Kaynakta da aynı yerde tekrar varsa (yazarın tekrarı) dokunmaz. (bölüm, atılan sayısı)."""
+    T = out.paragraphs
+    if len(T) < 2:
+        return out, 0
+    cands = [(j, k) for k in range(1, len(T)) if _repeatable(T[k]) for j in range(max(0, k - window), k)
+             if _repeatable(T[j]) and min(len(T[j].split()), len(T[k].split())) >= 12
+             and _contain(T[j], T[k]) >= 0.85]
+    if not cands:
+        return out, 0  # eşleme pahalı: yalnız aday varsa yapılır
+    S = [p for i, p in enumerate(src.paragraphs) if not (i < 2 and _title_line(p, src.index, src.title))]
+    t2s: dict[int, tuple[int, ...]] = {}
+    if S:
+        for si, oi in align(S, T):
+            for o in oi:
+                t2s[o] = si
+    reps = _src_repeats(S)
+
+    def legit(j: int, k: int) -> bool:
+        a, b = t2s.get(j, ()), t2s.get(k, ())
+        if a and b and set(a) != set(b) and _contain(" ".join(S[x] for x in a), " ".join(S[x] for x in b)) >= 0.6:
+            return True
+        pos_a = min(a) if a else None
+        pos_b = min(b) if b else None
+        for x, y in reps:  # eşleme kayabilir: yakınında kaynak tekrarı varsa dokunma
+            if (pos_a is None or abs(x - pos_a) <= 3) and (pos_b is None or abs(y - pos_b) <= 3):
+                if pos_a is not None or pos_b is not None:
+                    return True
+        return False
+
+    # Kısa olan en az 12 kelime olmalı: kısa bir cümlenin uzun paragrafta geçmesi doğal olabilir.
+    drop: set[int] = set()
+    done: set[int] = set()
+    for j, k in cands:
+        if k in done or j in drop or k in drop:
+            continue
+        done.add(k)
+        if not legit(j, k):
+            drop.add(k if len(T[k]) <= len(T[j]) else j)
+    if not drop:
+        return out, 0
+    paras = [p for i, p in enumerate(T) if i not in drop]
+    return Chapter(out.index, out.title, out.url, paras, out.next_url, out.edited, getattr(out, "checked", 0)), len(drop)
+
+
+def drop_boundary_repeat(src: Chapter, out: Chapter, next_src: Chapter, next_out: Chapter,
+                         tail: int = 3) -> tuple[Chapter, int]:
+    """Bölümün sonuna sonraki bölümün ilk paragrafları da çevrilip eklenmişse (bağlam için verilen sonraki bölüm
+    başı) onları atar. Kaynakta da bölüm sonu sonraki bölümün başında tekrar ediyorsa dokunmaz."""
+    T, N = out.paragraphs, next_out.paragraphs[:tail + 1]
+    if len(T) <= tail or not N:
+        return out, 0
+    s_end = [p for p in src.paragraphs[-(tail + 2):] if _repeatable(p)]
+    s_beg = [p for p in next_src.paragraphs[:tail + 2] if _repeatable(p)]
+    if any(_contain(a, b) >= 0.6 for a in s_end for b in s_beg):
+        return out, 0
+    drop = {i for i in range(len(T) - tail, len(T))
+            if _repeatable(T[i]) and any(_repeatable(q) and _contain(T[i], q) >= 0.9 for q in N)}
+    if not drop:
+        return out, 0
+    paras = [p for i, p in enumerate(T) if i not in drop]
+    return Chapter(out.index, out.title, out.url, paras, out.next_url, out.edited, getattr(out, "checked", 0)), len(drop)
+
+
+def next_chapter_span(src: Chapter, next_src: Chapter) -> tuple[int, int] | None:
+    """Sitede bölüm sayfasına sonraki bölümün metni de eklenmişse (ör. 742. sayfada 742 + 743) o kısmın kaynak
+    paragraf aralığı (baştan ya da sondan); yoksa None."""
+    S, N = src.paragraphs, [p for p in next_src.paragraphs if _repeatable(p)]
+    if len(N) < 5 or len(S) < len(N):
+        return None
+    whole = _shingles(" ".join(N))  # hızlı ön eleme: sonraki bölümün metni bu sayfada çoğunlukla yoksa çık
+    if len(whole & _shingles(" ".join(S))) < 0.5 * len(whole):
+        return None
+    hit = [k for k, p in enumerate(S) if _repeatable(p) and any(_contain(p, x) >= 0.85 for x in N)]
+    covered = sum(1 for x in N if any(_contain(x, S[k]) >= 0.85 for k in hit))
+    if covered < 0.8 * len(N) or not hit:
+        return None
+    s0, s1 = hit[0], hit[-1]
+    if s1 - s0 + 1 > 1.3 * len(hit) + 2:
+        return None  # dağınık eşleşme: sayfa birleşmesi değil
+    if s1 >= len(S) - 3:
+        return s0, len(S) - 1
+    if s0 <= 2:
+        return 0, s1
+    return None
+
+
+def drop_next_chapter_copy(src: Chapter, out: Chapter, next_src: Chapter) -> tuple[Chapter, int]:
+    """Kaynakta sonraki bölümün metni bu bölüme de eklenmişse çevirideki karşılığını atar (sonraki bölüm zaten
+    kendi yerinde var)."""
+    span = next_chapter_span(src, next_src)
+    if not span or not out.paragraphs:
+        return out, 0
+    s0, s1 = span
+    tail = s1 == len(src.paragraphs) - 1
+    pos: list[int] = []
+    for si, oi in align(src.paragraphs, out.paragraphs):
+        if si and oi and (s0 <= min(si) <= s1):
+            pos.extend(oi)
+    if not pos:
+        return out, 0
+    if tail:
+        cut = min(pos)
+        keep = out.paragraphs[:cut]
+    else:
+        cut = max(pos)
+        keep = out.paragraphs[cut + 1:]
+    if not keep:
+        return out, 0
+    n = len(out.paragraphs) - len(keep)
+    return Chapter(out.index, out.title, out.url, keep, out.next_url, out.edited, getattr(out, "checked", 0)), n
 
 
 # --- paragraf sorunları ------------------------------------------------------------------------------------------

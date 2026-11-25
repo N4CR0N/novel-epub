@@ -71,7 +71,10 @@ tetiklemez: `gh workflow run windows-uygulama.yml --ref <dal>` (sürüm yalnız 
   (`ARCHAIC_TR`), uyuşmayan sayı, %60'tan kısa paragraf. `Translator.review` sorunlu paragrafları POLISH_PROMPT ile
   40'arlı istekte onarır, `checked = QUALITY_VERSION` yazar (kurallar değişince artır). `fix_glossary`: karşılığında
   İngilizce ya da eski kelime kalan sözlük kayıtları (`suspicious_glossary`). Denetimde eski kelime yoğunluğu
-  >4/1000 olan bölüm baştan redakte edilir. Kök neden (2026-11): istemdeki "edebi/yayınevi kalitesinde" ağdalı dile
+  >4/1000 olan bölüm baştan redakte edilir. Tekrar temizliği modelsiz ve kesin kuralla (EPUB öncesi her çalıştırmada +
+  `fix_chapter`): `drop_repeats` (≤3 paragraf arayla aynısı/içeriği, kısa olan ≥12 kelime; kaynakta da tekrar varsa dokunmaz),
+  `drop_boundary_repeat` (bölüm sonuna eklenmiş sonraki bölüm başı), `drop_next_chapter_copy` (site 742. sayfaya 743'ü de
+  koymuşsa). Eski kural (kaynakta herhangi bir tekrar varsa denetimi atlıyordu, silmeyi modele bırakıyordu) yetmiyordu. Kök neden (2026-11): istemdeki "edebi/yayınevi kalitesinde" ağdalı dile
   itiyordu → "çağdaş, sade"; T3 "Book N Chapter M → Cilt" kuralı "Chapter N"i "Cilt N" yaptırıyordu;
   `untranslated_suspects` sözlüğün kaynak tarafındaki kelimeleri serbest sayıyordu ("Dean" yakalanmıyordu).
 - `pipeline.py` iş akışı (`Options`, `Job`): indir/oku → denetle → çevir (+redaksiyon, eski çevirileri de redakte
