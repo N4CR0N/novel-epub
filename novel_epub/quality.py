@@ -477,20 +477,52 @@ def _src_repeats(src: list[str]) -> list[tuple[int, int]]:
         if not _repeatable(src[j]):
             continue
         for k in range(j + 1, min(len(src), j + 6)):
-            if _repeatable(src[k]) and _contain(src[j], src[k]) >= 0.6:
+            if not _repeatable(src[k]):
+                continue
+            sj, sk = _stems(src[j]), _stems(src[k])
+            if _contain(src[j], src[k]) >= 0.6 or (min(len(sj), len(sk)) >= 15
+                                                     and len(sj & sk) >= 0.75 * min(len(sj), len(sk))):
                 pairs.append((j, k))
     return pairs
 
 
+@functools.lru_cache(maxsize=50000)
+def _stems(text: str) -> frozenset[str]:
+    """Paragrafın içerik kelimelerinin ilk 5 harfi (çekim ekinden ve eş anlamlı küçük farklardan bağımsız)."""
+    return frozenset(w[:5] for w in re.findall(r"[^\W\d_]{4,}", text.lower()))
+
+
 def drop_repeats(src: Chapter, out: Chapter, window: int = 3) -> tuple[Chapter, int]:
-    """Çeviride art arda (en çok `window` paragraf arayla) iki kez yazılmış paragrafı atar: aynısı ya da biri
-    ötekinin içinde. Kaynakta da aynı yerde tekrar varsa (yazarın tekrarı) dokunmaz. (bölüm, atılan sayısı)."""
+    """Çeviride art arda (en çok `window` paragraf arayla) iki kez yazılmış metni atar:
+    (a) aynısı ya da biri ötekinin içinde (kısa olan ≥12 kelime) → kısa olan atılır;
+    (b) aynı kaynak metnin ikinci, farklı kelimelerle çevirisi (paragraf, hemen önceki 1–3 paragrafın kelimelerini
+        büyük ölçüde tekrar ediyor; ör. önce iki paragrafa bölünmüş, sonra tek paragraf olarak yeniden yazılmış) →
+        sonraki atılır.
+    Kaynakta da aynı yerde tekrar varsa (yazarın tekrarı) dokunmaz. (bölüm, atılan sayısı)."""
     T = out.paragraphs
     if len(T) < 2:
         return out, 0
-    cands = [(j, k) for k in range(1, len(T)) if _repeatable(T[k]) for j in range(max(0, k - window), k)
-             if _repeatable(T[j]) and min(len(T[j].split()), len(T[k].split())) >= 12
-             and _contain(T[j], T[k]) >= 0.85]
+    cands: list[tuple[tuple[int, ...], int, int]] = []  # (önceki blok, sonraki, atılacak)
+    for k in range(1, len(T)):
+        hit = False
+        if _repeatable(T[k]):
+            for j in range(max(0, k - window), k):
+                if _repeatable(T[j]) and min(len(T[j].split()), len(T[k].split())) >= 12 \
+                        and _contain(T[j], T[k]) >= 0.85:
+                    cands.append(((j,), k, k if len(T[k]) <= len(T[j]) else j))
+                    hit = True
+                    break
+        sk = _stems(T[k])
+        if hit or len(sk) < 15:
+            continue
+        for w in range(1, window + 1):
+            if k - w < 0:
+                break
+            sb = frozenset().union(*(_stems(p) for p in T[k - w:k]))
+            o = len(sk & sb)
+            if sb and o >= 0.75 * len(sk) and o >= 0.6 * len(sb):
+                cands.append((tuple(range(k - w, k)), k, k))
+                break
     if not cands:
         return out, 0  # eşleme pahalı: yalnız aday varsa yapılır
     S = [p for i, p in enumerate(src.paragraphs) if not (i < 2 and _title_line(p, src.index, src.title))]
@@ -501,9 +533,15 @@ def drop_repeats(src: Chapter, out: Chapter, window: int = 3) -> tuple[Chapter, 
                 t2s[o] = si
     reps = _src_repeats(S)
 
-    def legit(j: int, k: int) -> bool:
-        a, b = t2s.get(j, ()), t2s.get(k, ())
-        if a and b and set(a) != set(b) and _contain(" ".join(S[x] for x in a), " ".join(S[x] for x in b)) >= 0.6:
+    def similar(x: str, y: str) -> bool:
+        sx, sy = _stems(x), _stems(y)
+        return _contain(x, y) >= 0.6 or (len(sx) >= 8 and len(sy) >= 8
+                                          and len(sx & sy) >= 0.6 * min(len(sx), len(sy)))
+
+    def legit(js: tuple[int, ...], k: int) -> bool:
+        a = tuple(x for j in js for x in t2s.get(j, ()))
+        b = t2s.get(k, ())
+        if a and b and not set(b) <= set(a) and similar(" ".join(S[x] for x in a), " ".join(S[x] for x in b)):
             return True
         pos_a = min(a) if a else None
         pos_b = min(b) if b else None
@@ -513,15 +551,12 @@ def drop_repeats(src: Chapter, out: Chapter, window: int = 3) -> tuple[Chapter, 
                     return True
         return False
 
-    # Kısa olan en az 12 kelime olmalı: kısa bir cümlenin uzun paragrafta geçmesi doğal olabilir.
     drop: set[int] = set()
-    done: set[int] = set()
-    for j, k in cands:
-        if k in done or j in drop or k in drop:
+    for js, k, victim in cands:
+        if k in drop or any(j in drop for j in js):
             continue
-        done.add(k)
-        if not legit(j, k):
-            drop.add(k if len(T[k]) <= len(T[j]) else j)
+        if not legit(js, k):
+            drop.add(victim)
     if not drop:
         return out, 0
     paras = [p for i, p in enumerate(T) if i not in drop]
