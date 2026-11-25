@@ -483,7 +483,7 @@ class Job:
                     raise
             if outs and not stop_reason:
                 try:
-                    review([d.index for d in outs])
+                    review([d.index for d in outs], max(8, len(outs)))  # paket tek denetim isteğinde
                 except QuotaExhausted as e:
                     stop_reason = str(e)  # denetim sonraki "denetle" çalıştırmasında
             streak = streak + 1 if missed and not outs else 0

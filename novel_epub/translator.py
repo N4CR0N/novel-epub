@@ -185,13 +185,14 @@ LOOKAHEAD_PARAGRAPHS = 3  # sonraki bölümün başından bağlam olarak gönder
 MAX_MEMORY_CHARACTERS = 300
 RETRY_EXHAUSTED_AFTER = 3600  # kotası dolan model bu kadar saniye sonra (en iyiden başlayarak) yeniden denenir
 # Otomatik paketleme: bölümler, tahmini Türkçe çıktı token'ı bu bütçeye sığana kadar tek isteğe konur.
-# Modelin yanıt tavanı ~65k token; düşünme payı ve güvenlik için hedef daha düşük tutulur. Kesik yanıtta
-# bütçe küçülür, başarılı yanıtlarda yavaşça büyür.
+# Ücretsiz kota istek sayısıyla ölçülür: paket ne kadar büyükse gün başına o kadar çok bölüm çevrilir.
+# Modelin yanıt tavanı ~65k token; düşünme payı ve güvenlik için hedef daha düşük tutulur (effective_budget).
+# Kesik yanıtta bütçe küçülür, başarılı yanıtlarda yavaşça büyür.
 OUTPUT_CAP = 65536
-START_BUDGET = 24000
+START_BUDGET = 32000
 MIN_BUDGET = 8000
-MAX_BUDGET = 40000
-MAX_AUTO_CHAPTERS = 12
+MAX_BUDGET = 52000
+MAX_AUTO_CHAPTERS = 20
 # Kaynak birimi başına Türkçe çıktı token'ı (başlangıç tahmini; gerçek kullanımdan öğrenilir).
 # latin: İngilizce kelime başına, cjk: Çince/Japonca/Korece karakter başına.
 START_RATIO = {"latin": 2.0, "cjk": 1.1}

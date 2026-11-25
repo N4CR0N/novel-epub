@@ -10,7 +10,7 @@ from novel_epub.epub_builder import build_epub
 from novel_epub.models import Chapter, Novel
 from novel_epub.sources import source_for
 from novel_epub.sources.generic import best_content
-from novel_epub.translator import GeminiTranslator, chunk_paragraphs, relevant_glossary
+from novel_epub.translator import GeminiTranslator, chunk_paragraphs, relevant_glossary, START_BUDGET
 
 PAGE = """<html><body><div class="nav">Home | Library</div>
 <div id="article"><p>Chapter 7 - The Gate</p><p>The old man raised his hand.</p>
@@ -226,9 +226,9 @@ def test_unknown_model_is_skipped():
 def test_auto_batch_by_word_count():
     tr = _fake_translator()
     long_ch = lambda i, words: Chapter(i, str(i), "u", [" ".join(["kelime"] * words)])
-    # ~2.000 kelimelik bölümler: 24k bütçe / (2.000 × 2.0) ≈ 5 bölüm
-    group = tr.plan_batch([long_ch(i, 2000) for i in range(1, 20)])
-    assert 5 <= len(group) <= 6
+    # ~2.000 kelimelik bölümler: 32k bütçe / (2.000 × 2.0) ≈ 7 bölüm
+    group = tr.plan_batch([long_ch(i, 2000) for i in range(1, 30)])
+    assert 7 <= len(group) <= 8
     # Çok uzun bölümler (6.000 kelime) → daha az bölüm; tavan 2 verilirse 2'yi geçmez
     assert len(tr.plan_batch([long_ch(i, 6000) for i in range(1, 9)])) <= 3
     assert len(tr.plan_batch([long_ch(i, 100) for i in range(1, 30)], 2)) == 2
@@ -241,7 +241,7 @@ def test_learning_adjusts_budget_and_ratio():
     chs = [Chapter(1, "1", "u", [" ".join(["w"] * 1000)])]
     tr.last_usage = (3000, 500)  # gerçek: kelime başına 3 token
     tr.learn(chs, ok=True)
-    assert tr.ratio["latin"] > 2.0 and tr.budget > 24000
+    assert tr.ratio["latin"] > 2.0 and tr.budget > START_BUDGET
     b = tr.budget
     tr.learn(chs, ok=False)
     assert tr.budget < b
