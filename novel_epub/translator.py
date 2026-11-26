@@ -121,6 +121,19 @@ GLOSSARY_PROMPT = """Sen web novel çevirilerinde uzman bir {target} çevirmensi
 Kurallar: Sıradan kelimeleri ve unvanları çevir (Island → Ada, Lake → Göl, City → Şehir, Hall → Salon, Dean → Dekan, Senior → Kıdemli, Abyssal → Uçurum…); yalnız kişi adlarını ve Çince/özgün adları (Fei Qing, Gumo) aynen bırak. "glossary"deki diğer kayıtlarla tutarlı ol (aynı kelime hep aynı karşılık). Türkçede ad tamlamasını doğal kur ("Feather Fire City" → "Tüy Ateşi Şehri"); eski kelime kullanma (İptidai → İlkel). Kısa ve sade ol. Her terim için "source" aynen, "target" yeni karşılık.
 """
 
+BUILD_GLOSSARY_PROMPT = """Sen web novel çevirilerinde uzman bir {target} çevirmensin. Çeviriye başlamadan önce kitabın terim sözlüğünü kuruyorsun: buradaki karşılıklar binlerce bölüm boyunca aynen kullanılacak, bu yüzden dikkatli ve tutarlı ol.
+
+Girdi: "terms" listesinde kitabın tamamından çıkarılmış aday adlar/terimler, her biri kaç kez geçtiği ("count") ve bir örnek cümleyle ("context"). Ya da "text" alanında kitabın ilk bölümlerinden bir parça (o zaman adları/terimleri metinden sen çıkar).
+
+Görev: Çevirinin her yerinde aynı kalması gereken adları ve terimleri seç, karşılıklarını ver.
+- Kişi adları: Latin harfli adlar aynen kalır (Meng Chuan, Klein Moretti); Çince/Japonca/Korece yazılı adları yaygın Latin yazımıyla ver (pinyin, Hepburn, Revize Romanizasyon).
+- Unvan, rütbe, yer, ülke, tarikat/klan/okul, teknik, beceri, aşama/seviye, ırk, eşya, kurum adları: anlamını koruyarak çağdaş ve sade {target} ile çevir; ad tamlamasını doğal kur. Anlamsız kalacaksa (özgün ad) aynen bırak.
+- Aynı kökü taşıyan terimleri aynı biçimde çevir (bir terimin parçası başka terimde de geçiyorsa karşılığı tutarlı olsun).
+- Cümle başında büyük harfle yazılmış sıradan kelimeleri, ünlemleri, tek başına anlamsız parçaları ve sabit karşılığa ihtiyaç duymayan sıradan kelimeleri ATLA (döndürme).
+- "glossary"deki mevcut kayıtları tekrar verme, onlarla tutarlı ol.
+- Eski/ağdalı kelime kullanma. Her terim için "source" aynen, "target" karşılık.
+"""
+
 POLISH_SCHEMA = {"type": "object", "properties": {"paragraphs": {"type": "array", "items": {"type": "string"}}},
                  "required": ["paragraphs"]}
 
@@ -916,6 +929,52 @@ class Translator:
             for t in data.get("new_terms") or []:
                 src, tgt = (t.get("source") or "").strip(), (t.get("target") or "").strip()
                 if src in bad and tgt and tgt != bad[src]:
+                    out[src] = tgt
+        return out
+
+    def build_glossary(self, chapters: list[Chapter], glossary: dict[str, str], size: int = 200) -> dict[str, str]:
+        """Kitap başında toplu sözlük: kitabın tamamından aday adları/terimleri çıkarıp (CJK kaynakta ilk bölümlerden)
+        zincirdeki en iyi modelle tek seferde çevirir. Yeni kayıtları döndürür (mevcutlara dokunmaz)."""
+        from . import quality
+
+        sample = " ".join(" ".join(c.paragraphs[:5]) for c in chapters[:5])
+        schema = {"type": "object", "properties": {"new_terms": _TERMS_SCHEMA}, "required": ["new_terms"]}
+        if CJK_RE.search(sample):
+            text, n = [], 0
+            for c in chapters:
+                t = "\n".join(c.paragraphs)
+                if n + len(t) > 40000:
+                    break
+                text.append(t)
+                n += len(t)
+            payloads = [{"glossary": dict(list(glossary.items())[:300]), "text": "\n\n".join(text)}]
+            self.log(f"Toplu sözlük: ilk {len(text)} bölümden adlar/terimler çıkarılıyor ({self.models[0] if self.models else self.model})")
+        else:
+            cands = quality.term_candidates(chapters, glossary)
+            if not cands:
+                return {}
+            self.log(f"Toplu sözlük: kitabın tamamından {len(cands)} aday ad/terim çevriliyor "
+                     f"({self.models[0] if self.models else self.model})")
+            payloads = []
+            for j in range(0, len(cands), size):
+                part = cands[j:j + size]
+                words = {w.lower() for c in part for w in re.findall(r"[A-Za-z]{3,}", c["source"])}
+                related = {k: v for k, v in glossary.items()
+                           if words & {w.lower() for w in re.findall(r"[A-Za-z]{3,}", k)}}
+                payloads.append({"glossary": dict(list(related.items())[:200]), "terms": part})
+        out: dict[str, str] = {}
+        for payload in payloads:
+            payload["glossary"] = {**payload["glossary"], **{k: v for k, v in out.items()}}
+            try:
+                data = self._call(payload, schema, bad_retries=1, system=BUILD_GLOSSARY_PROMPT)
+            except (QuotaExhausted, FatalError):
+                raise
+            except TranslationError as e:
+                self.log(f"  toplu sözlük parçası alınamadı ({e})")
+                continue
+            for t in data.get("new_terms") or []:
+                src, tgt = (t.get("source") or "").strip(), (t.get("target") or "").strip()
+                if src and tgt and src not in glossary and len(src) <= 80 and len(tgt) <= 80:
                     out[src] = tgt
         return out
 

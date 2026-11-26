@@ -239,3 +239,39 @@ def test_drop_repeats_removes_second_translation_in_other_words():
     assert n == 1 and fixed.paragraphs == [fill[0], a, b, fill[1]]
     # Birbirine benzemeyen art arda paragraflara dokunulmaz
     assert drop_repeats(src, Chapter(5, "Bölüm 5", "u", [fill[0], fill[1], fill[2]]))[1] == 0
+
+
+def test_term_candidates_finds_names_used_mid_sentence():
+    from novel_epub.quality import term_candidates
+    paras = [
+        "Lorem ipsum the Azure Cloud Sect dolor sit amet. Then Ming Kai nodded at the Azure Cloud Sect elder.",
+        "Suddenly the wind rose. Consectetur adipiscing Ming Kai elit, sed do the Azure Cloud Sect gate.",
+        "Suddenly it rained. However Ming Kai smiled. Sed ut perspiciatis Ming Kai unde omnis.",
+        "Suddenly nothing. The Dean of the academy said hello to Ming Kai and the Dean left.",
+    ]
+    cands = term_candidates([Chapter(1, "1", "u", paras)], {"Dean": "Dekan"})
+    names = [c["source"] for c in cands]
+    assert names[:2] == ["Ming Kai", "Azure Cloud Sect"]  # sıklık sırası
+    assert "Suddenly" not in names and "However" not in names  # yalnız cümle başında geçenler
+    assert "Dean" not in names  # sözlükte zaten var
+    assert all(c["context"] for c in cands[:2])
+
+
+def test_build_glossary_adds_new_terms_with_best_model_and_keeps_existing():
+    from novel_epub.translator import GeminiTranslator
+    tr = GeminiTranslator.__new__(GeminiTranslator)
+    tr._init_state("iyi, kotu", log=lambda m: None)
+    seen = []
+
+    def fake(payload, schema=None, bad_retries=None, system=None):
+        seen.append((tr.model, [t["source"] for t in payload.get("terms", [])]))
+        return {"new_terms": [{"source": "Azure Cloud Sect", "target": "Gök Mavisi Bulut Tarikatı"},
+                              {"source": "Ming Kai", "target": "Ming Kai"},
+                              {"source": "Dean", "target": "Dekan Bey"}]}
+
+    tr._call_model = fake
+    paras = ["Lorem the Azure Cloud Sect ipsum.", "Dolor Ming Kai and the Azure Cloud Sect.",
+             "Sit Ming Kai amet the Azure Cloud Sect.", "Amet Ming Kai the Dean."]
+    out = tr.build_glossary([Chapter(1, "1", "u", paras)], {"Dean": "Dekan"})
+    assert seen and seen[0][0] == "gemini/iyi" and "Azure Cloud Sect" in seen[0][1]
+    assert out == {"Azure Cloud Sect": "Gök Mavisi Bulut Tarikatı", "Ming Kai": "Ming Kai"}  # Dean'e dokunmaz
