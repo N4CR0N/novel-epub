@@ -453,6 +453,69 @@ def _norm(text: str) -> str:
     return re.sub(r"[\W_]+", " ", text.lower()).strip()
 
 
+# --- kitap başı sözlük adayları (modelsiz) -----------------------------------------------------------------------
+_CAP_PHRASE = re.compile(r"[A-Z][\w'’-]*(?:\s+(?:of\s+(?:the\s+)?)?[A-Z][\w'’-]*)*")
+_LEAD_STOP = {
+    "a", "an", "the", "i", "he", "she", "it", "they", "we", "you", "his", "her", "its", "their", "our", "your", "my",
+    "this", "that", "these", "those", "but", "and", "or", "so", "if", "as", "in", "on", "at", "to", "for", "from",
+    "with", "by", "after", "before", "when", "while", "then", "there", "here", "what", "why", "how", "who", "where",
+    "yes", "no", "oh", "ah", "eh", "hmm", "huh", "ok", "okay", "mr", "mrs", "ms", "dr", "chapter", "volume", "book",
+    "translator", "editor", "note", "tl", "ed", "not", "all", "now", "just", "even", "only", "also", "however",
+    "although", "though", "since", "because", "until", "once", "every", "each", "some", "any", "one", "two",
+}
+
+
+def term_candidates(chapters: list[Chapter], glossary: dict[str, str], limit: int = 600,
+                    min_count: int = 3) -> list[dict]:
+    """Kitabın tamamından, her yerde aynı çevrilmesi gereken özel ad/terim adayları (Latin yazılı kaynak için):
+    büyük harfle başlayan kelime öbekleri, en az `min_count` kez ve en az iki kez cümle ortasında geçenler.
+    [{"source", "count", "context"}], sıklığa göre; sözlükte olanlar hariç."""
+    count: dict[str, int] = {}
+    mid: dict[str, int] = {}
+    ctx: dict[str, str] = {}
+    known = {k.lower() for k in glossary}
+    for ch in chapters:
+        for para in ch.paragraphs:
+            for m in _CAP_PHRASE.finditer(para):
+                words = m.group(0).split()
+                start = m.start()
+                while words and words[0].lower().strip("'’") in _LEAD_STOP:
+                    start = para.find(words[1], start) if len(words) > 1 else start
+                    words = words[1:]
+                if not words or len(words) > 6:
+                    continue
+                term = re.sub(r"['’]s$", "", " ".join(words)).strip("'’-")  # iyelik eki: Wang Lin's → Wang Lin
+                if (len(term) < 3 or term.lower() in known or term.isupper() and len(term) <= 3
+                        or re.search(r"['’](?:ll|m|ve|re|d|t)\b", term, re.I)):  # I'll, It's, Don't
+                    continue
+                before = para[:start].rstrip()
+                initial = not before or before[-1] in ".!?\"“”‘'(:…—–-"
+                count[term] = count.get(term, 0) + 1
+                if not initial:
+                    mid[term] = mid.get(term, 0) + 1
+                    if term not in ctx:
+                        a = max(0, para.rfind(".", 0, start) + 1)
+                        b = para.find(".", m.end())
+                        ctx[term] = para[a:(b + 1 if b != -1 else len(para))].strip()[:200]
+    # Çoğul biçimi tekile kat (Godfiends → Godfiend); karşılık çekim ekiyle zaten uyar.
+    for t in list(count):
+        if t.endswith("s") and t[:-1] in count:
+            count[t[:-1]] += count.pop(t)
+            mid[t[:-1]] = mid.get(t[:-1], 0) + mid.pop(t, 0)
+    # Tek kelime olup metinde küçük harfle de sık geçen sıradan kelimeler (Therefore, Master, Matter) aday değil.
+    singles = {t.lower() for t in count if " " not in t}
+    lower: dict[str, int] = {}
+    if singles:
+        for ch in chapters:
+            for w in re.findall(r"\b[a-z][a-z'’-]+\b", " ".join(ch.paragraphs)):
+                if w in singles:
+                    lower[w] = lower.get(w, 0) + 1
+    picks = [t for t, n in count.items() if n >= min_count and mid.get(t, 0) >= 2
+             and not (" " not in t and lower.get(t.lower(), 0) >= max(2, n // 3))]
+    picks.sort(key=lambda t: (-count[t], t))
+    return [{"source": t, "count": count[t], "context": ctx.get(t, "")} for t in picks[:limit]]
+
+
 # --- tekrar temizliği (modelsiz, kesin kurallar) ---------------------------------------------------------------
 @functools.lru_cache(maxsize=50000)
 def _shingles(text: str, n: int = 3) -> frozenset[tuple[str, ...]]:

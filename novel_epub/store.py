@@ -107,6 +107,18 @@ class BookStore:
     def save_glossary(self, g: dict[str, str]) -> None:
         _write_json(self.glossary_path, dict(sorted(g.items(), key=lambda kv: kv[0].lower())))
 
+    # Kitap başında toplu sözlük kuruldu mu (bir kez; hangi modelle, kaç terim).
+    @property
+    def prepass_path(self) -> Path:
+        return self.dir / f"sozluk-hazir{self.sfx}.json"
+
+    def load_prepass(self) -> dict:
+        p = self.prepass_path
+        return json.loads(p.read_text("utf-8")) if p.exists() else {}
+
+    def save_prepass(self, info: dict) -> None:
+        _write_json(self.prepass_path, info)
+
     # Hikâye hafızası: kısa özet + karakter notları; her istekte modele gider, her yanıtla güncellenir.
     @property
     def memory_path(self) -> Path:

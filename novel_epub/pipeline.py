@@ -297,6 +297,25 @@ class Job:
         self.p.total = len(chapters)
         glossary = store.load_glossary()
         source = {c.index: c for c in chapters}
+        # Kitap başında toplu sözlük (bir kez): adlar ilk bölümden itibaren hep aynı çevrilsin. En iyi modelle;
+        # kota yoksa sonraki çalıştırmada denenir.
+        build = getattr(tr, "build_glossary", None)
+        if build and not store.load_prepass() and any(store.load_tr(c.index) is None for c in chapters):
+            self.p.phase = f"sözlük kuruluyor ({tr.model})"
+            try:
+                built = build(chapters, glossary)
+            except QuotaExhausted as e:
+                self.log(f"Toplu sözlük ertelendi: {e}")
+                built = None
+            if built is not None:
+                bad = quality.suspicious_glossary(built, quality.source_vocab(chapters))
+                if bad:
+                    built.update(tr.fix_glossary(bad, quality.source_vocab(chapters)))
+                glossary.update(built)
+                store.save_glossary(glossary)
+                store.save_prepass({"model": tr.model, "terms": len(built), "version": 1})
+                self.log(f"Toplu sözlük: {len(built)} terim eklendi"
+                         + (f" ({', '.join(f'{k}→{v}' for k, v in list(built.items())[:6])}…)" if built else ""))
         results: dict[int, Chapter] = {}
         pending: list[Chapter] = []
         for ch in chapters:

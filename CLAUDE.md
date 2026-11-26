@@ -78,6 +78,10 @@ tetiklemez: `gh workflow run windows-uygulama.yml --ref <dal>` (sürüm yalnız 
   koymuşsa). Eski kural (kaynakta herhangi bir tekrar varsa denetimi atlıyordu, silmeyi modele bırakıyordu) yetmiyordu. Kök neden (2026-11): istemdeki "edebi/yayınevi kalitesinde" ağdalı dile
   itiyordu → "çağdaş, sade"; T3 "Book N Chapter M → Cilt" kuralı "Chapter N"i "Cilt N" yaptırıyordu;
   `untranslated_suspects` sözlüğün kaynak tarafındaki kelimeleri serbest sayıyordu ("Dean" yakalanmıyordu).
+- Toplu sözlük (kitap başında bir kez, `sozluk-hazir[-dil].json` işareti): `quality.term_candidates` kitabın tamamından
+  büyük harfli ad öbeklerini çıkarır (≥3 kez, ≥2'si cümle ortasında; iyelik/kısaltma/çoğul ayıklanır, küçük harfle de sık geçen
+  tek kelimeler elenir; en çok 600), `Translator.build_glossary` BUILD_GLOSSARY_PROMPT ile 200'erli istekte zincirin en iyi
+  kullanılabilir modeliyle çevirir (CJK kaynakta ilk ~40 bin karakterden model çıkarır); mevcut kayıtlara dokunmaz.
 - `pipeline.py` iş akışı (`Options`, `Job`): indir/oku → denetle → çevir (+redaksiyon, eski çevirileri de redakte
   eder) → EPUB. Başta eski çevirilerde yarım kalmış paragraf denetimi, sonda başarısız bölümler için bir tur daha.
   Kota bitince kısmi EPUB; olmayan bölüm "[Çevrilemedi]" ile orijinal kalır; "ilk 20'de dur".
