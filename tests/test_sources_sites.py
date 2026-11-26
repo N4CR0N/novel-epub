@@ -318,3 +318,46 @@ def test_kakuyomu_reads_table_of_contents_from_next_data():
     assert [c.url.rsplit("/", 1)[1] for c in novel.chapters] == ["1", "2", "3"]
     ch = src.chapter(novel.chapters[1])
     assert ch.title == "一話" and ch.paragraphs[0] == "剣ロレムイプサム。"
+
+
+# ---------------- Çince ham metin: piaotia (GBK), ixdzs ----------------
+class _Resp:
+    def __init__(self, text, enc="gbk"):
+        self.content = text.encode(enc)
+        self.text = text
+
+
+def test_piaotia_toc_and_loose_br_text():
+    from novel_epub.sources.piaotia import Piaotia
+    toc = """<html><body><h1>洛伦物语最新章节</h1><div class="centent"><ul>
+<li><a href="101.html">第1章 开始</a></li><li><a href="102.html">第2章 继续</a></li><li><a href="#">广告</a></li></ul></div></body></html>"""
+    ch = """<html><body><H1><a href="https://www.piaotia.com/bookinfo/1/2.html">洛伦物语</a>第1章 开始</H1>
+<div class="toplink"><a href="index.html">目录</a></div><table><tr><td><script src="x.js"></script></td></tr></table>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;洛伦伊普森多洛尔。<br /><br />&nbsp;&nbsp;&nbsp;&nbsp;“阿梅特。”<br /><br />
+<!-- 翻页上AD开始 --><div class="bottomlink">下一页</div></body></html>"""
+
+    class F:
+        delay = 0.7
+
+        def get(self, url):
+            return _Resp({"https://www.piaotia.com/html/1/2/": toc, "https://www.piaotia.com/html/1/2/101.html": ch}[url])
+
+    src = Piaotia(F())
+    novel = src.novel("https://www.piaotia.com/bookinfo/1/2.html")
+    assert novel.title == "洛伦物语" and [c.title for c in novel.chapters] == ["第1章 开始", "第2章 继续"]
+    c = src.chapter(novel.chapters[0])
+    assert c.title == "第1章 开始" and c.paragraphs == ["洛伦伊普森多洛尔。", "“阿梅特。”"]
+
+
+def test_ixdzs_builds_sequential_chapter_list():
+    from novel_epub.sources.ixdzs import Ixdzs
+    book = """<html><head><meta property="og:novel:book_name" content="洛伦"><meta property="og:novel:author" content="伊普森"></head>
+<body><ul class="u-chapter"><li><a href="/read/7/p3.html">第3章 三</a></li><li><a href="/read/7/p1.html">第1章 一</a></li></ul></body></html>"""
+    page = """<html><body><article class="page-content"><h2>第2章 二</h2><section><p>洛伦伊普森。</p><p>多洛尔。</p><p>阿梅特。</p></section></article></body></html>"""
+    f = FakeFetcher({"https://ixdzs8.com/read/7/": book, "https://ixdzs8.com/read/7/p2.html": page})
+    src = Ixdzs(f)
+    novel = src.novel("https://ixdzs8.com/read/7/p1.html")
+    assert novel.title == "洛伦" and [c.url.rsplit("/", 1)[1] for c in novel.chapters] == ["p1.html", "p2.html", "p3.html"]
+    assert novel.chapters[1].title == "第2章"  # listede yoksa numaradan
+    c = src.chapter(novel.chapters[1])
+    assert c.title == "第2章 二" and c.paragraphs == ["洛伦伊普森。", "多洛尔。", "阿梅特。"]

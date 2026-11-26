@@ -46,7 +46,9 @@ tetiklemez: `gh workflow run windows-uygulama.yml --ref <dal>` (sürüm yalnız 
   atılır), `syosetu` (ncode.syosetu.com; içindekiler `?p=N` sayfalı, 前書き/後書き ve ruby atılır; R18 alt alanı yok),
   `kakuyomu` (`__NEXT_DATA__` Apollo durumu `tableOfContentsV2`), `generic` (içindekiler bağlantıları ya da "Sonraki" ile
   gezme). Kayıt: `sources/__init__.py` → `SOURCES`. `Source.min_delay` siteye özel en az bekleme (Japon siteleri 2 sn),
-  `Source.strip_ruby` okunuşları atar. Çince/Korece orijinaller resmî sitelerde ücretli; tam metin yalnız korsan yansılarda.
+  `Source.strip_ruby` okunuşları atar. Çince ham: `piaotia` (GBK, içindekiler tek sayfa, metin H1 sonrası tablodan sonra
+  `<br />` satırları — dilimlenir), `ixdzs` (bölümler /read/<id>/p<N>.html sıralı; en yüksek N'den liste). 69shuba bölüm
+  sayfaları bot korumalı (eklenmedi); Korece korsanlar alan adı değiştiriyor/erişilemiyor, resmîler (Kakao/Naver/Munpia) ücretli.
 - `fetcher.py` curl_cffi (Chrome taklidi; basit Cloudflare'i geçer), istek arası bekleme, yeniden deneme.
 - `cleaner.py` paragraf çıkarma/temizlik (reklam, filigran, süslü Unicode filigran NFKC, "End of b1c13", tek "."),
   bölüm denetimi (kısa/boş/engel/kopya/eksik numara); `clean_output_paragraphs` EPUB öncesi çıktı temizliği.

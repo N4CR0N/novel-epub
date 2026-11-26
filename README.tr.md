@@ -101,7 +101,8 @@ yine en iyi modelle sürer). Anahtarı geçersiz sağlayıcının modelleri zinc
   allnovelfull.net / novgo.net, novelfull.net), Royal Road, FanMTL / ReadWN / WuxiaBox, NovelBuddy (1. bölümden
   "sonraki" ile gezilir), Wattpad (herkese açık API; ücretli bölümler yalnız ön izleme kadar). Japon web romanları
   doğrudan orijinalinden: Shousetsuka ni Narou (ncode.syosetu.com) ve Kakuyomu (kakuyomu.jp); istekler arasında en az
-  2 sn beklenir, okunuş (furigana) ve yazar notları alınmaz. Diğer siteler genel okuyucuyla denenir.
+  2 sn beklenir, okunuş (furigana) ve yazar notları alınmaz. Çince orijinaller: Piaotia (piaotia.com) ve Ixdzs
+  (ixdzs8.com). Diğer siteler genel okuyucuyla denenir.
 - **Desteklenmeyenler:** bot koruması sert olan ya da metni şifreli/JS ile yükleyen siteler (novelfire, scribblehub,
   novelupdates, ranobes, wtr-lab, wuxiaworld, webnovel). Bunlar için tarayıcı eklentisi
   [WebToEpub](https://github.com/dteviot/WebToEpub) ile EPUB alıp **Dosya** sekmesinden çevirebilirsin.
