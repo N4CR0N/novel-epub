@@ -12,9 +12,12 @@ from ..models import Chapter, ChapterRef, Novel
 class Source:
     name = "base"
     domains: tuple[str, ...] = ()
+    min_delay: float = 0.0  # site istiyorsa istekler arası en az bekleme (sn)
 
     def __init__(self, fetcher: Fetcher):
         self.f = fetcher
+        if self.min_delay and hasattr(fetcher, "delay"):
+            fetcher.delay = max(fetcher.delay, self.min_delay)
 
     @classmethod
     def matches(cls, url: str) -> bool:
@@ -40,6 +43,16 @@ class Source:
     def text(soup: BeautifulSoup, selector: str) -> str:
         el = soup.select_one(selector)
         return el.get_text(" ", strip=True) if el else ""
+
+    @staticmethod
+    def strip_ruby(soup) -> None:
+        """Okunuş işaretlerini (ruby: 漢字(かんじ)) atıp yalnız ana metni bırakır; bitişik metinleri birleştirir
+        (yoksa paragraf çıkarırken "魔法 ロレム" gibi araya boşluk/satır girer)."""
+        for t in soup.select("rt, rp"):
+            t.decompose()
+        for r in soup.select("ruby"):
+            r.replace_with(r.get_text())
+        soup.smooth()
 
     @staticmethod
     def build_chapter(ref: ChapterRef, content_el, title: str = "", next_url: str | None = None) -> Chapter:
