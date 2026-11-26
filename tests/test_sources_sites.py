@@ -352,12 +352,12 @@ def test_piaotia_toc_and_loose_br_text():
 def test_ixdzs_builds_sequential_chapter_list():
     from novel_epub.sources.ixdzs import Ixdzs
     book = """<html><head><meta property="og:novel:book_name" content="洛伦"><meta property="og:novel:author" content="伊普森"></head>
-<body><ul class="u-chapter"><li><a href="/read/7/p3.html">第3章 三</a></li><li><a href="/read/7/p1.html">第1章 一</a></li></ul></body></html>"""
+<body><a href="/read/7/p1.html">立即阅读</a><ul class="u-chapter"><li><a href="/read/7/p3.html">第3章 三</a></li><li><a href="/read/7/p1.html">第1章 一</a></li></ul></body></html>"""
     page = """<html><body><article class="page-content"><h2>第2章 二</h2><section><p>洛伦伊普森。</p><p>多洛尔。</p><p>阿梅特。</p></section></article></body></html>"""
     f = FakeFetcher({"https://ixdzs8.com/read/7/": book, "https://ixdzs8.com/read/7/p2.html": page})
     src = Ixdzs(f)
     novel = src.novel("https://ixdzs8.com/read/7/p1.html")
     assert novel.title == "洛伦" and [c.url.rsplit("/", 1)[1] for c in novel.chapters] == ["p1.html", "p2.html", "p3.html"]
-    assert novel.chapters[1].title == "第2章"  # listede yoksa numaradan
+    assert novel.chapters[0].title == "第1章 一" and novel.chapters[1].title == "第2章"  # "立即阅读" ad sayılmaz
     c = src.chapter(novel.chapters[1])
     assert c.title == "第2章 二" and c.paragraphs == ["洛伦伊普森。", "多洛尔。", "阿梅特。"]

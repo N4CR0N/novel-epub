@@ -35,8 +35,9 @@ class Ixdzs(Source):
         titles: dict[int, str] = {}
         for a in soup.select("a[href]"):
             m = re.search(r"/read/\d+/p(\d+)\.html$", a["href"])
-            if m:
-                titles.setdefault(int(m.group(1)), a.get_text(" ", strip=True))
+            text = a.get_text(" ", strip=True)
+            if m and text not in ("立即阅读", "开始阅读", "继续阅读", "最新章节", "上一章", "下一章", "目录"):
+                titles.setdefault(int(m.group(1)), text)
         last = max(titles, default=0)
         for n in range(1, last + 1):
             novel.chapters.append(ChapterRef(n, titles.get(n, f"第{n}章"), urljoin(url, f"p{n}.html")))
