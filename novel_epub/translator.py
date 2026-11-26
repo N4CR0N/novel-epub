@@ -99,6 +99,11 @@ Neye bakacaksın:
 12. "context", önceki bölümün son paragraflarıdır (zaten düzeltilmiş); yalnızca bağlam içindir, çıktıya ekleme. Kaynaktaki bariz ad dizgi hatalarını "characters" notlarındaki doğru adla düzelt.
 """
 
+SELF_EDIT_RULES = """
+
+Tek geçiş: bu istekte hem çevirmen hem editörsün. Önce çeviriyi taslak olarak (düşünürken) çıkar, sonra son hâlini yazmadan önce bir editör gözüyle kaynağa göre denetle ve düzelt: anlam kaybı, atlanmış ya da uydurulmuş cümle; çeviri kokan, kelime kelime kurulmuş cümleler (doğal, çağdaş dille yeniden kur); sözlük karşılıkları ve hitap tutarlılığı; yazım, noktalama, dilbilgisi; eski/ağdalı kelimeler; anlatım zamanı ve deyimler. Yanıtta yalnız düzeltilmiş son hâli ver; paragraf sayısı ve sırası kaynağınkiyle aynı kalsın.
+"""
+
 TURKISH_EDIT_RULES = """
 Türkçeye özel: anlatım -dı/-di ile olsun ("-maktadır" ve geniş zamanla kalmış anlatımı düzelt); kardeş/yakın dost/yaşıt arasında "sen", ast→üst "siz"; başlık "Bölüm M: X" (kaynakta cilt yoksa "Cilt" ekleme); "Lv. N" → "Seviye N". Osmanlıca kökenli eski kelimeleri (talebe, ekseriyet, muvaffak, addetmek, icra etmek, kaide, hakiki, tesir, idrak, fevkalade, kâfi, istirahat, gelgelelim, zira, lakin) bugünkü karşılıklarıyla değiştir.
 """
@@ -395,6 +400,7 @@ class Translator:
         self.max_retries = max_retries
         self.sleep: Callable[[float], None] = time.sleep  # iş tarafı iptal edilebilir bekleme koyar
         self.thinking = True
+        self.self_edit = False  # tek geçiş: çeviri isteğinde redaksiyon da yapılır (ayrı redaksiyon isteği yok)
         self.thinking_level = thinking_level if thinking_level in THINKING_LEVELS else "medium"
         # 0.6–0.8: anlatımı Türkçe roman diline uyarlayacak esneklik; redaksiyon en çok 0.5 ile daha temkinli.
         self.temperature = DEFAULT_TEMPERATURE
@@ -478,6 +484,8 @@ class Translator:
         instruction = system.format(target=self.target)
         if self.lang == "tr":
             instruction += TURKISH_RULES if system is SYSTEM_PROMPT else TURKISH_EDIT_RULES
+        if system is SYSTEM_PROMPT and getattr(self, "self_edit", False):
+            instruction += SELF_EDIT_RULES + (TURKISH_EDIT_RULES if self.lang == "tr" else "")
         if self.book_notes:
             instruction += ("\n\nBu kitaba özel talimatlar (genel kurallarla çelişirse bunlar geçerlidir; "
                             "terim karşılıkları ayrıca \"glossary\" alanında da gelir):\n" + self.book_notes)
