@@ -483,7 +483,7 @@ def test_pipeline_edits_and_pauses_for_review(tmp_path: Path, monkeypatch):
             return [Chapter(d.index, "RED", d.url, d.paragraphs, edited=True) for d in drafts]
 
     monkeypatch.setattr(translator, "GeminiTranslator", FakeTr)
-    job = pipeline.Job(pipeline.Options(url="u", translate=True, review_after=4))
+    job = pipeline.Job(pipeline.Options(url="u", translate=True, review_after=4, one_pass=False))
     store = BookStore(tmp_path, Novel(url="u", title="k", source="t"))
     out = job._translate([Chapter(i, f"c{i}", "u", ["en"]) for i in range(1, 9)], store)
     assert [c.title for c in out] == ["RED"] * 4 and all(c.edited for c in out)
@@ -1168,3 +1168,37 @@ def test_net_without_curl_cffi_works_like_the_desktop_client():
     finally:
         net.set_backend(None)
         srv.shutdown()
+
+
+def test_pipeline_one_pass_edits_in_the_translation_request(tmp_path: Path, monkeypatch):
+    from novel_epub import pipeline, translator
+    from novel_epub.store import BookStore
+    calls = {"edit": 0, "self_edit": None}
+
+    class FakeTr:
+        def review(self, pairs, glossary, vocab):
+            return [o for _, o in pairs]
+
+        def fix_glossary(self, glossary, vocab):
+            return {}
+
+        def __init__(self, *a, **k):
+            self.model, self.memory = "sahte", {"summary": "", "characters": {}}
+
+        def plan_batch(self, pending, cap):
+            return pending[:2]
+
+        def translate_batch(self, chs, glossary, context, lookahead=None):
+            calls["self_edit"] = self.self_edit
+            return [Chapter(c.index, "TR", c.url, ["tr"]) for c in chs], {}
+
+        def edit_batch(self, sources, drafts, glossary, context=None):
+            calls["edit"] += 1
+            return drafts
+
+    monkeypatch.setattr(translator, "GeminiTranslator", FakeTr)
+    job = pipeline.Job(pipeline.Options(url="u", translate=True))  # varsayılan: tek geçiş
+    store = BookStore(tmp_path, Novel(url="u", title="k", source="t"))
+    out = job._translate([Chapter(i, f"c{i}", "u", ["en"]) for i in range(1, 5)], store)
+    assert calls == {"edit": 0, "self_edit": True}
+    assert all(c.edited for c in out) and store.counts()["redakte"] == 4

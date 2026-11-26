@@ -155,7 +155,9 @@ Aynı kitaba ikinci iş açılmaz (409 + süren işin id'si; `pipeline._ACTIVE_B
 - Ücretsiz kota model başına (ör. gemini-3.8-flash günde 20 istek, 3.x Flash Lite 500). Önerilen zincir:
   `gemini-3.8-flash, gemini-3.6-flash, gemini-3-flash, gemini-2.5-flash, gemini-3.5-flash-lite, gemini-3.1-flash-lite`
   (adları Ayarlar → Listele doğrular; olmayan ad atlanır). Argon/Pro ücretsiz katmanda kapalı.
-- Sıcaklık 0.7 (redaksiyon ≤0.5), düşünme "orta", redaksiyon varsayılan açık. Hata olunca durma; yalnız tüm modellerin
+- Sıcaklık 0.7 (redaksiyon ≤0.5), düşünme "orta", redaksiyon varsayılan açık ve **tek geçiş** (2026-11-26 denemesi: aynı
+  kalite, yarı istek; `Options.one_pass`, `Translator.self_edit` → SELF_EDIT_RULES çeviri istemine eklenir, ayrı edit_batch yok;
+  CLI `--iki-gecis` eski düzen). Tek geçiş sayıları yazıyla yazabiliyor: sayı denetimi Türkçe yazılışı kabul eder (`tr_number_words`). Hata olunca durma; yalnız tüm modellerin
   günlük kotası bitince ya da anahtar geçersizse dur.
 - Türkçe: anlatım -dı/-di, "-maktadır" yok; sen/siz tablosu ilk kayıtta sabit; "Book N Chapter M" → "Cilt N Bölüm M".
 - Kod imzalama yok (Azure Artifact Signing Türkiye'den bireysel alınamıyor; SignPath için depo açık kaynak olmalı).

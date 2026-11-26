@@ -488,6 +488,7 @@ def start_job():
         workers=int(s.get("workers", 3)),
         batch=max(0, min(MAX_AUTO_CHAPTERS, int(s.get("batch", 0)))),
         edit=bool(data.get("edit", True)),
+        one_pass=bool(data.get("one_pass", True)),
         thinking=s.get("thinking", "medium"),
         temperature=float(s.get("temperature", DEFAULT_TEMPERATURE)),
         review_after=20 if data.get("review") else 0,

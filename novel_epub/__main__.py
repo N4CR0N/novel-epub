@@ -29,6 +29,8 @@ def main() -> None:
     ap.add_argument("--host", default=None,
                     help="127.0.0.1: yalnız bu PC (varsayılan: aynı Wi‑Fi'deki cihazlar hazır kitapları indirebilir)")
     ap.add_argument("--port", type=int, default=5000)
+    ap.add_argument("--iki-gecis", action="store_true",
+                    help="Redaksiyonu çeviriden sonra ayrı istekte yap (daha yavaş; varsayılan tek geçiş)")
     ap.add_argument("--denetle", action="store_true",
                     help="Önceden çevrilmiş bölümleri de denetle ve düzelt (İngilizce kalan kelime, sözlük, eski kelime, eksik çeviri)")
     a = ap.parse_args()
@@ -55,7 +57,7 @@ def main() -> None:
         a.bicim = load_settings().get("output_format", "epub")
     opts = Options(url=a.url, start=a.bas, end=a.son, translate=a.cevir, keys=keys, model=model, lang=a.dil,
                    delay=a.bekleme, workers=a.isci, batch=a.toplu, library=Path("kutuphane"), output=Path("cikti"),
-                   fmt=a.bicim, audit=a.denetle)
+                   fmt=a.bicim, audit=a.denetle, one_pass=not a.iki_gecis)
     job = Job(opts, on_log=print)
     out = job.run()
     raise SystemExit(0 if out else 1)

@@ -449,6 +449,34 @@ def _numbers(text: str) -> list[str]:
     return [x.replace(",", "").replace(".", "") for x in _NUM.findall(text)]
 
 
+_TR_ONES = ["", "bir", "iki", "üç", "dört", "beş", "altı", "yedi", "sekiz", "dokuz"]
+_TR_TENS = ["", "on", "yirmi", "otuz", "kırk", "elli", "altmış", "yetmiş", "seksen", "doksan"]
+
+
+def tr_number_words(n: int) -> str:
+    """Sayının Türkçe yazılışı, boşluksuz (137 → yüzotuzyedi, 1500 → binbeşyüz); 0 ve 10^9 üstü için ''."""
+    if n <= 0 or n >= 10**9:
+        return ""
+
+    def below_1000(x: int) -> str:
+        h, r = divmod(x, 100)
+        return ("" if h == 0 else ("yüz" if h == 1 else _TR_ONES[h] + "yüz")) + _TR_TENS[r // 10] + _TR_ONES[r % 10]
+
+    out = ""
+    m, r = divmod(n, 10**6)
+    if m:
+        out += below_1000(m) + "milyon"
+    k, r = divmod(r, 1000)
+    if k:
+        out += ("" if k == 1 else below_1000(k)) + "bin"
+    return out + below_1000(r)
+
+
+def _written_numbers(text: str) -> str:
+    """Metnin harf dizisi (boşluksuz, küçük harf): yazıyla yazılmış sayıları aramak için."""
+    return re.sub(r"[^a-zçğıöşü]", "", text.lower().replace("I", "ı").replace("İ", "i"))
+
+
 def _norm(text: str) -> str:
     return re.sub(r"[\W_]+", " ", text.lower()).strip()
 
@@ -778,6 +806,10 @@ def paragraph_issues(src: Chapter, out: Chapter, lang: str, glossary: dict[str, 
             # Sözlük tutarlılığı tek başına sorun sayılmaz (sözlükte de hata olabilir; maliyetli); onarılan
             # paragrafta sözlük zaten modele gider. Yeni çeviride sözlük istemin parçası.
             lost = Counter(_numbers(sp)) - Counter(_numbers(p))
+            if lost and lang == "tr":  # sayı yazıyla yazılmışsa (137 → yüz otuz yedi) eksik sayılmaz
+                letters = _written_numbers(p)
+                lost = Counter({n: c for n, c in lost.items()
+                                if not (n.isdigit() and (w := tr_number_words(int(n))) and w in letters)})
             if lost and latin_src:
                 found.append("kaynaktaki sayı(lar) çeviride yok ya da farklı: " + ", ".join(sorted(lost)[:6])
                              + " (kaynağa göre düzelt; sayı yazıyla yazılmışsa doğruysa bırak)")

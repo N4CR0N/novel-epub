@@ -275,3 +275,16 @@ def test_build_glossary_adds_new_terms_with_best_model_and_keeps_existing():
     out = tr.build_glossary([Chapter(1, "1", "u", paras)], {"Dean": "Dekan"})
     assert seen and seen[0][0] == "gemini/iyi" and "Azure Cloud Sect" in seen[0][1]
     assert out == {"Azure Cloud Sect": "Gök Mavisi Bulut Tarikatı", "Ming Kai": "Ming Kai"}  # Dean'e dokunmaz
+
+
+def test_number_written_in_turkish_words_is_not_a_mismatch():
+    from novel_epub.quality import paragraph_issues, tr_number_words
+    assert tr_number_words(137) == "yüzotuzyedi" and tr_number_words(1500) == "binbeşyüz"
+    assert tr_number_words(2) == "iki" and tr_number_words(500) == "beşyüz"
+    src = Chapter(1, "Chapter 1", "u", ["Lorem ipsum 137 dolor sit amet with 500 stones and 3 days."])
+    ok = Chapter(1, "Bölüm 1", "u", ["Lorem ipsum yüz otuz yedi dolor, beş yüz taş ve üç gün."])
+    bad = Chapter(1, "Bölüm 1", "u", ["Lorem ipsum yüz dolor, beş yüz taş ve üç gün."])
+    issues_ok, _ = paragraph_issues(src, ok, "tr", {}, set())
+    issues_bad, _ = paragraph_issues(src, bad, "tr", {}, set())
+    assert not any("sayı" in m for _, lst in issues_ok.values() for m in lst)
+    assert any("137" in m for _, lst in issues_bad.values() for m in lst)

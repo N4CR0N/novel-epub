@@ -34,7 +34,8 @@ class Options:
     delay: float = 0.7
     workers: int = 3
     batch: int = 0  # tek Gemini isteğinde en fazla kaç bölüm (0 = bölüm uzunluğuna göre otomatik)
-    edit: bool = True  # redaksiyon turu: taslak çeviriyi bir editör gibi ikinci kez düzelt (2× istek)
+    edit: bool = True  # redaksiyon: taslak çeviriyi bir editör gözüyle düzelt
+    one_pass: bool = True  # redaksiyon çeviriyle aynı istekte (tek geçiş; ayrı istek yok, ~1,5 kat hızlı)
     thinking: str = "medium"  # düşünme seviyesi: low / medium / high
     temperature: float = 0.7
     review_after: int = 0  # yeni kitapta bu kadar bölüm çevrilince dur (sözlüğü gözden geçirmek için)
@@ -290,6 +291,7 @@ class Job:
         tr.sleep = wait
         tr.memory = store.load_memory()
         tr.temperature = o.temperature
+        tr.self_edit = o.edit and o.one_pass
         tr.book_notes = store.load_notes()
         if tr.book_notes:
             self.log(f"Kitaba özel çeviri talimatı kullanılıyor ({len(tr.book_notes)} karakter)")
@@ -330,7 +332,9 @@ class Job:
         if results:
             self.log(f"{len(results)} bölüm önceden çevrilmiş, {len(pending)} bölüm kaldı"
                      + (f"; {len(to_edit)} çeviri redaksiyon bekliyor" if to_edit else ""))
-        if o.edit:
+        if o.edit and o.one_pass:
+            self.log("Redaksiyon açık (tek geçiş): her paket aynı istekte hem çevrilip hem editör gözüyle düzeltilecek")
+        elif o.edit:
             self.log("Redaksiyon turu açık: her paket çevrildikten sonra bir kez de editör gözüyle düzeltilecek (2× istek)")
 
         def context_before(index: int) -> list[str]:
@@ -483,6 +487,8 @@ class Job:
                 self.log(f"  {group[0].index}–{group[-1].index}. bölümler çevrilemedi ({e}); sonrakilere geçiliyor")
             got = {d.index for d in outs}
             for done in outs:
+                if tr.self_edit:
+                    done.edited = True  # tek geçişte redaksiyon çeviriyle birlikte yapıldı
                 store.save_tr(done)
                 results[done.index] = done
                 self.p.done += 1
@@ -493,7 +499,7 @@ class Job:
             save_state(new_terms)
             missed = [c.index for c in group if c.index not in got]
             failed.extend(missed)
-            if outs and o.edit:
+            if outs and o.edit and not tr.self_edit:
                 try:
                     edit(outs)
                 except QuotaExhausted as e:
@@ -527,12 +533,14 @@ class Job:
             except TranslationError as e:
                 self.log(f"  {n}. bölüm yine çevrilemedi ({e})")
                 continue
+            if tr.self_edit:
+                done.edited = True
             store.save_tr(done)
             results[n] = done
             self.p.done += 1
             save_state(new_terms)
             self.log(f"  çevrildi (ikinci deneme) {n}: {done.title}")
-            if o.edit:
+            if o.edit and not tr.self_edit:
                 try:
                     edit([done])
                 except QuotaExhausted as e:
