@@ -100,8 +100,9 @@ is written with what has been translated; start again with the same link and it 
 
 - **Dedicated support:** freewebnovel.com, libread.com, novelbin, the NovelFull family (novelfull.com,
   readnovelfull.com, allnovelfull.net / novgo.net, novelfull.net), Royal Road, FanMTL / ReadWN / WuxiaBox, NovelBuddy
-  (walked from chapter 1 via "next"), Wattpad (public API; paid parts only as far as the preview). Other sites go
-  through the generic reader.
+  (walked from chapter 1 via "next"), Wattpad (public API; paid parts only as far as the preview). Japanese web
+  novels straight from the original: Shousetsuka ni Narou (ncode.syosetu.com) and Kakuyomu (kakuyomu.jp), with at
+  least 2 seconds between requests; furigana and author notes are left out. Other sites go through the generic reader.
 - **Not supported:** sites with strict bot protection or encrypted/JS-loaded text (novelfire, scribblehub,
   novelupdates, ranobes, wtr-lab, wuxiaworld, webnovel). For those, save an EPUB with the
   [WebToEpub](https://github.com/dteviot/WebToEpub) browser extension and translate it from the **File** tab.

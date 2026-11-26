@@ -43,7 +43,10 @@ tetiklemez: `gh workflow run windows-uygulama.yml --ref <dal>` (sürüm yalnız 
   (`?ajax=chapters`; libread.com aynı motor), `readwn` (fanmtl/readwn/wuxiabox; `/e/extend/fy.php?page=N`),
   `novelbuddy` (liste JS → 1. bölümden follow_next), `wattpad` (API v3 + `apiv2/?m=storytext`), `novelbin` (sınanmadı: bulut IP'sine 503), `novelfull` (novelfull.com, readnovelfull.com,
   allnovelfull.net/novgo.net, novelfull.net — 3 düzen), `royalroad` (CSS ile gizlenen korsanlık karşıtı satırlar
-  atılır), `generic` (içindekiler bağlantıları ya da "Sonraki" ile gezme). Kayıt: `sources/__init__.py` → `SOURCES`.
+  atılır), `syosetu` (ncode.syosetu.com; içindekiler `?p=N` sayfalı, 前書き/後書き ve ruby atılır; R18 alt alanı yok),
+  `kakuyomu` (`__NEXT_DATA__` Apollo durumu `tableOfContentsV2`), `generic` (içindekiler bağlantıları ya da "Sonraki" ile
+  gezme). Kayıt: `sources/__init__.py` → `SOURCES`. `Source.min_delay` siteye özel en az bekleme (Japon siteleri 2 sn),
+  `Source.strip_ruby` okunuşları atar. Çince/Korece orijinaller resmî sitelerde ücretli; tam metin yalnız korsan yansılarda.
 - `fetcher.py` curl_cffi (Chrome taklidi; basit Cloudflare'i geçer), istek arası bekleme, yeniden deneme.
 - `cleaner.py` paragraf çıkarma/temizlik (reklam, filigran, süslü Unicode filigran NFKC, "End of b1c13", tek "."),
   bölüm denetimi (kısa/boş/engel/kopya/eksik numara); `clean_output_paragraphs` EPUB öncesi çıktı temizliği.

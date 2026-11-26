@@ -257,3 +257,64 @@ def test_wattpad_api_story_and_part_link():
     assert (n.title, n.author, n.genres) == ("Lorem Story", "ipsum", "romance, lorem")
     assert n.url == "https://www.wattpad.com/story/99" and [c.title for c in n.chapters] == ["Intro", "Part Two"]
     assert len(src.chapter(n.chapters[0]).paragraphs) == 2
+
+
+# ---------------- Syosetu (小説家になろう) ----------------
+SY_TOC1 = """<html><body><h1 class="p-novel__title">ロレム物語</h1><div class="p-novel__author">作者：<a href="/u">イプサム</a></div>
+<div class="p-novel__summary">あらすじ</div>
+<div class="p-eplist"><div class="p-eplist__chapter-title">第一章</div>
+<div class="p-eplist__sublist"><a href="/n1234ab/1/" class="p-eplist__subtitle">プロローグ</a></div>
+<div class="p-eplist__sublist"><a href="/n1234ab/2/" class="p-eplist__subtitle">第一話</a></div></div>
+<div class="c-pager"><a href="/n1234ab/?p=2" class="c-pager__item c-pager__item--last">最後へ</a></div></body></html>"""
+SY_TOC2 = """<html><body><div class="p-eplist__sublist"><a href="/n1234ab/3/" class="p-eplist__subtitle">第二話</a></div></body></html>"""
+SY_EP = """<html><body><h1 class="p-novel__title">第一話</h1>
+<div class="js-novel-text p-novel__text p-novel__text--preface"><p>前書き ロレム</p></div>
+<div class="js-novel-text p-novel__text"><p><ruby>魔法<rp>(</rp><rt>まほう</rt><rp>)</rp></ruby>ロレムイプサムドロールシットアメット。</p><p><br></p><p>「コンセクテトゥル、アディピシング」</p></div>
+<div class="js-novel-text p-novel__text p-novel__text--afterword"><p>後書き イプサム</p></div></body></html>"""
+
+
+def test_syosetu_lists_all_pages_and_skips_author_notes_and_ruby():
+    from novel_epub.sources.syosetu import Syosetu
+    f = FakeFetcher({"https://ncode.syosetu.com/n1234ab/": SY_TOC1, "https://ncode.syosetu.com/n1234ab/?p=2": SY_TOC2,
+                     "https://ncode.syosetu.com/n1234ab/2/": SY_EP})
+    src = Syosetu(f)
+    novel = src.novel("https://ncode.syosetu.com/n1234ab/2/")  # bölüm linkinden de çalışır
+    assert novel.title == "ロレム物語" and novel.author == "イプサム"
+    assert [c.title for c in novel.chapters] == ["プロローグ", "第一話", "第二話"]
+    ch = src.chapter(novel.chapters[1])
+    assert ch.paragraphs[0].startswith("魔法ロレム") and "まほう" not in " ".join(ch.paragraphs)
+    assert not any("書き" in p for p in ch.paragraphs)  # 前書き/後書き alınmaz
+
+
+def test_syosetu_short_story_is_one_chapter():
+    from novel_epub.sources.syosetu import Syosetu
+    page = """<html><body><h1 class="p-novel__title">短編</h1><div class="p-novel__text"><p>ロレム。</p></div></body></html>"""
+    novel = Syosetu(FakeFetcher({"https://ncode.syosetu.com/n9999zz/": page})).novel("https://ncode.syosetu.com/n9999zz/")
+    assert len(novel.chapters) == 1 and novel.chapters[0].url == "https://ncode.syosetu.com/n9999zz/"
+
+
+# ---------------- Kakuyomu (カクヨム) ----------------
+def test_kakuyomu_reads_table_of_contents_from_next_data():
+    import json
+    from novel_epub.sources.kakuyomu import Kakuyomu
+    state = {
+        "Work:42": {"title": "ロレム", "author": {"__ref": "UserAccount:7"}, "introduction": "紹介",
+                    "tableOfContentsV2": [{"__ref": "TableOfContentsChapter:"}, {"__ref": "TableOfContentsChapter:9"}]},
+        "UserAccount:7": {"activityName": "イプサム"},
+        "TableOfContentsChapter:": {"episodeUnions": [{"__ref": "Episode:1"}]},
+        "TableOfContentsChapter:9": {"episodeUnions": [{"__ref": "Episode:2"}, {"__ref": "Episode:3"}]},
+        "Episode:1": {"id": "1", "title": "プロローグ"}, "Episode:2": {"id": "2", "title": "一話"},
+        "Episode:3": {"id": "3", "title": "二話"},
+        "Work:99": {"title": "başka eser"},
+    }
+    page = ('<html><body><script id="__NEXT_DATA__" type="application/json">'
+            + json.dumps({"props": {"pageProps": {"__APOLLO_STATE__": state}}}) + "</script></body></html>")
+    ep = ('<html><body><p class="widget-episodeTitle">一話</p><div class="widget-episodeBody">'
+          '<p><ruby>剣<rt>けん</rt></ruby>ロレムイプサム。</p><p>ドロール。</p></div></body></html>')
+    f = FakeFetcher({"https://kakuyomu.jp/works/42": page, "https://kakuyomu.jp/works/42/episodes/2": ep})
+    src = Kakuyomu(f)
+    novel = src.novel("https://kakuyomu.jp/works/42/episodes/2")
+    assert novel.title == "ロレム" and novel.author == "イプサム"
+    assert [c.url.rsplit("/", 1)[1] for c in novel.chapters] == ["1", "2", "3"]
+    ch = src.chapter(novel.chapters[1])
+    assert ch.title == "一話" and ch.paragraphs[0] == "剣ロレムイプサム。"

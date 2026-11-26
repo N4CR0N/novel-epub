@@ -555,6 +555,15 @@ def _stems(text: str) -> frozenset[str]:
     return frozenset(w[:5] for w in re.findall(r"[^\W\d_]{4,}", text.lower()))
 
 
+_CJK = re.compile(r"[぀-ヿ㐀-鿿가-힯]")
+
+
+def _len_ratio(src: list[str]) -> float:
+    """Çeviri/kaynak beklenen karakter oranı: Çince/Japonca/Korece kaynak aynı anlamı ~üçte bir karakterle yazar."""
+    sample = " ".join(src[:20])
+    return 0.35 if sample and len(_CJK.findall(sample)) > 0.3 * len(sample) else 1.0
+
+
 def drop_repeats(src: Chapter, out: Chapter, window: int = 3) -> tuple[Chapter, int]:
     """Çeviride art arda (en çok `window` paragraf arayla) iki kez yazılmış metni atar:
     (a) aynısı ya da biri ötekinin içinde (kısa olan ≥12 kelime) → kısa olan atılır;
@@ -591,7 +600,7 @@ def drop_repeats(src: Chapter, out: Chapter, window: int = 3) -> tuple[Chapter, 
     S = [p for i, p in enumerate(src.paragraphs) if not (i < 2 and _title_line(p, src.index, src.title))]
     t2s: dict[int, tuple[int, ...]] = {}
     if S:
-        for si, oi in align(S, T):
+        for si, oi in align(S, T, _len_ratio(S)):
             for o in oi:
                 t2s[o] = si
     reps = _src_repeats(S)
@@ -679,10 +688,11 @@ def drop_next_chapter_copy(src: Chapter, out: Chapter, next_src: Chapter) -> tup
     # Daha önce kesildiyse yeniden kesme: çeviri uzunluğu kaynağın yalnız kendi kısmı kadarsa çık.
     total = sum(len(p) for p in src.paragraphs) or 1
     own = sum(len(p) for i, p in enumerate(src.paragraphs) if not s0 <= i <= s1) / total
-    if sum(len(p) for p in out.paragraphs) / total < own + (1 - own) / 2:
+    ratio = _len_ratio(src.paragraphs)
+    if sum(len(p) for p in out.paragraphs) * ratio / total < own + (1 - own) / 2:
         return out, 0
     pos: list[int] = []
-    for si, oi in align(src.paragraphs, out.paragraphs):
+    for si, oi in align(src.paragraphs, out.paragraphs, ratio):
         if si and oi and (s0 <= min(si) <= s1):
             pos.extend(oi)
     if not pos:
