@@ -633,14 +633,16 @@ def glossary_audit_items(source: dict[int, Chapter], results: dict[int, Chapter]
     if not idx:
         return []
     step = max(1, len(idx) // 300)  # sıklık için örneklem (hız)
-    sample = " \n".join(plain_text(source[i]) for i in idx[::step])
+    plain = {i: plain_text(source[i]) for i in idx}
+    sample = " \n".join(plain[i] for i in idx[::step])
     cand = [(k, v) for k, v in glossary.items() if k != v and len(k) >= 3]
-    freq = {k: len(_term_re(k).findall(sample)) * step for k, _ in cand}
+    # Önce düz alt dize sayımı (hızlı); sınır denetimli regex yalnız aday metinde.
+    freq = {k: (len(_term_re(k).findall(sample)) if sample.count(k) >= 3 else 0) * step for k, _ in cand}
     picks = [k for k in sorted(freq, key=lambda k: -freq[k]) if freq[k] >= 3][:top]
     out = []
     for k in picks:
         rx = _term_re(k)
-        found = [i for i in idx if rx.search(plain_text(source[i]))]
+        found = [i for i in idx if k in plain[i] and rx.search(plain[i])]
         ex = []
         for i in [found[j * (len(found) - 1) // max(1, examples - 1)] for j in range(examples)] if found else []:
             S, T = [_ZW.sub("", p) for p in source[i].paragraphs], results[i].paragraphs

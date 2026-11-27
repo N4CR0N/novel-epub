@@ -287,14 +287,16 @@ class Job:
         self.log(f"Sözlük denetimi: en sık {len(items)} terim gözden geçiriliyor ({tr.model})")
         fixes, remove = audit_fn(items)
         lang = self.opts.lang
+        plain = {i: quality.plain_text(source[i]) for i in results if i in source}
         done: dict[str, list[str]] = {}
         changed: dict[int, Chapter] = {}
         # Uzun biçimler önce: "Tribün Emin" → "Felaket Yücesi", sonra "Tribün" → "Felaket".
         for src_term, (new, wrong) in sorted(fixes.items(), key=lambda kv: -len(glossary.get(kv[0], ""))):
             old = glossary.get(src_term, "")
             rx = re.compile(r"(?<![\w])" + re.escape(src_term) + r"(?![\w])")
-            idx = [i for i in sorted(results) if results[i] is not source[i] and rx.search(quality.plain_text(source[i]))]
-            n_src = sum(len(rx.findall(quality.plain_text(source[i]))) for i in idx)
+            idx = [i for i in sorted(results) if results[i] is not source[i] and src_term in plain[i]
+                   and rx.search(plain[i])]
+            n_src = sum(len(rx.findall(plain[i])) for i in idx)
             total = 0
             for form in dict.fromkeys([old, *wrong]):
                 # Yeni karşılığın içinde geçen biçim ("Felaket" → "Felaket Yücesi") ya da kısa/sık kelime metinde
