@@ -13,7 +13,7 @@ Depo herkese açık (MIT lisansı): gizli bilgi, kişisel bilgi, sunucu adresi a
 - `gelistir.bat` (Windows): .venv kurar, uygulamayı **kaynak koddan** pencerede açar. Kod değişince pencereyi kapat-aç.
 - Elle: `python -m venv .venv && .venv\Scripts\pip install -r requirements.txt pywebview pytest`, sonra
   `.venv\Scripts\python uygulama.py` (pencere) ya da `python -m novel_epub` (tarayıcıda, 127.0.0.1:5000).
-- Testler: `.venv\Scripts\python -m pytest -q` (ağsız; şu an 118 test; `tests/conftest.py` istemciye erişim anahtarını ekler). Her değişiklikte çalıştır, kırmızıyla push etme.
+- Testler: `.venv\Scripts\python -m pytest -q` (ağsız; şu an 119 test; `tests/conftest.py` istemciye erişim anahtarını ekler). Her değişiklikte çalıştır, kırmızıyla push etme.
 - Veri klasörü: exe/kaynak klasöründe `kutuphane/` varsa orası; yoksa `Belgeler\Novel EPUB` (eski sürüm) varsa o, yoksa
   `Belgeler\WebNovel Downloader & Translator` (`NOVEL_EPUB_HOME` ile değişir).
   İçinde: `kutuphane/<kaynak>-<kitap>/` (ham/, ceviri[-dil]/, ceviri_eski/, sozluk[-dil].json, hafiza[-dil].json,
@@ -92,7 +92,7 @@ tetiklemez: `gh workflow run windows-uygulama.yml --ref <dal>` (sürüm yalnız 
   `Translator.audit_glossary` (GLOSSARY_AUDIT_PROMPT, 50'şerli) yanlış/yarım/tutarsız karşılıkları ve çeviride geçen yanlış
   biçimleri ("Detsizlik") döndürür; `Job._glossary_audit` sözlüğü (türetilmiş kayıtlar dahil) ve terimin kaynağında geçtiği
   bölümleri `quality.replace_term` (Türkçe ek uyumu `tr_harmonize`: Tribün'ün → Felaket'in) ile düzeltir; biçim metinde
-  kaynaktan çok sıksa (>2×+5) ya da yeni karşılığın içindeyse metne dokunmaz. Yapılanlar işaret dosyasına yazılır.
+  kaynaktan çok sıksa (>2×+5) ya da yeni karşılığın içindeyse metne dokunmaz. Yapılanlar işaret dosyasına yazılır. Zincirin başındaki sağlayıcı (ör. Gemini) tükenip yedek sağlayıcıya (OpenRouter) düşülmüşse denetim ertelenir (`Translator.audit_ready`).
 - `pipeline.py` iş akışı (`Options`, `Job`): indir/oku → denetle → çevir (+redaksiyon, eski çevirileri de redakte
   eder) → EPUB. Başta eski çevirilerde yarım kalmış paragraf denetimi, sonda başarısız bölümler için bir tur daha.
   Kota bitince kısmi EPUB; olmayan bölüm "[Çevrilemedi]" ile orijinal kalır; "ilk 20'de dur".

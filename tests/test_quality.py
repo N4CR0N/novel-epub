@@ -415,3 +415,15 @@ def test_covered_by_detects_re_added_translation():
     real = "Böyle konulardan nasıl şaka yapabilirim? Mengus başını eğdi içti. Gülümseyerek talimat verdi: Pekâlâ."
     assert covered_by("Böyle konularda nasıl şaka yapabilirim? Mengus başını eğdi içti.", [real])
     assert not covered_by("Ata usta mirasını aldığından beri gece gündüz çalıştı durmadan.", [real])
+
+
+def test_glossary_audit_waits_when_only_a_fallback_provider_is_left():
+    from novel_epub.translator import GeminiTranslator
+    tr = GeminiTranslator.__new__(GeminiTranslator)
+    tr._init_state("gemini-iyi, gemini-kotu, openrouter/yedek:free", log=lambda m: None)
+    assert tr.audit_ready()
+    tr.models = ["gemini/gemini-kotu", "openrouter/yedek:free"]
+    assert tr.audit_ready()  # aynı sağlayıcının alt modeli olur
+    tr.models = ["openrouter/yedek:free"]
+    tr.exhausted = {}
+    assert not tr.audit_ready()

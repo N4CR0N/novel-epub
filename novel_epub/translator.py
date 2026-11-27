@@ -963,6 +963,12 @@ class Translator:
                     out[src] = tgt
         return out
 
+    def audit_ready(self) -> bool:
+        """Sözlük denetimi en iyi modelin sağlayıcısıyla yapılsın: zincirin başındaki sağlayıcının kotası bitmiş,
+        yedek sağlayıcıya (ör. OpenRouter) düşülmüşse denetim sonraki çalıştırmaya kalır."""
+        self._readmit()
+        return bool(self.models) and self.models[0].split("/")[0] == self.all_models[0].split("/")[0]
+
     def audit_glossary(self, items: list[dict], size: int = 50) -> tuple[dict[str, tuple[str, list[str]]], list[str]]:
         """Sözlük denetimi (en iyi modelle): {kaynak: (yeni karşılık, çeviride geçen yanlış biçimler)}, kaldırılacaklar."""
         fixes: dict[str, tuple[str, list[str]]] = {}

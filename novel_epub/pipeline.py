@@ -629,8 +629,12 @@ class Job:
         if audit_fn and o.lang != "en" and not stop_reason and not self.p.notice and glossary and (
                 o.audit or (complete and store.load_glossary_audit().get("version") != GLOSSARY_AUDIT_VERSION)):
             self.p.phase = f"sözlük denetleniyor ({tr.model})"
+            if not getattr(tr, "audit_ready", lambda: True)():
+                self.log("Sözlük denetimi ertelendi: en iyi modelin kotası dolu, sonraki çalıştırmada yapılacak")
+                audit_fn = None
             try:
-                self._glossary_audit(tr, audit_fn, source, results, glossary, store)
+                if audit_fn:
+                    self._glossary_audit(tr, audit_fn, source, results, glossary, store)
             except QuotaExhausted as e:
                 self.log(f"Sözlük denetimi ertelendi: {e}")
 
