@@ -47,7 +47,7 @@ PROVIDERS: tuple[Provider, ...] = (
              "https://api.fireworks.ai/inference/v1/models", "bearer", "https://fireworks.ai/account/api-keys"),
     Provider("together", "Together AI", "together_ai", (r"tgp_v1_[\w-]{20,}", r"[a-f0-9]{64}"),
              "https://api.together.xyz/v1/models", "bearer", "https://api.together.ai/settings/api-keys"),
-    Provider("mistral", "Mistral", "mistral", (r"[A-Za-z0-9]{32}",),
+    Provider("mistral", "Mistral", "mistral", (r"mstrl_[\w-]{20,}", r"[A-Za-z0-9]{32}"),
              "https://api.mistral.ai/v1/models", "bearer", "https://console.mistral.ai/api-keys"),
     Provider("ollama", "Ollama (bu PC)", "ollama_chat", (r"ollama", r"https?://[\w.:-]+:11434/?"),
              "/api/tags", "none", "https://ollama.com/download", "http://localhost:11434"),
