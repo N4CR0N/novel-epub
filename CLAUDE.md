@@ -13,7 +13,7 @@ Depo herkese açık (MIT lisansı): gizli bilgi, kişisel bilgi, sunucu adresi a
 - `gelistir.bat` (Windows): .venv kurar, uygulamayı **kaynak koddan** pencerede açar. Kod değişince pencereyi kapat-aç.
 - Elle: `python -m venv .venv && .venv\Scripts\pip install -r requirements.txt pywebview pytest`, sonra
   `.venv\Scripts\python uygulama.py` (pencere) ya da `python -m novel_epub` (tarayıcıda, 127.0.0.1:5000).
-- Testler: `.venv\Scripts\python -m pytest -q` (ağsız; şu an 116 test; `tests/conftest.py` istemciye erişim anahtarını ekler). Her değişiklikte çalıştır, kırmızıyla push etme.
+- Testler: `.venv\Scripts\python -m pytest -q` (ağsız; şu an 118 test; `tests/conftest.py` istemciye erişim anahtarını ekler). Her değişiklikte çalıştır, kırmızıyla push etme.
 - Veri klasörü: exe/kaynak klasöründe `kutuphane/` varsa orası; yoksa `Belgeler\Novel EPUB` (eski sürüm) varsa o, yoksa
   `Belgeler\WebNovel Downloader & Translator` (`NOVEL_EPUB_HOME` ile değişir).
   İçinde: `kutuphane/<kaynak>-<kitap>/` (ham/, ceviri[-dil]/, ceviri_eski/, sozluk[-dil].json, hafiza[-dil].json,
@@ -73,12 +73,12 @@ tetiklemez: `gh workflow run windows-uygulama.yml --ref <dal>` (sürüm yalnız 
   ile paragraf eşleme → `paragraph_issues`: atlanmış kaynak paragrafı (`missing`, ardına eklenir), kaynakta olmayan
   tekrar/uydurma (boş dönerse silinir), kaynak dilde kalan kelime (`COMMON_EN` unvan/ad kelimeleri ya da kaynakta
   küçük harfle geçen; adlar ve `TR_SAME` hariç), sözlüğe uymama (çekim ekinden bağımsız kök), eski/ağdalı kelime
-  (`ARCHAIC_TR`), uyuşmayan sayı, %60'tan kısa paragraf. `Translator.review` sorunlu paragrafları POLISH_PROMPT ile
+  (`ARCHAIC_TR`), uyuşmayan sayı, %60'tan kısa paragraf. `Translator.review` ("atlanmış" diye eklenen çeviri komşu paragraflarda zaten varsa — `covered_by` — eklenmez: tekrar paragrafların ana kaynağı eşleme kaymasıyla yapılan bu eklemeydi) sorunlu paragrafları POLISH_PROMPT ile
   40'arlı istekte onarır, `checked = QUALITY_VERSION` yazar (kurallar değişince artır). `fix_glossary`: karşılığında
   İngilizce ya da eski kelime kalan sözlük kayıtları (`suspicious_glossary`). Denetimde eski kelime yoğunluğu
   >4/1000 olan bölüm baştan redakte edilir. Tekrar temizliği modelsiz ve kesin kuralla (EPUB öncesi her çalıştırmada +
   `fix_chapter`): `drop_repeats` (≤3 paragraf arayla aynısı/içeriği, kısa olan ≥12 kelime; ya da aynı kaynağın farklı kelimelerle ikinci
-  çevirisi: içerik kelimelerinin ilk 5 harfi önceki 1–3 paragrafla ≥%75/%60 örtüşüyor, ya da hemen öncekiyle ≥%80 (önceki daha uzun olabilir); kaynakta da tekrar varsa dokunmaz),
+  çevirisi: içerik kelimelerinin ilk 5 harfi önceki 1–3 paragrafla ≥%75/%60 örtüşüyor, ya da hemen öncekiyle ≥%80 (önceki daha uzun olabilir); ya da kısa paragraf (≥8 kök) 1–2 paragraf ötedekinde ≥%85 var ve kaynakta eşi yok; kaynakta da tekrar varsa dokunmaz; denetim paketinden sonra kaydetmeden önce de çalışır),
   `drop_boundary_repeat` (bölüm sonuna eklenmiş sonraki bölüm başı), `drop_next_chapter_copy` (site 742. sayfaya 743'ü de
   koymuşsa). Eski kural (kaynakta herhangi bir tekrar varsa denetimi atlıyordu, silmeyi modele bırakıyordu) yetmiyordu. Kök neden (2026-11): istemdeki "edebi/yayınevi kalitesinde" ağdalı dile
   itiyordu → "çağdaş, sade"; T3 "Book N Chapter M → Cilt" kuralı "Chapter N"i "Cilt N" yaptırıyordu;

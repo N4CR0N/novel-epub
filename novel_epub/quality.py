@@ -721,6 +721,12 @@ def _stems5(text: str) -> frozenset[str]:
     return frozenset(w[:5] for w in re.findall(r"[^\W\d_]{4,}", text.lower()))
 
 
+def covered_by(text: str, others: list[str], share: float = 0.6) -> bool:
+    """`text`in içerik kelimelerinin en az `share` kadarı komşu paragraflardan birinde var mı (aynı metnin çevirisi)."""
+    a = _stems5(text)
+    return len(a) >= 5 and any(len(a & _stems5(o)) >= share * len(a) for o in others if o)
+
+
 _CJK = re.compile(r"[぀-ヿ㐀-鿿가-힯]")
 
 
@@ -736,11 +742,24 @@ def drop_repeats(src: Chapter, out: Chapter, window: int = 3) -> tuple[Chapter, 
     (b) aynı kaynak metnin ikinci, farklı kelimelerle çevirisi (paragraf, hemen önceki 1–3 paragrafın kelimelerini
         büyük ölçüde tekrar ediyor; ör. önce iki paragrafa bölünmüş, sonra tek paragraf olarak yeniden yazılmış) →
         sonraki atılır.
+    (c) kısa bir paragrafın içerik kelimelerinin ≥%85'i 1–2 paragraf ötedeki daha uzun paragrafta var ve kısa olan
+        kaynakta hiçbir paragrafa eşlenmiyor (denetimin "atlanmış" sanıp yeniden eklediği çeviri) → kısa olan atılır.
     Kaynakta da aynı yerde tekrar varsa (yazarın tekrarı) dokunmaz. (bölüm, atılan sayısı)."""
     T = out.paragraphs
     if len(T) < 2:
         return out, 0
     cands: list[tuple[tuple[int, ...], int, int]] = []  # (önceki blok, sonraki, atılacak)
+    orphan: list[tuple[int, int]] = []  # (c) adayları: (kısa, uzun)
+    for k in range(len(T)):
+        for j in (k + 1, k + 2):
+            if j >= len(T):
+                break
+            a, b = _stems5(T[k]), _stems5(T[j])
+            short, other = (k, j) if len(a) <= len(b) else (j, k)
+            sh, lo = (a, b) if short == k else (b, a)
+            if len(sh) >= 8 and len(sh & lo) >= 0.85 * len(sh):
+                orphan.append((short, other))
+                break
     for k in range(1, len(T)):
         hit = False
         if _repeatable(T[k]):
@@ -763,7 +782,7 @@ def drop_repeats(src: Chapter, out: Chapter, window: int = 3) -> tuple[Chapter, 
             if sb and o >= 0.75 * len(sk) and (o >= 0.6 * len(sb) or (w == 1 and o >= 0.8 * len(sk))):
                 cands.append((tuple(range(k - w, k)), k, k))
                 break
-    if not cands:
+    if not cands and not orphan:
         return out, 0  # eşleme pahalı: yalnız aday varsa yapılır
     S = [p for i, p in enumerate(src.paragraphs) if not (i < 2 and _title_line(p, src.index, src.title))]
     t2s: dict[int, tuple[int, ...]] = {}
@@ -797,6 +816,11 @@ def drop_repeats(src: Chapter, out: Chapter, window: int = 3) -> tuple[Chapter, 
             continue
         if not legit(js, k):
             drop.add(victim)
+    for short, other in orphan:
+        if short in drop or other in drop or not S or t2s.get(short):
+            continue
+        if not legit((min(short, other),), max(short, other)):
+            drop.add(short)
     if not drop:
         return out, 0
     paras = [p for i, p in enumerate(T) if i not in drop]
