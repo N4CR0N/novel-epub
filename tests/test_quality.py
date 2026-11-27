@@ -393,3 +393,25 @@ def test_replace_term_uses_n_buffer_for_compound_nouns():
     assert out == "Ejderha Yılan Komutanı'nı, Ejderha Yılan Komutanı'nda, Ejderha Yılan Komutanı'yla."
     out, _ = replace_term("Kara Bedeni'nde, Kara Bedeni'ne.", "Kara Bedeni", "Kara Beden")
     assert out == "Kara Beden'de, Kara Beden'e."
+
+
+def test_drop_repeats_removes_short_unaligned_copy_before_the_real_translation():
+    from novel_epub.quality import drop_repeats
+    src = Chapter(1, "c", "u", ["Lorem ipsum dolor sit amet first paragraph here.",
+                                "How could I joke about such matters? Meng lowered his head and drank. He smiled and "
+                                "instructed, alright go do your work, you need not worry about this at all my son.",
+                                "Ever since he obtained the ancestral master inheritance he trained day and night."])
+    real = ("Böyle konulardan nasıl şaka yapabilirim? Mengus başını eğdi içti. Gülümseyerek talimat verdi: Pekâlâ, "
+            "işine bak, bunun için endişelenmene gerek yok oğlum, hiç merak etme.")
+    copy = "Böyle konularda nasıl şaka yapabilirim? Mengus başını eğdi içti. Gülümsedi talimat verdi: Pekâlâ, işine bak."
+    out = Chapter(1, "b", "u", ["Lorem ipsum ilk paragraf burada.", copy, real,
+                                "Ata usta mirasını aldığından beri gece gündüz çalıştı."])
+    fixed, n = drop_repeats(src, out)
+    assert n == 1 and copy not in fixed.paragraphs and real in fixed.paragraphs
+
+
+def test_covered_by_detects_re_added_translation():
+    from novel_epub.quality import covered_by
+    real = "Böyle konulardan nasıl şaka yapabilirim? Mengus başını eğdi içti. Gülümseyerek talimat verdi: Pekâlâ."
+    assert covered_by("Böyle konularda nasıl şaka yapabilirim? Mengus başını eğdi içti.", [real])
+    assert not covered_by("Ata usta mirasını aldığından beri gece gündüz çalıştı durmadan.", [real])

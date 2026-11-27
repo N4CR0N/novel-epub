@@ -911,6 +911,11 @@ class Translator:
                     continue
                 if item["source"] and untranslated_paragraphs([item["source"]], pieces[:1], self.lang):
                     continue
+                if len(pieces) > 1:
+                    # "Atlanmış" diye eklenen çeviri, eşleme kaydığı için çoğu zaman sonraki paragrafta zaten vardır:
+                    # komşu paragraflar onu büyük ölçüde içeriyorsa eklenmez (tekrar paragrafın ana kaynağı buydu).
+                    near = [x for x in paras[k][i + 1:i + 3] if isinstance(x, str)] + [pieces[0]]
+                    pieces = pieces[:1] + [x for x in pieces[1:] if not quality.covered_by(x, near)]
                 paras[k][i] = pieces if len(pieces) > 1 else pieces[0]
                 fixed_n += 1
         if todo:

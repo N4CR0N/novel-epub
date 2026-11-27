@@ -431,6 +431,9 @@ class Job:
                 part = idx[j:j + size]
                 checked = tr.review([(source[i], results[i]) for i in part], glossary, vocab)
                 for c in checked:
+                    c, n = quality.drop_repeats(source[c.index], c)  # tekrar paragraf kaydedilmeden atılır
+                    if n:
+                        self.log(f"  {c.index}. bölümde {n} tekrarlanmış paragraf atıldı")
                     store.save_tr(c)
                     results[c.index] = c
                 if getattr(tr, "review_stop", None):
