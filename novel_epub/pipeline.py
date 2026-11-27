@@ -323,7 +323,7 @@ class Job:
             for key, val in list(glossary.items()):  # türetilmiş kayıtlar: "Sixth Tribulation": "Altıncı Tribün"
                 if key != src_term and rx.search(key) and old and len(old) >= 4 and old.lower() not in new.lower():
                     glossary[key] = quality.replace_term(val, old, new, lang)[0]
-            done[src_term] = [old, new, total]
+            done[src_term] = [old, new, total, wrong]
         for k in remove:
             glossary.pop(k, None)
         for i, ch in changed.items():
@@ -334,7 +334,7 @@ class Job:
                                    "removed": remove})
         if done or remove:
             self.log(f"Sözlük denetimi: {len(done)} terim düzeltildi ({len(changed)} bölümde), {len(remove)} kayıt kaldırıldı: "
-                     + ", ".join(f"{k}: {a}→{b} ({n})" for k, (a, b, n) in list(done.items())[:12]))
+                     + ", ".join(f"{k}: {v[0]}→{v[1]} ({v[2]})" for k, v in list(done.items())[:12]))
         else:
             self.log("Sözlük denetimi: düzeltilecek terim yok ✓")
 
