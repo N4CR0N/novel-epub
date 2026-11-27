@@ -385,3 +385,11 @@ def test_zero_width_characters_do_not_hide_terms():
     src = {1: Chapter(1, "c", "u", ["The‌ ‌Heavenly‌ ‌Court came."] * 3)}
     res = {1: Chapter(1, "b", "u", ["Cennet Mahkemesi geldi."] * 3)}
     assert [it["source"] for it in glossary_audit_items(src, res, {"Heavenly Court": "Cennet Mahkemesi"})] == ["Heavenly Court"]
+
+
+def test_replace_term_uses_n_buffer_for_compound_nouns():
+    from novel_epub.quality import replace_term
+    out, _ = replace_term("Yılan Komutan'ı, Yılan Komutan'da, Yılan Komutan'la.", "Yılan Komutan", "Ejderha Yılan Komutanı")
+    assert out == "Ejderha Yılan Komutanı'nı, Ejderha Yılan Komutanı'nda, Ejderha Yılan Komutanı'yla."
+    out, _ = replace_term("Kara Bedeni'nde, Kara Bedeni'ne.", "Kara Bedeni", "Kara Beden")
+    assert out == "Kara Beden'de, Kara Beden'e."

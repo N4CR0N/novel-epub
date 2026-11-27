@@ -566,7 +566,21 @@ def tr_harmonize(suffix: str, old: str, new: str) -> str:
     if not suffix:
         return ""
     s = suffix
+
+    def poss(w: str) -> bool:  # tamlama: "İblis Bedeni" → ekler n ile gelir (Bedeni'ni, Bedeni'nde)
+        return " " in w.strip() and w[-1:].lower() in "ıiuü" and len(w.split()[-1]) > 3
+
     old_v, new_v = old[-1:].lower() in _TR_VOW, new[-1:].lower() in _TR_VOW
+    if poss(new) and not poss(old):
+        if old_v and len(s) >= 2 and s[0] in "yns" and s[1] in _TR_VOW:
+            s = s[1:]
+        if s[0] in _TR_VOW or s[0] in "dt":
+            s = "n" + ("d" + s[1:] if s[0] == "t" else s)  # Komutan'ı → Komutanı'nı, Beden'de → Bedeni'nde
+        elif s[0] in "l" and re.fullmatch(r"l[ae]", s):
+            s = "y" + s  # Komutan'la → Komutanı'yla
+        old_v = new_v
+    elif poss(old) and not poss(new) and len(s) >= 2 and s[0] == "n" and s[1] in "dt" :
+        s = s[1:]  # Bedeni'nde → Beden'de
     if old_v and not new_v and len(s) >= 2 and s[0] in "yns" and s[1] in _TR_VOW:
         s = s[1:]  # Bela-yı / Bela-nın / Bela-sı → Felaket-i / -in / -i
     elif new_v and not old_v and s[0] in _TR_VOW:
