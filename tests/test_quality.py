@@ -376,3 +376,12 @@ def test_audit_glossary_keeps_only_known_terms_and_real_changes():
              {"source": "After", "current": "Sonra", "count": 4, "examples": []}]
     fixes, remove = tr.audit_glossary(items)
     assert fixes == {"Court": ("Saray", ["Mahkemesi"])} and remove == ["After"]
+
+
+def test_zero_width_characters_do_not_hide_terms():
+    from novel_epub.cleaner import clean_paragraphs
+    from novel_epub.quality import glossary_audit_items
+    assert clean_paragraphs(["The‌ ‌Heavenly‌ ‌Court came."]) == ["The Heavenly Court came."]
+    src = {1: Chapter(1, "c", "u", ["The‌ ‌Heavenly‌ ‌Court came."] * 3)}
+    res = {1: Chapter(1, "b", "u", ["Cennet Mahkemesi geldi."] * 3)}
+    assert [it["source"] for it in glossary_audit_items(src, res, {"Heavenly Court": "Cennet Mahkemesi"})] == ["Heavenly Court"]

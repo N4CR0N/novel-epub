@@ -613,6 +613,14 @@ def replace_term(text: str, old: str, new: str, lang: str = "tr") -> tuple[str, 
     return text, count
 
 
+_ZW = re.compile("[\u200b-\u200d\u2060\ufeff]")
+
+
+def plain_text(ch: Chapter) -> str:
+    """Bölümün düz metni (eski indirmelerde kalmış sıfır genişlikli karakterler atılır; terim araması için)."""
+    return _ZW.sub("", " ".join(ch.paragraphs))
+
+
 def _term_re(term: str) -> re.Pattern:
     return re.compile(r"(?<![\w])" + re.escape(term) + r"(?![\w])")
 
@@ -625,17 +633,17 @@ def glossary_audit_items(source: dict[int, Chapter], results: dict[int, Chapter]
     if not idx:
         return []
     step = max(1, len(idx) // 300)  # sıklık için örneklem (hız)
-    sample = " \n".join(" ".join(source[i].paragraphs) for i in idx[::step])
+    sample = " \n".join(plain_text(source[i]) for i in idx[::step])
     cand = [(k, v) for k, v in glossary.items() if k != v and len(k) >= 3]
     freq = {k: len(_term_re(k).findall(sample)) * step for k, _ in cand}
     picks = [k for k in sorted(freq, key=lambda k: -freq[k]) if freq[k] >= 3][:top]
     out = []
     for k in picks:
         rx = _term_re(k)
-        found = [i for i in idx if rx.search(" ".join(source[i].paragraphs))]
+        found = [i for i in idx if rx.search(plain_text(source[i]))]
         ex = []
         for i in [found[j * (len(found) - 1) // max(1, examples - 1)] for j in range(examples)] if found else []:
-            S, T = source[i].paragraphs, results[i].paragraphs
+            S, T = [_ZW.sub("", p) for p in source[i].paragraphs], results[i].paragraphs
             si = next((n for n, p in enumerate(S) if rx.search(p)), None)
             if si is None:
                 continue

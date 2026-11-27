@@ -29,13 +29,15 @@ INLINE_WATERMARK_RE = re.compile(
 )
 # Matematiksel alfanümerik (𝐟𝗿𝐞𝚎…), tam genişlik (ｆｒｅｅ) ve daire içi (ⓕ) harfler: filigranlarda kullanılır.
 FANCY_RE = re.compile("[\U0001D400-\U0001D7FF\uFF01-\uFF5E\u24B6-\u24E9]")
+# Kelimeler arasına gömülü sıfır genişlikli karakterler (bazı siteler kopyalamayı bozmak için koyar).
+ZERO_WIDTH_RE = re.compile("[\u200b-\u200d\u2060\ufeff]")
 
 
 def defancy(p: str) -> str:
     """Süslü Unicode harf içeren paragrafı düz harfe çevirir ve gömülü site filigranını siler."""
     if FANCY_RE.search(p):
         p = unicodedata.normalize("NFKC", p)
-    return INLINE_WATERMARK_RE.sub(" ", p)
+    return INLINE_WATERMARK_RE.sub(" ", ZERO_WIDTH_RE.sub("", p))
 
 
 # Çeviri çıktısında kalmış bölüm sonu notları: "C6B2'nin sonu.", "C1B13 Sonu", "Bölüm sonu", "."

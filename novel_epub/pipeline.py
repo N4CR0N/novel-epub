@@ -293,8 +293,8 @@ class Job:
         for src_term, (new, wrong) in sorted(fixes.items(), key=lambda kv: -len(glossary.get(kv[0], ""))):
             old = glossary.get(src_term, "")
             rx = re.compile(r"(?<![\w])" + re.escape(src_term) + r"(?![\w])")
-            idx = [i for i in sorted(results) if results[i] is not source[i] and rx.search(" ".join(source[i].paragraphs))]
-            n_src = sum(len(rx.findall(" ".join(source[i].paragraphs))) for i in idx)
+            idx = [i for i in sorted(results) if results[i] is not source[i] and rx.search(quality.plain_text(source[i]))]
+            n_src = sum(len(rx.findall(quality.plain_text(source[i]))) for i in idx)
             total = 0
             for form in dict.fromkeys([old, *wrong]):
                 # Yeni karşılığın içinde geçen biçim ("Felaket" → "Felaket Yücesi") ya da kısa/sık kelime metinde
