@@ -294,9 +294,9 @@ class Job:
         for src_term, (new, wrong) in sorted(fixes.items(), key=lambda kv: -len(glossary.get(kv[0], ""))):
             old = glossary.get(src_term, "")
             rx = re.compile(r"(?<![\w])" + re.escape(src_term) + r"(?![\w])")
-            idx = [i for i in sorted(results) if results[i] is not source[i] and src_term in plain[i]
-                   and rx.search(plain[i])]
-            n_src = sum(len(rx.findall(plain[i])) for i in idx)
+            per = {i: quality.count_term(plain[i], src_term) for i in sorted(results) if results[i] is not source[i]}
+            idx = [i for i, c in per.items() if c]
+            n_src = sum(per[i] for i in idx)
             total = 0
             for form in dict.fromkeys([old, *wrong]):
                 # Yeni karşılığın içinde geçen biçim ("Felaket" → "Felaket Yücesi") ya da kısa/sık kelime metinde

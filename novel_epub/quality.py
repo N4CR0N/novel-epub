@@ -621,6 +621,18 @@ def plain_text(ch: Chapter) -> str:
     return _ZW.sub("", " ".join(ch.paragraphs))
 
 
+def count_term(text: str, term: str) -> int:
+    """`term`in kelime sınırlarıyla kaç kez geçtiği (str.find ile; uzun metinde regex'ten çok hızlı)."""
+    n, pos, L = 0, text.find(term), len(term)
+    while pos != -1:
+        before = text[pos - 1] if pos else " "
+        after = text[pos + L] if pos + L < len(text) else " "
+        if not (before.isalnum() or before == "_") and not (after.isalnum() or after == "_"):
+            n += 1
+        pos = text.find(term, pos + L)
+    return n
+
+
 def _term_re(term: str) -> re.Pattern:
     return re.compile(r"(?<![\w])" + re.escape(term) + r"(?![\w])")
 
@@ -636,13 +648,12 @@ def glossary_audit_items(source: dict[int, Chapter], results: dict[int, Chapter]
     plain = {i: plain_text(source[i]) for i in idx}
     sample = " \n".join(plain[i] for i in idx[::step])
     cand = [(k, v) for k, v in glossary.items() if k != v and len(k) >= 3]
-    # Önce düz alt dize sayımı (hızlı); sınır denetimli regex yalnız aday metinde.
-    freq = {k: (len(_term_re(k).findall(sample)) if sample.count(k) >= 3 else 0) * step for k, _ in cand}
+    freq = {k: count_term(sample, k) * step for k, _ in cand}
     picks = [k for k in sorted(freq, key=lambda k: -freq[k]) if freq[k] >= 3][:top]
     out = []
     for k in picks:
         rx = _term_re(k)
-        found = [i for i in idx if k in plain[i] and rx.search(plain[i])]
+        found = [i for i in idx if count_term(plain[i], k)]
         ex = []
         for i in [found[j * (len(found) - 1) // max(1, examples - 1)] for j in range(examples)] if found else []:
             S, T = [_ZW.sub("", p) for p in source[i].paragraphs], results[i].paragraphs
