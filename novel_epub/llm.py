@@ -79,7 +79,9 @@ def max_output_tokens(model: str) -> int:
     if pid == "deepseek":
         return 32768 if "reasoner" in n else 8192
     if pid == "openrouter":
-        return 32768
+        # Ücretsiz uçlar (":free") uzun yanıtı ~16 bin token civarında kesiyor (Ernie 5.5 Flash: 18,5 bin kesildi,
+        # 13,6 bin geçti); büyük paket kesilip bölümler tek tek çevrilince günlük 50 istek boşa gider.
+        return 16384 if n.endswith(":free") else 32768
     return 8192
 
 

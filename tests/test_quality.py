@@ -427,3 +427,10 @@ def test_glossary_audit_waits_when_only_a_fallback_provider_is_left():
     tr.models = ["openrouter/yedek:free"]
     tr.exhausted = {}
     assert not tr.audit_ready()
+
+
+def test_free_openrouter_models_get_a_smaller_output_cap():
+    from novel_epub.llm import max_output_tokens
+    assert max_output_tokens("openrouter/baidu/ernie-5.5-flash-preview:free") == 16384
+    assert max_output_tokens("openrouter/anthropic/claude-x") == 32768
+    assert max_output_tokens("gemini/gemini-3.8-flash") == 65536
