@@ -139,6 +139,24 @@ Görev: Çevirinin her yerinde aynı kalması gereken adları ve terimleri seç,
 - Eski/ağdalı kelime kullanma. Her terim için "source" aynen, "target" karşılık.
 """
 
+GLOSSARY_AUDIT_PROMPT = """Sen web novel çevirilerinde uzman bir {target} editörsün. Bir kitabın çevirisinde kullanılan terim sözlüğünü denetliyorsun. "terms" listesinde kitabın en sık geçen terimleri var: kaynak ("source"), sözlükteki karşılığı ("current"), kaç kez geçtiği ("count") ve çeviriden örnekler ("examples": kaynak cümlesi ve o yerin çevirisi).
+
+Yalnız açıkça hatalı olanları düzelt:
+- Anlamca yanlış karşılık (cultivation seviyesi "Tribulation" → "Tribün" gibi başka anlamda kelime; tarikat/saray anlamındaki "Court" → "Mahkeme"; "array formation" → "dizi formasyonu" yerine "dizilim").
+- Yarım ya da kaynak dilde kalmış karşılık ("Eminence" → "Emin", "Empyrean Lord" → "Empyrean Efendisi").
+- Birbiriyle tutarsız karşılıklar (aynı kelime bir terimde "Ruhani", ötekinde "İlahi"; "Piton" / "Yılan"): kitapta en yerleşik ve doğru olanı seç, ötekileri ona uydur.
+- Eski/ağdalı ya da uydurma kelime.
+Kişi adlarına ve kabul edilebilir karşılıklara dokunma; zevk farkı için değiştirme. Örneklerde aynı terimin çeviride başka yanlış biçimlerle de geçtiğini görürsen (ör. "Detsizlik"), onları "wrong_forms"a çeviride geçtiği gibi yaz.
+Sabit karşılığa gerek olmayan, terim olmayan kayıtları (ör. "After" → "Sonra") "remove" listesine koy.
+Yanıt: "fixes" yalnız değişecek kayıtlar ({{"source", "target" yeni karşılık, "wrong_forms"}}), "remove" kaldırılacak kaynak terimler.
+"""
+
+GLOSSARY_AUDIT_SCHEMA = {"type": "object", "properties": {
+    "fixes": {"type": "array", "items": {"type": "object", "properties": {
+        "source": {"type": "string"}, "target": {"type": "string"},
+        "wrong_forms": {"type": "array", "items": {"type": "string"}}}, "required": ["source", "target"]}},
+    "remove": {"type": "array", "items": {"type": "string"}}}, "required": ["fixes"]}
+
 POLISH_SCHEMA = {"type": "object", "properties": {"paragraphs": {"type": "array", "items": {"type": "string"}}},
                  "required": ["paragraphs"]}
 
@@ -513,7 +531,7 @@ class Translator:
     def _call_model(self, payload: dict, schema: dict = RESPONSE_SCHEMA, bad_retries: int | None = None,
                     system: str = SYSTEM_PROMPT) -> dict:
         """Tek modelle istek. Geçici hatada bekler (en çok 60 sn) ve `max_retries` kez yeniden dener."""
-        key = next(k for k in ("chapters", "paragraphs", "new_terms") if k in schema["properties"])
+        key = next(k for k in ("chapters", "paragraphs", "new_terms", "fixes") if k in schema["properties"])
         bad_left = 2 if bad_retries is None else bad_retries
         attempt = 0
         from . import llm
@@ -939,6 +957,28 @@ class Translator:
                 if src in bad and tgt and tgt != bad[src]:
                     out[src] = tgt
         return out
+
+    def audit_glossary(self, items: list[dict], size: int = 50) -> tuple[dict[str, tuple[str, list[str]]], list[str]]:
+        """Sözlük denetimi (en iyi modelle): {kaynak: (yeni karşılık, çeviride geçen yanlış biçimler)}, kaldırılacaklar."""
+        fixes: dict[str, tuple[str, list[str]]] = {}
+        remove: list[str] = []
+        known = {it["source"]: it["current"] for it in items}
+        for j in range(0, len(items), size):
+            part = items[j:j + size]
+            try:
+                data = self._call({"terms": part}, GLOSSARY_AUDIT_SCHEMA, bad_retries=1, system=GLOSSARY_AUDIT_PROMPT)
+            except (QuotaExhausted, FatalError):
+                raise
+            except TranslationError as e:
+                self.log(f"  sözlük denetimi parçası alınamadı ({e})")
+                continue
+            for f in data.get("fixes") or []:
+                src, tgt = (f.get("source") or "").strip(), (f.get("target") or "").strip()
+                if src in known and tgt and tgt != known[src] and len(tgt) <= 80:
+                    wrong = [w.strip() for w in f.get("wrong_forms") or [] if w and w.strip() and w.strip() != tgt]
+                    fixes[src] = (tgt, wrong[:5])
+            remove += [r for r in data.get("remove") or [] if r in known and r not in fixes]
+        return fixes, remove
 
     def build_glossary(self, chapters: list[Chapter], glossary: dict[str, str], size: int = 200) -> dict[str, str]:
         """Kitap başında toplu sözlük: kitabın tamamından aday adları/terimleri çıkarıp (CJK kaynakta ilk bölümlerden)

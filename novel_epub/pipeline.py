@@ -274,6 +274,68 @@ class Job:
         if not any(report.values()):
             self.log("Denetim: tüm bölümler sağlam görünüyor ✓")
 
+    def _glossary_audit(self, tr, audit_fn, source: dict, results: dict, glossary: dict, store: BookStore) -> None:
+        """En sık terimleri en iyi modele denetletir, düzeltmeleri sözlüğe ve çevrilmiş bölümlere işler."""
+        import dataclasses
+        import re
+
+        from . import quality
+
+        items = quality.glossary_audit_items(source, results, glossary)
+        if not items:
+            return
+        self.log(f"Sözlük denetimi: en sık {len(items)} terim gözden geçiriliyor ({tr.model})")
+        fixes, remove = audit_fn(items)
+        lang = self.opts.lang
+        done: dict[str, list[str]] = {}
+        changed: dict[int, Chapter] = {}
+        # Uzun biçimler önce: "Tribün Emin" → "Felaket Yücesi", sonra "Tribün" → "Felaket".
+        for src_term, (new, wrong) in sorted(fixes.items(), key=lambda kv: -len(glossary.get(kv[0], ""))):
+            old = glossary.get(src_term, "")
+            rx = re.compile(r"(?<![\w])" + re.escape(src_term) + r"(?![\w])")
+            idx = [i for i in sorted(results) if results[i] is not source[i] and rx.search(" ".join(source[i].paragraphs))]
+            n_src = sum(len(rx.findall(" ".join(source[i].paragraphs))) for i in idx)
+            total = 0
+            for form in dict.fromkeys([old, *wrong]):
+                # Yeni karşılığın içinde geçen biçim ("Felaket" → "Felaket Yücesi") ya da kısa/sık kelime metinde
+                # değiştirilmez (yanlış yerleri de bozar); yalnız sözlük güncellenir.
+                if len(form) < 4 or form.lower() in new.lower():
+                    continue
+                hits = sum(len(re.findall(r"(?<![\w])" + re.escape(form), " ".join((changed.get(i) or results[i]).paragraphs)))
+                           for i in idx)
+                if hits > 2 * n_src + 5:
+                    self.log(f"  {src_term}: '{form}' metinde kaynaktan çok daha sık ({hits}>{n_src}); metne dokunulmadı")
+                    continue
+                for i in idx:
+                    ch = changed.get(i) or results[i]
+                    paras, k = [], 0
+                    for p in ch.paragraphs:
+                        p2, c = quality.replace_term(p, form, new, lang)
+                        paras.append(p2)
+                        k += c
+                    title, c = quality.replace_term(ch.title, form, new, lang)
+                    if k + c:
+                        changed[i] = dataclasses.replace(ch, title=title, paragraphs=paras)
+                        total += k + c
+            glossary[src_term] = new
+            for key, val in list(glossary.items()):  # türetilmiş kayıtlar: "Sixth Tribulation": "Altıncı Tribün"
+                if key != src_term and rx.search(key) and old and len(old) >= 4 and old.lower() not in new.lower():
+                    glossary[key] = quality.replace_term(val, old, new, lang)[0]
+            done[src_term] = [old, new, total]
+        for k in remove:
+            glossary.pop(k, None)
+        for i, ch in changed.items():
+            store.save_tr(ch)
+            results[i] = ch
+        store.save_glossary(glossary)
+        store.save_glossary_audit({"version": quality.GLOSSARY_AUDIT_VERSION, "model": tr.model, "fixes": done,
+                                   "removed": remove})
+        if done or remove:
+            self.log(f"Sözlük denetimi: {len(done)} terim düzeltildi ({len(changed)} bölümde), {len(remove)} kayıt kaldırıldı: "
+                     + ", ".join(f"{k}: {a}→{b} ({n})" for k, (a, b, n) in list(done.items())[:12]))
+        else:
+            self.log("Sözlük denetimi: düzeltilecek terim yok ✓")
+
     def _translate(self, chapters: list[Chapter], store: BookStore) -> list[Chapter]:
         from . import quality
         from . import translator as _t
@@ -553,6 +615,19 @@ class Job:
             # Tüm modellerin kotası bitti: çevrilenlerle kısmi kitap çıkar; tekrar başlatınca kaldığı yerden sürer.
             self.log(f"Çeviri durdu: {stop_reason}")
             self.p.error = f"Kısmi: {len(results)} bölüm çevrili ({stop_reason})"
+
+        # Sözlük denetimi: kitap bitince (ya da "denetle"de) en iyi model en sık terimleri gözden geçirir; yanlış
+        # karşılıklar bütün çevrilmiş bölümlerde çekim ekiyle uyumlu biçimde değiştirilir.
+        from .quality import GLOSSARY_AUDIT_VERSION
+        complete = all(i in results and results[i] is not source[i] for i in source if source[i].paragraphs)
+        audit_fn = getattr(tr, "audit_glossary", None)
+        if audit_fn and o.lang != "en" and not stop_reason and not self.p.notice and glossary and (
+                o.audit or (complete and store.load_glossary_audit().get("version") != GLOSSARY_AUDIT_VERSION)):
+            self.p.phase = f"sözlük denetleniyor ({tr.model})"
+            try:
+                self._glossary_audit(tr, audit_fn, source, results, glossary, store)
+            except QuotaExhausted as e:
+                self.log(f"Sözlük denetimi ertelendi: {e}")
 
         # Art arda iki kez yazılmış paragraflar ve bölüm sonuna eklenmiş sonraki bölüm başı (modelsiz, kesin kural).
         removed = 0

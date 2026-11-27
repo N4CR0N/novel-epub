@@ -119,6 +119,18 @@ class BookStore:
     def save_prepass(self, info: dict) -> None:
         _write_json(self.prepass_path, info)
 
+    # Sözlük denetimi yapıldı mı (kitap bitince bir kez; sürüm değişince yeniden).
+    @property
+    def glossary_audit_path(self) -> Path:
+        return self.dir / f"sozluk-denetim{self.sfx}.json"
+
+    def load_glossary_audit(self) -> dict:
+        p = self.glossary_audit_path
+        return json.loads(p.read_text("utf-8")) if p.exists() else {}
+
+    def save_glossary_audit(self, info: dict) -> None:
+        _write_json(self.glossary_audit_path, info)
+
     # Hikâye hafızası: kısa özet + karakter notları; her istekte modele gider, her yanıtla güncellenir.
     @property
     def memory_path(self) -> Path:

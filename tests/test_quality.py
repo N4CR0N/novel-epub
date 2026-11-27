@@ -288,3 +288,91 @@ def test_number_written_in_turkish_words_is_not_a_mismatch():
     issues_bad, _ = paragraph_issues(src, bad, "tr", {}, set())
     assert not any("sayı" in m for _, lst in issues_ok.values() for m in lst)
     assert any("137" in m for _, lst in issues_bad.values() for m in lst)
+
+
+def test_tr_harmonize_and_replace_term_keep_turkish_suffixes():
+    from novel_epub.quality import replace_term, tr_harmonize
+    assert tr_harmonize("ün", "Tribün", "Felaket") == "in"
+    assert tr_harmonize("de", "Tribün", "Felaket") == "te"
+    assert tr_harmonize("u", "Dragon", "Ejderha") == "yı"
+    assert tr_harmonize("yı", "Bela", "Felaket") == "i"
+    out, n = replace_term("Altıncı Tribün'e ulaştı. Tribünde kaldı, Tribün'ün gücü büyüktü. Tribünler geldi.",
+                          "Tribün", "Felaket")
+    assert out == "Altıncı Felaket'e ulaştı. Felakette kaldı, Felaket'in gücü büyüktü. Felaketler geldi." and n == 4
+    out, n = replace_term("mahkeme kuruldu. Mahkemeye gitti.", "mahkeme", "saray")
+    assert out == "saray kuruldu. Saraya gitti." and n == 2
+
+
+def test_glossary_audit_items_rank_by_frequency_with_aligned_examples():
+    from novel_epub.quality import glossary_audit_items
+    src = {i: Chapter(i, f"c{i}", "u", [f"Lorem the Azure Gate ipsum {i}.", "Dolor Ming Kai sit amet the Azure Gate.",
+                                        "Amet the Iron Hall ipsum Azure Gate."]) for i in range(1, 4)}
+    res = {i: Chapter(i, f"b{i}", "u", [f"Lorem Mavi Kapı ipsum {i}.", "Dolor Ming Kai sit amet Mavi Kapı.",
+                                        "Amet Demir Salon ipsum Mavi Kapı."]) for i in range(1, 4)}
+    items = glossary_audit_items(src, res, {"Azure Gate": "Mavi Kapı", "Iron Hall": "Demir Salon", "Ming Kai": "Ming Kai"})
+    assert [it["source"] for it in items] == ["Azure Gate", "Iron Hall"]  # kişi adı (aynı karşılık) hariç
+    assert items[0]["count"] == 9 and items[0]["examples"][0]["translation"].startswith("Lorem Mavi Kapı")
+
+
+def test_glossary_audit_fixes_terms_in_glossary_and_translated_chapters(tmp_path):
+    from novel_epub import pipeline
+    from novel_epub.store import BookStore
+    from novel_epub.models import Novel
+    store = BookStore(tmp_path, Novel(url="u", title="k", source="t"))
+    src = {i: Chapter(i, f"c{i}", "u", [f"He reached the Sixth Tribulation {i}.", "The Tribulation came.",
+                                        "The Tribulation was near, Tribulation again."]) for i in range(1, 4)}
+    res = {i: Chapter(i, f"b{i}", "u", [f"Altıncı Tribün'e ulaştı {i}.", "Tribün geldi.",
+                                        "Tribün yakındı, yine Detsizlik."]) for i in range(1, 4)}
+    glossary = {"Tribulation": "Tribün", "Sixth Tribulation": "Altıncı Tribün", "After": "Sonra"}
+    seen = []
+
+    class FakeTr:
+        model = "sahte"
+
+        def audit_glossary(self, items):
+            seen.append([it["source"] for it in items])
+            return {"Tribulation": ("Felaket", ["Detsizlik"])}, ["After"]
+
+    job = pipeline.Job(pipeline.Options(url="u", translate=True))
+    t = FakeTr()
+    job._glossary_audit(t, t.audit_glossary, src, res, glossary, store)
+    assert "Tribulation" in seen[0]
+    assert glossary == {"Tribulation": "Felaket", "Sixth Tribulation": "Altıncı Felaket"}
+    assert res[2].paragraphs == ["Altıncı Felaket'e ulaştı 2.", "Felaket geldi.", "Felaket yakındı, yine Felaket."]
+    assert store.load_tr(2).paragraphs == res[2].paragraphs
+    assert store.load_glossary_audit()["fixes"]["Tribulation"][:2] == ["Tribün", "Felaket"]
+
+
+def test_drop_repeats_removes_retranslation_shorter_than_the_previous_paragraph():
+    from novel_epub.quality import drop_repeats
+    a = ("Lorem altıncı hazine cübbesi karşılığında ödeyebilir Mengus eliyle hareket yaparak Pangus bıraktığı "
+         "değerli hazineden birini çıkardı. Mengus doğal olarak yedinci kabağını çıkarmaya cesaret edemezdi. "
+         "Geride kalan eşyalar balyoz belirgindi tescilli silahıydı cübbenin bağlayabilecek özelliği yoktu. "
+         "Ayrıca pazarda satıcılar fiyatları yükseltti tüccarlar kervanlar yolculuk.")
+    b = ("Lorem altıncı hazine cübbesi karşılığında ödeyebilir Mengus elinin hareketiyle Pangus geride bıraktığı "
+         "değerli hazineden birini çıkardı. Mengus doğal olarak yedinci kabağını çıkarmaya cesaret edemedi. "
+         "Geride kalan eşyalar balyoz belirgindi farika silahıydı cübbe bağlayabilecek özelliğe sahip değildi.")
+    src = Chapter(1, "c", "u", ["Lorem ipsum dolor sit amet one.", "A long English paragraph about the robe and gourd "
+                                "and the hammer that he took out carefully from his storage space ring."])
+    out = Chapter(1, "b", "u", ["Lorem ipsum bir.", a, b])
+    fixed, n = drop_repeats(src, out)
+    assert n == 1 and fixed.paragraphs == ["Lorem ipsum bir.", a]
+
+
+def test_audit_glossary_keeps_only_known_terms_and_real_changes():
+    from novel_epub.translator import GeminiTranslator
+    tr = GeminiTranslator.__new__(GeminiTranslator)
+    tr._init_state("iyi", log=lambda m: None)
+
+    def fake(payload, schema=None, bad_retries=None, system=None):
+        assert "fixes" in schema["properties"] and len(payload["terms"]) == 3
+        return {"fixes": [{"source": "Court", "target": "Saray", "wrong_forms": ["Mahkemesi", "Saray"]},
+                          {"source": "Lorem", "target": "Ipsum"}, {"source": "Gate", "target": "Kapı"}],
+                "remove": ["After", "Nope"]}
+
+    tr._call_model = fake
+    items = [{"source": "Court", "current": "Mahkeme", "count": 9, "examples": []},
+             {"source": "Gate", "current": "Kapı", "count": 5, "examples": []},
+             {"source": "After", "current": "Sonra", "count": 4, "examples": []}]
+    fixes, remove = tr.audit_glossary(items)
+    assert fixes == {"Court": ("Saray", ["Mahkemesi"])} and remove == ["After"]

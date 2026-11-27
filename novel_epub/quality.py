@@ -544,6 +544,109 @@ def term_candidates(chapters: list[Chapter], glossary: dict[str, str], limit: in
     return [{"source": t, "count": count[t], "context": ctx.get(t, "")} for t in picks[:limit]]
 
 
+GLOSSARY_AUDIT_VERSION = 1  # denetim kuralları/istemi değişince artır (bitmiş kitaplar yeniden denetlenir)
+
+
+# --- sözlük denetimi: terimin kitap genelinde değiştirilmesi (çekim ekiyle) ------------------------------------
+_TR_VOW = "aeıioöuü"
+_TR_BACK = "aıou"
+_TR_HARD = "çfhkpsşt"
+
+
+def _last_vowel(s: str) -> str:
+    for ch in reversed(s.lower()):
+        if ch in _TR_VOW:
+            return ch
+    return "e"
+
+
+def tr_harmonize(suffix: str, old: str, new: str) -> str:
+    """Eski kelimeye eklenmiş Türkçe eki yeni kelimeye uydurur: ses uyumu, ünsüz benzeşmesi, kaynaştırma harfi
+    (Tribün'ün → Felaket'in, Dragon'u → Ejderha'yı, Bela'yı → Felaket'i, Tribünde → Felakette)."""
+    if not suffix:
+        return ""
+    s = suffix
+    old_v, new_v = old[-1:].lower() in _TR_VOW, new[-1:].lower() in _TR_VOW
+    if old_v and not new_v and len(s) >= 2 and s[0] in "yns" and s[1] in _TR_VOW:
+        s = s[1:]  # Bela-yı / Bela-nın / Bela-sı → Felaket-i / -in / -i
+    elif new_v and not old_v and s[0] in _TR_VOW:
+        s = ("n" + s) if re.fullmatch(r"[ıiuü]n.*", s) else ("y" + s)
+    out, lv, end = [], _last_vowel(new), new[-1:].lower()
+    for i, ch in enumerate(s):
+        if ch in "ıiuü":
+            ch = {"a": "ı", "ı": "ı", "e": "i", "i": "i", "o": "u", "u": "u", "ö": "ü", "ü": "ü"}[lv]
+            lv = ch
+        elif ch in "ae":
+            ch = "a" if lv in _TR_BACK else "e"
+            lv = ch
+        elif i == 0 and ch in "dt":
+            ch = "t" if end in _TR_HARD else "d"
+        elif i == 0 and ch in "cç":
+            ch = "ç" if end in _TR_HARD else "c"
+        out.append(ch)
+    return "".join(out)
+
+
+def replace_term(text: str, old: str, new: str, lang: str = "tr") -> tuple[str, int]:
+    """Metinde `old` geçen yerleri `new` ile değiştirir; Türkçede arkasındaki eki uydurur, cümle başındaki büyük
+    harfli biçimi de değiştirir. (metin, değişen sayısı)."""
+    if not old or old == new:
+        return text, 0
+    forms = {old: new}
+    if old[:1].islower():
+        forms[old[:1].upper() + old[1:]] = new[:1].upper() + new[1:]
+    count = 0
+    for o, n in forms.items():
+        if lang == "tr":
+            pat = re.compile(r"(?<![\wçğıöşüÇĞİÖŞÜ])" + re.escape(o) + r"(['’]?)([a-zçğıöşü]*)")
+
+            def sub(m, o=o, n=n):
+                apo, suf = m.group(1), m.group(2)
+                return n + (apo if suf else "") + tr_harmonize(suf, o, n)
+        else:
+            pat = re.compile(r"(?<!\w)" + re.escape(o) + r"(?!\w)")
+
+            def sub(m, n=n):
+                return n
+        text, k = pat.subn(sub, text)
+        count += k
+    return text, count
+
+
+def _term_re(term: str) -> re.Pattern:
+    return re.compile(r"(?<![\w])" + re.escape(term) + r"(?![\w])")
+
+
+def glossary_audit_items(source: dict[int, Chapter], results: dict[int, Chapter], glossary: dict[str, str],
+                         top: int = 150, examples: int = 2) -> list[dict]:
+    """Sözlük denetimi için en sık geçen terimler: kaynakta kaç kez geçtiği ve 2 örnek (kaynak cümlesi + o yerin
+    çevirisi), modelin karşılığın gerçekte nasıl kullanıldığını görebilmesi için."""
+    idx = [i for i in sorted(results) if i in source and results[i] is not source[i]]
+    if not idx:
+        return []
+    step = max(1, len(idx) // 300)  # sıklık için örneklem (hız)
+    sample = " \n".join(" ".join(source[i].paragraphs) for i in idx[::step])
+    cand = [(k, v) for k, v in glossary.items() if k != v and len(k) >= 3]
+    freq = {k: len(_term_re(k).findall(sample)) * step for k, _ in cand}
+    picks = [k for k in sorted(freq, key=lambda k: -freq[k]) if freq[k] >= 3][:top]
+    out = []
+    for k in picks:
+        rx = _term_re(k)
+        found = [i for i in idx if rx.search(" ".join(source[i].paragraphs))]
+        ex = []
+        for i in [found[j * (len(found) - 1) // max(1, examples - 1)] for j in range(examples)] if found else []:
+            S, T = source[i].paragraphs, results[i].paragraphs
+            si = next((n for n, p in enumerate(S) if rx.search(p)), None)
+            if si is None:
+                continue
+            oi = next((o for s_, o_ in align(S, T, _len_ratio(S)) if si in s_ for o in o_), None)
+            if oi is None:
+                continue
+            ex.append({"source": S[si][:400], "translation": T[oi][:500]})
+        out.append({"source": k, "current": glossary[k], "count": freq[k], "examples": ex})
+    return out
+
+
 # --- tekrar temizliği (modelsiz, kesin kurallar) ---------------------------------------------------------------
 @functools.lru_cache(maxsize=50000)
 def _shingles(text: str, n: int = 3) -> frozenset[tuple[str, ...]]:
@@ -570,7 +673,7 @@ def _src_repeats(src: list[str]) -> list[tuple[int, int]]:
         for k in range(j + 1, min(len(src), j + 6)):
             if not _repeatable(src[k]):
                 continue
-            sj, sk = _stems(src[j]), _stems(src[k])
+            sj, sk = _stems5(src[j]), _stems5(src[k])
             if _contain(src[j], src[k]) >= 0.6 or (min(len(sj), len(sk)) >= 15
                                                      and len(sj & sk) >= 0.75 * min(len(sj), len(sk))):
                 pairs.append((j, k))
@@ -578,7 +681,7 @@ def _src_repeats(src: list[str]) -> list[tuple[int, int]]:
 
 
 @functools.lru_cache(maxsize=50000)
-def _stems(text: str) -> frozenset[str]:
+def _stems5(text: str) -> frozenset[str]:
     """Paragrafın içerik kelimelerinin ilk 5 harfi (çekim ekinden ve eş anlamlı küçük farklardan bağımsız)."""
     return frozenset(w[:5] for w in re.findall(r"[^\W\d_]{4,}", text.lower()))
 
@@ -612,15 +715,17 @@ def drop_repeats(src: Chapter, out: Chapter, window: int = 3) -> tuple[Chapter, 
                     cands.append(((j,), k, k if len(T[k]) <= len(T[j]) else j))
                     hit = True
                     break
-        sk = _stems(T[k])
+        sk = _stems5(T[k])
         if hit or len(sk) < 15:
             continue
         for w in range(1, window + 1):
             if k - w < 0:
                 break
-            sb = frozenset().union(*(_stems(p) for p in T[k - w:k]))
+            sb = frozenset().union(*(_stems5(p) for p in T[k - w:k]))
             o = len(sk & sb)
-            if sb and o >= 0.75 * len(sk) and o >= 0.6 * len(sb):
+            # Sonraki paragraf öncekinin neredeyse tamamen yeniden yazımı (önceki daha uzun olabilir: ör. bir
+            # cümle fazlası var) ya da önceki 1–3 paragrafın birleşik yeniden çevirisi.
+            if sb and o >= 0.75 * len(sk) and (o >= 0.6 * len(sb) or (w == 1 and o >= 0.8 * len(sk))):
                 cands.append((tuple(range(k - w, k)), k, k))
                 break
     if not cands:
@@ -634,7 +739,7 @@ def drop_repeats(src: Chapter, out: Chapter, window: int = 3) -> tuple[Chapter, 
     reps = _src_repeats(S)
 
     def similar(x: str, y: str) -> bool:
-        sx, sy = _stems(x), _stems(y)
+        sx, sy = _stems5(x), _stems5(y)
         return _contain(x, y) >= 0.6 or (len(sx) >= 8 and len(sy) >= 8
                                           and len(sx & sy) >= 0.6 * min(len(sx), len(sy)))
 

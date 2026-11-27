@@ -13,7 +13,7 @@ Depo herkese açık (MIT lisansı): gizli bilgi, kişisel bilgi, sunucu adresi a
 - `gelistir.bat` (Windows): .venv kurar, uygulamayı **kaynak koddan** pencerede açar. Kod değişince pencereyi kapat-aç.
 - Elle: `python -m venv .venv && .venv\Scripts\pip install -r requirements.txt pywebview pytest`, sonra
   `.venv\Scripts\python uygulama.py` (pencere) ya da `python -m novel_epub` (tarayıcıda, 127.0.0.1:5000).
-- Testler: `.venv\Scripts\python -m pytest -q` (ağsız; şu an 91 test; `tests/conftest.py` istemciye erişim anahtarını ekler). Her değişiklikte çalıştır, kırmızıyla push etme.
+- Testler: `.venv\Scripts\python -m pytest -q` (ağsız; şu an 114 test; `tests/conftest.py` istemciye erişim anahtarını ekler). Her değişiklikte çalıştır, kırmızıyla push etme.
 - Veri klasörü: exe/kaynak klasöründe `kutuphane/` varsa orası; yoksa `Belgeler\Novel EPUB` (eski sürüm) varsa o, yoksa
   `Belgeler\WebNovel Downloader & Translator` (`NOVEL_EPUB_HOME` ile değişir).
   İçinde: `kutuphane/<kaynak>-<kitap>/` (ham/, ceviri[-dil]/, ceviri_eski/, sozluk[-dil].json, hafiza[-dil].json,
@@ -78,7 +78,7 @@ tetiklemez: `gh workflow run windows-uygulama.yml --ref <dal>` (sürüm yalnız 
   İngilizce ya da eski kelime kalan sözlük kayıtları (`suspicious_glossary`). Denetimde eski kelime yoğunluğu
   >4/1000 olan bölüm baştan redakte edilir. Tekrar temizliği modelsiz ve kesin kuralla (EPUB öncesi her çalıştırmada +
   `fix_chapter`): `drop_repeats` (≤3 paragraf arayla aynısı/içeriği, kısa olan ≥12 kelime; ya da aynı kaynağın farklı kelimelerle ikinci
-  çevirisi: içerik kelimelerinin ilk 5 harfi önceki 1–3 paragrafla ≥%75/%60 örtüşüyor; kaynakta da tekrar varsa dokunmaz),
+  çevirisi: içerik kelimelerinin ilk 5 harfi önceki 1–3 paragrafla ≥%75/%60 örtüşüyor, ya da hemen öncekiyle ≥%80 (önceki daha uzun olabilir); kaynakta da tekrar varsa dokunmaz),
   `drop_boundary_repeat` (bölüm sonuna eklenmiş sonraki bölüm başı), `drop_next_chapter_copy` (site 742. sayfaya 743'ü de
   koymuşsa). Eski kural (kaynakta herhangi bir tekrar varsa denetimi atlıyordu, silmeyi modele bırakıyordu) yetmiyordu. Kök neden (2026-11): istemdeki "edebi/yayınevi kalitesinde" ağdalı dile
   itiyordu → "çağdaş, sade"; T3 "Book N Chapter M → Cilt" kuralı "Chapter N"i "Cilt N" yaptırıyordu;
@@ -87,6 +87,12 @@ tetiklemez: `gh workflow run windows-uygulama.yml --ref <dal>` (sürüm yalnız 
   büyük harfli ad öbeklerini çıkarır (≥3 kez, ≥2'si cümle ortasında; iyelik/kısaltma/çoğul ayıklanır, küçük harfle de sık geçen
   tek kelimeler elenir; en çok 600), `Translator.build_glossary` BUILD_GLOSSARY_PROMPT ile 200'erli istekte zincirin en iyi
   kullanılabilir modeliyle çevirir (CJK kaynakta ilk ~40 bin karakterden model çıkarır); mevcut kayıtlara dokunmaz.
+- Sözlük denetimi (kitap bitince bir kez, `sozluk-denetim[-dil].json`, `quality.GLOSSARY_AUDIT_VERSION`; "denetle"de her
+  seferinde): `quality.glossary_audit_items` en sık ~150 terimi (kaynakta sıklık + hizalanmış 2 örnek) çıkarır,
+  `Translator.audit_glossary` (GLOSSARY_AUDIT_PROMPT, 50'şerli) yanlış/yarım/tutarsız karşılıkları ve çeviride geçen yanlış
+  biçimleri ("Detsizlik") döndürür; `Job._glossary_audit` sözlüğü (türetilmiş kayıtlar dahil) ve terimin kaynağında geçtiği
+  bölümleri `quality.replace_term` (Türkçe ek uyumu `tr_harmonize`: Tribün'ün → Felaket'in) ile düzeltir; biçim metinde
+  kaynaktan çok sıksa (>2×+5) ya da yeni karşılığın içindeyse metne dokunmaz. Yapılanlar işaret dosyasına yazılır.
 - `pipeline.py` iş akışı (`Options`, `Job`): indir/oku → denetle → çevir (+redaksiyon, eski çevirileri de redakte
   eder) → EPUB. Başta eski çevirilerde yarım kalmış paragraf denetimi, sonda başarısız bölümler için bir tur daha.
   Kota bitince kısmi EPUB; olmayan bölüm "[Çevrilemedi]" ile orijinal kalır; "ilk 20'de dur".
