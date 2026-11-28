@@ -638,6 +638,7 @@ def test_provider_guess_and_rank():
     assert [p.id for p in guess("sk-or-" + "Z" * 30)] == ["openrouter"]
     assert [p.id for p in guess("gsk_" + "Z" * 30)] == ["groq"]
     assert [p.id for p in guess("mstrl_" + "aB3x_" * 8)] == ["mistral"]  # yeni Mistral anahtar biçimi
+    assert [p.id for p in guess("user_" + "aB3x" * 20)] == ["commandcode"]
     assert guess("bilinmeyen-bicim") == []  # tanınmayan biçim: anahtar hiçbir sağlayıcıya gönderilmez
     g = ["gemini/gemini-3.1-flash-lite", "gemini/gemini-3.8-flash", "gemini/gemini-4-hydrogen",
          "gemini/gemini-3.5-flash-lite", "gemini/gemini-4-argon"]

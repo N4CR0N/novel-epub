@@ -347,6 +347,12 @@ class Job:
         o = self.opts
         keys = dict(o.keys) or ({"gemini": o.api_key} if o.api_key else {})
         tr = _t.GeminiTranslator(keys, o.model, o.lang, log=self.log, thinking_level=o.thinking)
+        from . import usage as _usage
+
+        tr.ledger = _usage.from_env(Path(o.library).parent / "kullanim.jsonl")
+        import time as _time
+
+        run_started = _time.time()
 
         def wait(seconds: float) -> None:  # "Durdur" bekleme sırasında da çalışsın
             if self.cancel_event.wait(seconds):
@@ -673,5 +679,13 @@ class Job:
                      "Aynı linkle tekrar başlatınca yalnız bunlar ve kalanlar denenir.")
         if self.p.error:
             self.log(f"{len(out)} bölümlük kısmi kitap hazırlanıyor. Kota yenilenince aynı linkle başlat, kaldığı yerden sürer.")
+        if tr.ledger:
+            for model, st in tr.ledger.summary(run_started).items():
+                self.log(f"Harcama ({model}): bu çalıştırmada {st['requests']} istek, {st['in']:,} girdi / "
+                         f"{st['out']:,} çıktı token, ~${st['usd']:.3f}")
+            for pid, caps in tr.ledger.limits.items():
+                self.log(f"{pid} sınırları: " + ", ".join(
+                    f"son {_usage._window_name(sec)} ${tr.ledger.spent(pid, sec):.2f}/${cap:.2f}"
+                    for sec, cap in sorted(caps.items())))
         self.log(f"Terim sözlüğü: {store.glossary_path} · hikâye hafızası: {store.memory_path}")
         return out

@@ -418,6 +418,7 @@ class Translator:
         self.max_retries = max_retries
         self.sleep: Callable[[float], None] = time.sleep  # iş tarafı iptal edilebilir bekleme koyar
         self.thinking = True
+        self.ledger = None  # usage.Ledger: kotalı sağlayıcıda harcama kaydı ve sınırı
         self.self_edit = False  # tek geçiş: çeviri isteğinde redaksiyon da yapılır (ayrı redaksiyon isteği yok)
         self.thinking_level = thinking_level if thinking_level in THINKING_LEVELS else "medium"
         # 0.6–0.8: anlatımı Türkçe roman diline uyarlayacak esneklik; redaksiyon en çok 0.5 ile daha temkinli.
@@ -542,9 +543,17 @@ class Translator:
             try:
                 kw = self._config(schema, system)
                 instruction = kw.pop("system")
+                ledger = getattr(self, "ledger", None)
+                if ledger and ledger.tracked(kw["model"]):
+                    over = ledger.over(kw["model"])
+                    if over:  # kota dolmuş gibi: model zincirden çıkar, saat başı yeniden bakılır
+                        raise llm.PaymentRequiredError(f"{kw['model']}: {over}", 402)
                 resp = complete(messages=[{"role": "system", "content": instruction},
                                           {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}], **kw)
                 usage = getattr(resp, "usage", None)
+                if ledger and usage and ledger.tracked(kw["model"]):
+                    ledger.record(kw["model"], getattr(usage, "prompt_tokens", 0) or 0,
+                                  getattr(usage, "cached_tokens", 0) or 0, getattr(usage, "completion_tokens", 0) or 0)
                 if usage:
                     details = getattr(usage, "completion_tokens_details", None)
                     thought = getattr(details, "reasoning_tokens", 0) or 0
@@ -574,6 +583,8 @@ class Translator:
                 if kind == "missing":
                     raise ModelUnusable(f"Model bulunamadı ya da erişim yok: {self.model}") from e
                 if kind == "quota":
+                    if "harcama sınırı" in text:
+                        raise QuotaExhausted(text) from e
                     raise QuotaExhausted(f"{self.model} kotası/kredisi doldu") from e
                 if kind == "bad":
                     low = text.lower()

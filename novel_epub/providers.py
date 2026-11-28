@@ -49,6 +49,8 @@ PROVIDERS: tuple[Provider, ...] = (
              "https://api.together.xyz/v1/models", "bearer", "https://api.together.ai/settings/api-keys"),
     Provider("mistral", "Mistral", "mistral", (r"mstrl_[\w-]{20,}", r"[A-Za-z0-9]{32}"),
              "https://api.mistral.ai/v1/models", "bearer", "https://console.mistral.ai/api-keys"),
+    Provider("commandcode", "Command Code", "commandcode", (r"user_[A-Za-z0-9]{60,}",),
+             "https://api.commandcode.ai/provider/v1/models", "bearer", "https://commandcode.ai/studio"),
     Provider("ollama", "Ollama (bu PC)", "ollama_chat", (r"ollama", r"https?://[\w.:-]+:11434/?"),
              "/api/tags", "none", "https://ollama.com/download", "http://localhost:11434"),
 )
@@ -57,7 +59,8 @@ BY_ID = {p.id: p for p in PROVIDERS}
 ENV_KEYS = {"gemini": "GEMINI_API_KEY", "openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY",
             "openrouter": "OPENROUTER_API_KEY", "deepseek": "DEEPSEEK_API_KEY", "groq": "GROQ_API_KEY",
             "xai": "XAI_API_KEY", "cerebras": "CEREBRAS_API_KEY", "fireworks": "FIREWORKS_API_KEY",
-            "together": "TOGETHER_API_KEY", "mistral": "MISTRAL_API_KEY", "ollama": "OLLAMA_API_BASE"}
+            "together": "TOGETHER_API_KEY", "mistral": "MISTRAL_API_KEY", "commandcode": "COMMANDCODE_API_KEY",
+            "ollama": "OLLAMA_API_BASE"}
 BY_PREFIX = {p.prefix: p for p in PROVIDERS}
 
 # Çeviri için işe yaramayan model türleri (adlarına göre).

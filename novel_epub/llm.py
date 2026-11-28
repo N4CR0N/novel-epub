@@ -20,7 +20,7 @@ OPENAI_BASE = {
     "openrouter": "https://openrouter.ai/api/v1", "groq": "https://api.groq.com/openai/v1",
     "xai": "https://api.x.ai/v1", "cerebras": "https://api.cerebras.ai/v1",
     "fireworks": "https://api.fireworks.ai/inference/v1", "together": "https://api.together.xyz/v1",
-    "mistral": "https://api.mistral.ai/v1",
+    "mistral": "https://api.mistral.ai/v1", "commandcode": "https://api.commandcode.ai/provider/v1",
 }
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
@@ -78,6 +78,8 @@ def max_output_tokens(model: str) -> int:
         return 32768 if "gpt-4.1" in n else 16384
     if pid == "deepseek":
         return 32768 if "reasoner" in n else 8192
+    if pid == "commandcode":
+        return 32768
     if pid == "openrouter":
         # Ücretsiz uçlar (":free") uzun yanıtı ~16 bin token civarında kesiyor (Ernie 5.5 Flash: 18,5 bin kesildi,
         # 13,6 bin geçti); büyük paket kesilip bölümler tek tek çevrilince günlük 50 istek boşa gider.
@@ -175,16 +177,21 @@ def _parse(pid: str, data: dict):
         fr = c.get("finishReason", "")
         um = data.get("usageMetadata") or {}
         thought = um.get("thoughtsTokenCount", 0) or 0
-        return text, ("length" if fr == "MAX_TOKENS" else "stop"), (um.get("candidatesTokenCount", 0) or 0) + thought, thought
+        return (text, ("length" if fr == "MAX_TOKENS" else "stop"), (um.get("candidatesTokenCount", 0) or 0) + thought,
+                thought, um.get("promptTokenCount", 0) or 0, um.get("cachedContentTokenCount", 0) or 0)
     if pid == "anthropic":
         text = "".join(b.get("text", "") for b in data.get("content") or [] if b.get("type") == "text")
         fr = "length" if data.get("stop_reason") == "max_tokens" else "stop"
-        return text, fr, (data.get("usage") or {}).get("output_tokens", 0) or 0, 0
+        u = data.get("usage") or {}
+        return text, fr, u.get("output_tokens", 0) or 0, 0, (u.get("input_tokens", 0) or 0) + \
+            (u.get("cache_read_input_tokens", 0) or 0), u.get("cache_read_input_tokens", 0) or 0
     ch = (data.get("choices") or [{}])[0]
     usage = data.get("usage") or {}
     details = usage.get("completion_tokens_details") or {}
+    cached = (usage.get("prompt_tokens_details") or {}).get("cached_tokens") or usage.get("prompt_cache_hit_tokens") or 0
     return ((ch.get("message") or {}).get("content") or ""), ch.get("finish_reason") or "stop", \
-        usage.get("completion_tokens", 0) or 0, details.get("reasoning_tokens", 0) or 0
+        usage.get("completion_tokens", 0) or 0, details.get("reasoning_tokens", 0) or 0, \
+        usage.get("prompt_tokens", 0) or 0, cached
 
 
 def _post(url: str, headers: dict, body: dict, timeout: float):
@@ -210,7 +217,8 @@ def completion(model: str, messages: list[dict], api_key: str | None = None, api
         data = r.json()
     except ValueError as e:
         raise ValueError(f"yanıt JSON değil: {r.text[:200]}") from e
-    text, finish, total, thought = _parse(pid, data)
+    text, finish, total, thought, prompt, cached = _parse(pid, data)
     msg = SimpleNamespace(content=text)
-    usage = SimpleNamespace(completion_tokens=total, completion_tokens_details=SimpleNamespace(reasoning_tokens=thought))
+    usage = SimpleNamespace(completion_tokens=total, completion_tokens_details=SimpleNamespace(reasoning_tokens=thought),
+                            prompt_tokens=prompt, cached_tokens=cached)
     return SimpleNamespace(choices=[SimpleNamespace(message=msg, finish_reason=finish)], usage=usage, model=model)

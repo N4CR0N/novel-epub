@@ -13,7 +13,7 @@ Depo herkese açık (MIT lisansı): gizli bilgi, kişisel bilgi, sunucu adresi a
 - `gelistir.bat` (Windows): .venv kurar, uygulamayı **kaynak koddan** pencerede açar. Kod değişince pencereyi kapat-aç.
 - Elle: `python -m venv .venv && .venv\Scripts\pip install -r requirements.txt pywebview pytest`, sonra
   `.venv\Scripts\python uygulama.py` (pencere) ya da `python -m novel_epub` (tarayıcıda, 127.0.0.1:5000).
-- Testler: `.venv\Scripts\python -m pytest -q` (ağsız; şu an 120 test; `tests/conftest.py` istemciye erişim anahtarını ekler). Her değişiklikte çalıştır, kırmızıyla push etme.
+- Testler: `.venv\Scripts\python -m pytest -q` (ağsız; şu an 123 test; `tests/conftest.py` istemciye erişim anahtarını ekler). Her değişiklikte çalıştır, kırmızıyla push etme.
 - Veri klasörü: exe/kaynak klasöründe `kutuphane/` varsa orası; yoksa `Belgeler\Novel EPUB` (eski sürüm) varsa o, yoksa
   `Belgeler\WebNovel Downloader & Translator` (`NOVEL_EPUB_HOME` ile değişir).
   İçinde: `kutuphane/<kaynak>-<kitap>/` (ham/, ceviri[-dil]/, ceviri_eski/, sozluk[-dil].json, hafiza[-dil].json,
@@ -59,6 +59,7 @@ tetiklemez: `gh workflow run windows-uygulama.yml --ref <dal>` (sürüm yalnız 
 - `llm.py` LiteLLM yerine kendi istemcimiz (curl_cffi): OpenAI uyumlu uçlar, Gemini `generateContent` (responseSchema,
   thinkingLevel), Anthropic messages; LiteLLM biçiminde yanıt (`choices[0].message`, `usage.completion_tokens`) ve hata
   sınıfları (`status_code`). Model adı `sağlayıcı/model`; öneksiz ad Gemini sayılır.
+- `usage.py` kotalı/abonelikli sağlayıcıda harcama defteri (`kullanim.jsonl`, veri klasöründe; istek başına token + tahmini dolar, `PRICES` yoğun/yoğun-dışı saat) ve pencere sınırı (`NOVEL_EPUB_SPEND_LIMITS="commandcode:5h=3,7d=10"`): sınır aşılınca o sağlayıcının modelleri kota dolmuş gibi zincirden çıkar (402 → QuotaExhausted, saat başı yeniden bakılır); çalıştırma sonunda harcama özeti loglanır. Arayüzde ayarı yok (yalnız ortam değişkeni). Command Code (`commandcode/…`, OpenAI uyumlu `api.commandcode.ai/provider/v1`, anahtar `user_…`): Osman'ın GOAT aboneliği (5 sa $20 / hafta $50 / ay $100, başka işlerde de kullanıyor) — sunucuda paylaşımı küçük tut.
 - `translator.py` `Translator` (eski ad `GeminiTranslator`), `llm.completion` (`self.complete` testte sahtelenir):
   JSON şema (desteklemeyen modelde şema talimata yazılır + json_object), `_classify` hata eşleme (auth→sağlayıcı
   zincirden çıkar, 404→model çıkar, günlük kota→1 saat sonra en iyiden yeniden dene, 402/insufficient_quota→kota); bölüm paketleme (kelime sayısından token tahmini,
